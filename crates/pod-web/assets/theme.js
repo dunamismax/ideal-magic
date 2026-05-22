@@ -30,6 +30,14 @@
 
   function apply(theme) {
     root.setAttribute("data-theme", theme);
+    try {
+      var meta = document.querySelector('meta[name="color-scheme"]');
+      if (meta) {
+        meta.setAttribute("content", theme === "light" ? "light dark" : "dark light");
+      }
+    } catch (_) {
+      /* ignore */
+    }
     var buttons = document.querySelectorAll("[data-theme-toggle]");
     for (var i = 0; i < buttons.length; i++) {
       var next = theme === "dark" ? "light" : "dark";

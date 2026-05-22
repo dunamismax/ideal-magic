@@ -45,8 +45,7 @@ Pod Tracker is built around the game-night loop:
 - **Restrained plain CSS** by default; add a heavier styling pipeline only
   when the product proves it needs one.
 - **SSE** and PostgreSQL `LISTEN` / `NOTIFY` for lightweight realtime.
-- **sqlx or equivalent Rust typed SQL workflow** for explicit database
-  access.
+- **sqlx** for explicit typed database access.
 - **No Docker PostgreSQL** for local development or production.
 
 Local development uses an installed PostgreSQL service. Do not use
@@ -92,10 +91,10 @@ Game Changers analysis, reminders, and materialized meta views.
 
 ## V1 Scope
 
-V1 is usable when a real playgroup can plan and run a Commander night
-from invitation to pod assignment to game results.
+V1 is complete and supports a real playgroup planning and running a
+Commander night from invitation to pod assignment to game results.
 
-Included surface:
+Current surface:
 
 - Login and sessions work.
 - Playgroups and memberships work.

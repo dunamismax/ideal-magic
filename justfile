@@ -31,11 +31,11 @@ test:
 caddy-validate:
   #!/usr/bin/env bash
   set -euo pipefail
-  if command -v caddy >/dev/null 2>&1; then
-    caddy validate --adapter caddyfile --config deploy/caddy/Caddyfile
-  else
-    go run github.com/caddyserver/caddy/v2/cmd/caddy@v2.10.2 validate --adapter caddyfile --config deploy/caddy/Caddyfile
+  if ! command -v caddy >/dev/null 2>&1; then
+    echo "caddy CLI is required for Caddyfile validation." >&2
+    exit 127
   fi
+  caddy validate --adapter caddyfile --config deploy/caddy/Caddyfile
 
 systemd-verify:
   #!/usr/bin/env bash

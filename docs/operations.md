@@ -73,8 +73,7 @@ just caddy-validate
 just systemd-verify
 ```
 
-`just caddy-validate` uses a local `caddy` binary when present and falls
-back to a pinned `go run` invocation for the Caddy CLI. `just
+`just caddy-validate` requires a local `caddy` binary. `just
 systemd-verify` uses `systemd-analyze verify` on Linux hosts and performs
 a minimal Rust binary path check on non-systemd development machines.
 

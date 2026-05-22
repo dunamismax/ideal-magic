@@ -93,8 +93,6 @@ Default against:
 
 - Client-side SPA routing.
 - Runtime JavaScript frameworks before evidence earns them.
-- New HTMX surface unless a future spike proves it is simpler than
-  Leptos-owned server rendering/actions for that specific interaction.
 - ORMs that hide SQL.
 - Microservices, Kubernetes, queues, Redis, or managed-service lock-in
   before the monolith proves it needs them.
@@ -102,7 +100,7 @@ Default against:
   core product needs it.
 
 The live product path is Rust, Leptos, Axum, Tokio, sqlx, PostgreSQL,
-Caddy, and systemd. Legacy Go code has been removed.
+Caddy, and systemd.
 
 ---
 
@@ -220,7 +218,7 @@ Docs-only work:
 git diff --check
 ```
 
-Once the skeleton exists:
+Normal Rust workspace gate:
 
 ```sh
 just fmt
@@ -234,7 +232,7 @@ local app database is stale, use a freshly migrated temporary local
 database for verification instead of loosening production-like app
 credentials.
 
-Expected coverage as the app matures:
+Expected coverage:
 
 - Rust tests.
 - Migration tests against real PostgreSQL.
@@ -244,7 +242,7 @@ Expected coverage as the app matures:
 - Leptos component/page rendering tests.
 - Playwright smoke for critical workflows.
 - Caddy config validation.
-- Backup and restore drill before production claims.
+- Backup and restore drill for operational readiness.
 
 Broaden checks as risk grows. If a command cannot run, say why and what
 was verified instead.

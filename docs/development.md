@@ -94,7 +94,7 @@ recipe. It is not a production command.
 ## Migrations
 
 SQLx migrations in `crates/pod-db/migrations/` are the canonical schema
-history. The legacy Go/Goose migration copy has been removed.
+history.
 
 Useful commands:
 

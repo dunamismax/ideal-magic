@@ -7,7 +7,7 @@ V1.0 is complete. Keep this file intentionally light until new work is
 ready to plan; add future sections and phases here as ideas become
 concrete enough to build and verify.
 
-Last reviewed: 2026-05-21.
+Last reviewed: 2026-05-22.
 
 ---
 
@@ -20,8 +20,6 @@ Last reviewed: 2026-05-21.
   history.
 - Optional pgvector setup remains outside default migrations in
   `crates/pod-db/optional-migrations/pgvector/`.
-- Legacy Go, sqlc, Goose, HTMX templates, and duplicate Goose migrations
-  have been removed from the repository.
 - Do not deploy, run production migrations, restart services, change
   Caddy/systemd, or access production data without explicit approval.
 

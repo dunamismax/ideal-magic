@@ -129,7 +129,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/e/{token}", get(public_event_detail))
         .route("/rsvp/{token}", get(guest_rsvp_form).post(save_guest_rsvp))
         .route("/calendar.ics", get(calendar_feed))
-        .route("/observatory", get(observatory))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .fallback(not_found)
@@ -2762,10 +2761,6 @@ async fn calendar_feed(State(state): State<AppState>, headers: HeaderMap) -> Res
         .into_response()
 }
 
-async fn observatory() -> Html<String> {
-    Html(ui::render_observatory())
-}
-
 #[derive(Debug, Deserialize)]
 struct SignupForm {
     email: String,
@@ -4201,38 +4196,6 @@ mod tests {
         assert_eq!(preferences.locale, "en-US");
         assert_eq!(preferences.timezone, "America/New_York");
         assert_eq!(preferences.date_time_format, "iso_24h");
-    }
-
-    #[tokio::test]
-    async fn observatory_renders_safe_sql_surface() {
-        let app = build_router(test_state());
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/observatory")
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_string(response).await;
-        assert!(body.contains("SQL Observatory"));
-        assert!(body.contains("core.event_rsvps"));
-        assert!(body.contains("core.pod_seats"));
-        assert!(body.contains("search.card_documents"));
-        assert!(body.contains("mtg.card_printings"));
-        assert!(body.contains("Bracket compatibility"));
-        assert!(body.contains("Reminders and job claiming"));
-        assert!(body.contains("Matchup history"));
-        assert!(body.contains("Meta dashboard materialized views"));
-        assert!(body.contains("Scrubbed fixture"));
-        assert!(!body.contains("address_line1"));
-        assert!(!body.contains("invite_token"));
-        assert!(!body.contains("to_address"));
-        assert!(!body.contains("pod_tracker_session"));
     }
 
     #[sqlx::test(migrations = "../pod-db/migrations")]

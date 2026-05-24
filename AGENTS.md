@@ -50,8 +50,8 @@ claims, or bury the lede.
   pod generation, game logging, and meta insight.
 - Deckbuilding exists to support game-night planning. Do not let it take
   over the MVP.
-- PostgreSQL must be visibly powerful in the product. The SQL
-  Observatory is a first-class goal, not a novelty page.
+- PostgreSQL must be visibly powerful through real planning, search,
+  pairing, meta, realtime, and operations workflows.
 - Competitive leaderboards are optional. Default analytics should
   emphasize meta health, variety, attendance, matchup freshness, and
   planning.

@@ -515,8 +515,7 @@ h3 {
 .status-list dt,
 .console-header span,
 .console-matrix span,
-.pod-stack span,
-.sql-strip span {
+.pod-stack span {
   color: var(--soft);
   font-size: 0.7rem;
   font-weight: 700;
@@ -737,21 +736,6 @@ button.secondary:hover {
   font-size: 0.92rem;
   font-weight: 600;
   line-height: 1.35;
-}
-
-.sql-strip {
-  display: grid;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  background: var(--canvas-subtle);
-}
-
-.sql-strip code {
-  overflow-wrap: anywhere;
-  color: var(--accent-strong);
-  font-size: 0.85rem;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1175,24 +1159,6 @@ button.secondary:hover {
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
-}
-
-/* ------------------------------------------------------------------ */
-/* SQL block (Observatory)                                             */
-/* ------------------------------------------------------------------ */
-
-.sql-block {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  background: var(--code-bg);
-  color: var(--code-ink);
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
-  font-size: 0.84rem;
-  line-height: 1.6;
 }
 
 /* ------------------------------------------------------------------ */

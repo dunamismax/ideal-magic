@@ -89,9 +89,8 @@ Public-safe views remain the preferred shape for tokenized public event
 and guest surfaces as the schema matures.
 
 Natural-language meta exploration must not execute arbitrary SQL against
-raw tables. Keep it constrained to approved SQL Observatory query shapes
-or security-barrier views with declared viewer scope and public-safe
-outputs.
+raw tables. Keep it constrained to approved query shapes or
+security-barrier views with declared viewer scope and public-safe outputs.
 
 ## Backups And Restores
 

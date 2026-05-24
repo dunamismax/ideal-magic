@@ -2,7 +2,7 @@
 
 Pod Tracker is not ready for broad UI translation. The supported
 application locale policy is intentionally narrow until the core event,
-RSVP, pod, game, collection, and SQL Observatory flows settle.
+RSVP, pod, game, collection, and meta flows settle.
 
 ## Application Locales
 

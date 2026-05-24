@@ -84,10 +84,6 @@ pub fn render_home() -> String {
                                 <strong>"Late arrivals grouped"</strong>
                             </article>
                         </div>
-                        <div class="sql-strip">
-                            <span>"SQL Observatory"</span>
-                            <code>"matchup_freshness_score(event_id)"</code>
-                        </div>
                     </div>
                 </section>
                 <section class="ops-strip" aria-label="Product focus">
@@ -2160,10 +2156,6 @@ pub fn render_placeholder(title: &'static str) -> String {
             "Build plan",
             "V1 is complete; future phases can be added when new product ideas are ready.",
         ),
-        "SQL Observatory" => (
-            "PostgreSQL",
-            "This page will expose safe, scrubbed SQL examples for pairing history, fuzzy card search, reminders, and meta summaries.",
-        ),
         _ => (
             "Pod Tracker",
             "This route is reserved for the Rust application surface.",
@@ -2178,47 +2170,6 @@ pub fn render_placeholder(title: &'static str) -> String {
                     <h1>{title}</h1>
                     <p class="body-copy">{copy}</p>
                 </section>
-            </main>
-        </AppShell>
-    }
-    .to_html()
-}
-
-pub fn render_observatory() -> String {
-    let entries = pod_db::observatory_entries();
-
-    view! {
-        <AppShell title="SQL Observatory" account_label="Account" account_href="/settings">
-            <main id="main" class="shell">
-                <section class="page-header compact">
-                    <p class="eyebrow">"PostgreSQL"</p>
-                    <h1>"SQL Observatory"</h1>
-                    <p class="body-copy">
-                        "Safe query shapes from the Rust repositories. Inputs are scoped IDs or public card filters; outputs avoid host addresses, contact fields, invite tokens, and private notes."
-                    </p>
-                </section>
-                {entries.iter().copied().map(|entry| view! {
-                    <section id=entry.slug class="split-layout wide-left section-gap">
-                        <article class="panel">
-                            <div class="section-heading">
-                                <h2>{entry.title}</h2>
-                                <span class="badge">{entry.badge}</span>
-                            </div>
-                            <pre class="sql-block"><code>{entry.sql}</code></pre>
-                        </article>
-                        <article class="panel">
-                            <h2>"Plan Shape"</h2>
-                            <dl class="compact-list">
-                                <div><dt>"Source"</dt><dd><code>{entry.source}</code></dd></div>
-                                <div><dt>"Inputs"</dt><dd>{entry.inputs}</dd></div>
-                                <div><dt>"Indexes"</dt><dd>{entry.indexes}</dd></div>
-                                <div><dt>"Plan"</dt><dd>{entry.plan_shape}</dd></div>
-                                <div><dt>"Output"</dt><dd>{entry.output}</dd></div>
-                                <div><dt>"Sample"</dt><dd>{entry.sample_data}</dd></div>
-                            </dl>
-                        </article>
-                    </section>
-                }).collect_view()}
             </main>
         </AppShell>
     }
@@ -2868,7 +2819,6 @@ fn AppShell(
                         <a href="/collections">"Collections"</a>
                         <a href="/wishlists">"Wishlists"</a>
                         <a href="/meta">"Meta"</a>
-                        <a href="/observatory">"Observatory"</a>
                     </nav>
                     <div class="topbar-actions" role="group" aria-label="Account and theme">
                         <a class="nav-login" href=account_href>{account_label}</a>

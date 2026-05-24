@@ -85,10 +85,6 @@ Core PostgreSQL features to demonstrate:
 - Optional local `pgvector` support for semantic card and deck search,
   kept outside the default migration path.
 
-The signature demo feature is the **SQL Observatory**: a page that shows
-the real SQL behind pod generation, pairing history, fuzzy card search,
-Game Changers analysis, reminders, and materialized meta views.
-
 ## V1 Scope
 
 V1 is complete and supports a real playgroup planning and running a

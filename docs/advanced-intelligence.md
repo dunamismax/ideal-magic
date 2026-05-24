@@ -66,11 +66,10 @@ calendar scope, and other sensitive playgroup data. A generated query can
 also bypass carefully scoped repository methods if it is allowed to run
 against raw tables.
 
-The safe direction is a constrained SQL Observatory extension rather than
-open-ended NL-to-SQL:
+The safe direction is a constrained catalog of approved meta queries
+rather than open-ended NL-to-SQL:
 
-- Map plain-language prompts to a fixed catalog of approved observatory
-  queries.
+- Map plain-language prompts to a fixed catalog of approved query shapes.
 - Require each query to declare viewer scope, inputs, safe output columns,
   redacted sample data, and expected indexes.
 - Execute through existing repository/service methods or security-barrier

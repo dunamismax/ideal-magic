@@ -13,7 +13,6 @@ pub mod health;
 pub mod identity;
 pub mod meta;
 pub mod migrations;
-pub mod observatory;
 pub mod ops;
 pub mod playgroups;
 pub mod pods;
@@ -50,7 +49,6 @@ pub use meta::{
     MetaDeckWinRate, MetaDistributionMetric, MetaMatchupSummary, MetaPlayerWinRate, MetaRepository,
     MetaStaleDeck,
 };
-pub use observatory::{ObservatoryEntry, observatory_entries};
 pub use ops::{
     BackgroundJobInput, BackgroundJobRecord, EmailDeliveryInput, EmailDeliveryRecord, OpsRepository,
 };

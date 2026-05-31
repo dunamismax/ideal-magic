@@ -1,20 +1,93 @@
 # Local Development
 
-Pod Tracker uses an installed PostgreSQL service. Do not use Docker
-PostgreSQL for local development.
+Pod Tracker is in a side-by-side rewrite period.
 
-## Toolchain
+- Rust V1 remains the production reference in `crates/`.
+- The TypeScript/Next.js rewrite lives in `apps/web`.
+- Do not delete or destabilize Rust V1 until the replacement covers the
+  core flows and cutover is approved.
 
-Observed local baseline on 2026-05-17:
+## TypeScript Rewrite
+
+Use pnpm from the repo root:
 
 ```sh
-rustc --version
-cargo --version
-psql --version
-just --version
+pnpm install
+pnpm dev
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+pnpm test:e2e
 ```
 
-Current Rust application baseline:
+The root pnpm workspace includes `apps/web`. The web app uses Next.js App
+Router, TypeScript strict mode, Tailwind CSS, Radix primitives,
+`lucide-react`, Motion, Vitest, Testing Library, and Playwright.
+
+The local development server defaults to:
+
+```text
+http://localhost:3000
+```
+
+The Playwright smoke server uses:
+
+```text
+http://127.0.0.1:3100
+```
+
+Health probes:
+
+```text
+/healthz
+/readyz
+```
+
+`next build` must fail on TypeScript errors. Keep `ignoreBuildErrors:
+false` in `apps/web/next.config.ts`.
+
+## Motion Rule
+
+Motion is available for focused transitions that clarify state changes:
+selection, counter changes, route-level panel changes, confirmations, and
+recoverable error states. Do not use motion to slow repeated life-counter
+taps or to decorate otherwise static planning pages.
+
+## Docker Compose Direction
+
+The TypeScript target uses Docker Compose for local and self-hosted
+service orchestration. Add services when they have a product integration:
+
+- PostgreSQL for Drizzle schema and app data.
+- Valkey for rate limiting and later queues.
+- MinIO for S3-compatible object storage when static assets are not
+  enough.
+- Umami for respectful analytics.
+- GlitchTip or a Sentry-compatible endpoint for error reporting.
+
+Do not wire optional services into runtime code before the app uses them.
+Keep app runtime database credentials separate from migration/admin
+credentials.
+
+## Drizzle Direction
+
+Drizzle migrations are the target schema history for the TypeScript app.
+SQLx migrations remain the Rust V1 schema history until cutover.
+
+When Drizzle exists, test migrations against real PostgreSQL through the
+documented Docker Compose workflow:
+
+```sh
+pnpm drizzle-kit check
+docker compose up -d postgres
+pnpm db:migrate
+pnpm db:test
+```
+
+## Rust V1 Development
+
+Observed local baseline on 2026-05-17:
 
 ```text
 rustc 1.95.0
@@ -24,81 +97,31 @@ psql 17.10 Homebrew
 ```
 
 The committed `rust-toolchain.toml` pins Rust 1.95.0 with `rustfmt` and
-`clippy`. On the Ubuntu VM, use the system PostgreSQL packages and the
-same database URLs from `.env.example`.
+`clippy`.
 
-## Environment
-
-Copy `.env.example` to `.env` and edit values for local credentials.
-The example file contains no secrets.
+Copy `.env.example` to `.env` and edit values for local credentials. The
+example file contains no secrets.
 
 ```sh
 cp .env.example .env
 ```
 
-Default local database URL:
+Default local Rust database URL:
 
 ```text
 postgres://pod_tracker:pod_tracker@localhost:5432/pod_tracker?sslmode=disable
 ```
 
-The first migration creates extensions. `pg_stat_statements` usually
-requires an admin/superuser role, so set `POD_TRACKER_MIGRATION_DATABASE_URL`
-to a local admin connection string if the app role cannot create it.
+The first Rust migration creates extensions. `pg_stat_statements` usually
+requires an admin/superuser role, so set
+`POD_TRACKER_MIGRATION_DATABASE_URL` to a local admin connection string if
+the app role cannot create it.
 
-## PostgreSQL
-
-Start PostgreSQL if it is not already running.
-
-On macOS with Homebrew:
+Useful Rust commands:
 
 ```sh
-brew services start postgresql@18
-```
-
-On Ubuntu:
-
-```sh
-sudo systemctl start postgresql
-```
-
-Create the app role once:
-
-```sh
-createuser --pwprompt pod_tracker
-```
-
-Create and migrate the development database:
-
-```sh
-just db-create
-POD_TRACKER_MIGRATION_DATABASE_URL=postgres://$(whoami)@localhost:5432/pod_tracker?sslmode=disable just migrate-up
-```
-
-After the extension migration is applied, routine app runtime should use
-`POD_TRACKER_DATABASE_URL`:
-
-```sh
-just migrate-up
-```
-
-Reset local development data:
-
-```sh
-just db-reset
-```
-
-`just db-reset` drops only the local `pod_tracker` database named in the
-recipe. It is not a production command.
-
-## Migrations
-
-SQLx migrations in `crates/pod-db/migrations/` are the canonical schema
-history.
-
-Useful commands:
-
-```sh
+just run
+just worker
 just migrate-status
 just migrate-up
 just migrate-down
@@ -106,50 +129,11 @@ just migrate-smoke
 just sqlx-migrate-smoke
 ```
 
-Optional pgvector semantic-search setup is deliberately separate from the
-default migration path:
-
-```sh
-just pgvector-migrate-up
-```
-
-Run it only against a local database where the `vector` extension is
-installed and desired. Normal development, `just check`, and `just test`
-must continue to pass without pgvector.
-
-`just migrate-smoke` creates a timestamped local smoke-test database,
-applies all migrations with the current OS user, checks required
-extensions, and drops the smoke database on exit. On Ubuntu, create a
-matching PostgreSQL role for the OS user or adapt the recipe to a local
-admin role before running it.
-
-`just sqlx-migrate-smoke` applies the SQLx migration source to a temporary
-database, checks the same required extensions, and compiles the `pod-db`
-crate against that database so SQLx query macros are validated.
-
-## SQL Generation
-
-Rust database access goes through `sqlx` in `crates/pod-db`.
-
-The current query-check workflow uses a live local PostgreSQL database
-rather than committed SQLx offline metadata. CI applies
-`crates/pod-db/migrations/` to PostgreSQL before clippy, tests, and build
-steps so SQLx macros are checked against the schema.
-
-## Running
-
-```sh
-just run
-just worker
-```
-
 The Rust web server defaults to `http://localhost:8080`. With no
 `POD_TRACKER_DATABASE_URL`, `/healthz` can still report process health
 and `/readyz` reports that database readiness cannot be proven.
 
-## Verification
-
-Use the Rust workspace gate for normal work:
+Use the Rust workspace gate when touching Rust code:
 
 ```sh
 just fmt
@@ -158,7 +142,7 @@ just test
 ```
 
 SQLx query macros inspect the database named by `DATABASE_URL` during
-compile checks. If the long-lived local `pod_tracker` database is stale or
-the app role cannot introspect the `core` and `ops` schemas, run the gate
-against a freshly migrated temporary database instead of changing
+compile checks. If the long-lived local `pod_tracker` database is stale
+or the app role cannot introspect the `core` and `ops` schemas, run the
+gate against a freshly migrated temporary database instead of changing
 production-like credentials.

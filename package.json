@@ -1,0 +1,15 @@
+{
+  "name": "pod-tracker",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "pnpm --filter @pod-tracker/web dev",
+    "build": "pnpm --filter @pod-tracker/web build",
+    "lint": "pnpm --filter @pod-tracker/web lint",
+    "format": "pnpm --filter @pod-tracker/web format",
+    "typecheck": "pnpm --filter @pod-tracker/web typecheck",
+    "test": "pnpm --filter @pod-tracker/web test",
+    "test:integration": "pnpm --filter @pod-tracker/web test:integration",
+    "test:e2e": "pnpm --filter @pod-tracker/web test:e2e"
+  }
+}

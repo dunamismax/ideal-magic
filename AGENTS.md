@@ -108,6 +108,8 @@ Current repo reality:
 
 - The existing Rust/Axum/Leptos/sqlx workspace is the V1 implementation
   and production reference until the TypeScript replacement is verified.
+- The TypeScript/Next.js rewrite has started side-by-side in `apps/web`
+  so Rust V1 can remain stable during migration.
 - Do not delete or destabilize the Rust app until equivalent TypeScript
   core flows are implemented, verified, and Stephen approves cutover.
 - Use Rust-era verification when touching Rust code or SQLx migrations.

@@ -1,6 +1,14 @@
 # Operations
 
-Pod Tracker production target:
+Pod Tracker is in a side-by-side rewrite period. The Rust deployment is
+the live production shape until the TypeScript app is complete, verified,
+and approved for cutover.
+
+Production actions still require explicit approval before deploying,
+migrating, restarting services, changing Caddy or Cloudflare, or
+accessing private production data.
+
+## Current Rust V1 Shape
 
 ```text
 Cloudflare DNS
@@ -11,12 +19,7 @@ Cloudflare DNS
   -> PostgreSQL service
 ```
 
-This runbook documents the live Rust/PostgreSQL deployment shape for the
-public site. Production actions still require explicit approval before
-deploying, migrating, restarting services, changing Caddy, or accessing
-private production data.
-
-## Paths
+Current paths:
 
 ```text
 /opt/pod-tracker/releases/       immutable release directories
@@ -27,78 +30,113 @@ private production data.
 /var/backups/pod-tracker         PostgreSQL dump files
 ```
 
-## First-Time Host Setup
+The checked-in Rust deploy assets under `deploy/` remain valid for V1.
+Do not remove systemd, Caddy, backup, restore, or Rust deployment files
+until the TypeScript production cutover is approved and stable.
 
-Create the service account and directories:
+## Future TypeScript Shape
 
-```sh
-sudo useradd --system --home /var/lib/pod-tracker --shell /usr/sbin/nologin pod-tracker
-sudo install -d -o pod-tracker -g pod-tracker /var/lib/pod-tracker /var/log/pod-tracker
-sudo install -d -o root -g root /etc/pod-tracker /opt/pod-tracker/releases
-sudo install -d -m 0750 /var/backups/pod-tracker
+Target production shape:
+
+```text
+Cloudflare DNS or Cloudflare Tunnel
+  -> Caddy
+  -> Next.js web service
+  -> PostgreSQL
+  -> optional Valkey
+  -> optional MinIO
+  -> optional Umami
+  -> optional GlitchTip or Sentry-compatible endpoint
 ```
 
-Create `/etc/pod-tracker/env` from
-`deploy/env/production.env.example`, replacing placeholders with real
-local PostgreSQL credentials and SMTP2GO settings. Do not commit that
-file.
+PostgreSQL remains the source of truth. Valkey, MinIO, Umami, and error
+reporting should be added when the app has real integration points for
+rate limiting, queues, object storage, analytics, or error capture.
+
+Keep runtime credentials separate from migration/admin credentials. Never
+commit production environment values, database URLs, invite tokens,
+private Caddy fragments, Cloudflare tokens, analytics credentials, error
+reporting DSNs, database dumps, or production logs.
+
+## Docker Compose Direction
+
+The TypeScript deployment target uses Docker Compose for local and
+self-hosted service orchestration. Compose should eventually cover:
+
+- `web`: the Next.js app.
+- `postgres`: the app database.
+- `valkey`: cache, rate limiting, and later queue support.
+- `minio`: S3-compatible object storage when needed.
+- `umami`: respectful analytics without private payloads.
+- `glitchtip` or equivalent Sentry-compatible service for error
+  reporting.
+- `caddy`: reverse proxy and TLS boundary.
+
+Optional services should use profiles or clear documentation so a minimal
+local app can run without every service.
+
+## Caddy And Cloudflare
+
+Caddy should proxy to the Next.js service only after the TypeScript
+service has health checks and a verified non-production deployment.
+Cloudflare DNS/proxy or Tunnel changes require explicit approval.
+
+Future Caddy config must be validated locally before production use:
 
 ```sh
-sudo install -m 0640 -o root -g pod-tracker deploy/env/production.env.example /etc/pod-tracker/env
-sudo editor /etc/pod-tracker/env
+caddy validate --config deploy/caddy/Caddyfile
 ```
 
-Install units and Caddy config:
+Do not commit Cloudflare tokens, Tunnel credentials, real hostnames beyond
+publicly intended names, or private origin details.
 
-```sh
-sudo cp deploy/systemd/pod-tracker-*.service /etc/systemd/system/
-sudo cp deploy/caddy/Caddyfile /etc/caddy/sites-enabled/pod-tracker.Caddyfile
-sudo systemctl daemon-reload
-sudo systemctl enable pod-tracker-web.service pod-tracker-worker.service
+## Health And Readiness
+
+The TypeScript app exposes:
+
+```text
+/healthz
+/readyz
 ```
 
-The exact Caddy include path depends on the VM's Caddy packaging. If the
-main `/etc/caddy/Caddyfile` does not import `sites-enabled`, add an
-import line or place the `pod-tracker.app` site block in the main file.
-The checked-in site config proxies `pod-tracker.app` to
-`127.0.0.1:8083`, which is the Rust web service address in the
-production environment template. Rollback keeps the same proxy port and
-points `/opt/pod-tracker/current` back to the previous verified release.
+At scaffold time these prove the Next.js process and route handler are
+alive. As Postgres, Valkey, object storage, analytics, and error reporting
+become required runtime dependencies, readiness should check only the
+services required to serve user traffic safely.
 
-Before installing updated service files or reloading Caddy, validate the
-checked-in config:
+## Backup And Restore
 
-```sh
-just caddy-validate
-just systemd-verify
-```
+Rust V1 backup and restore scripts remain under `deploy/scripts/`.
+Backups are sensitive production data and must stay outside the
+repository.
 
-`just caddy-validate` requires a local `caddy` binary. `just
-systemd-verify` uses `systemd-analyze verify` on Linux hosts and performs
-a minimal Rust binary path check on non-systemd development machines.
+The TypeScript deployment shape needs a fresh backup and restore drill
+before production cutover:
 
-Install a Rust toolchain compatible with `rust-toolchain.toml` on the VM
-before the first Rust deploy. The deploy script uses Cargo directly and
-builds with `--locked`.
+1. Create a non-production database.
+2. Apply Drizzle migrations.
+3. Insert non-sensitive marker data.
+4. Take a backup through the future compose/Postgres backup path.
+5. Restore into a second non-production database.
+6. Re-run migrations.
+7. Verify readiness-critical tables, migration history, and marker data.
 
-## Deploy
+## Rust V1 Deploy Reference
 
-Run from a clean checkout on the VM:
+Run from a clean checkout on the VM only with approval:
 
 ```sh
 sudo deploy/scripts/deploy.sh
 ```
 
-The deploy script creates an immutable release directory, copies the Rust
-workspace and deploy assets, builds `pod-tracker-web`,
+The Rust deploy script creates an immutable release directory, copies the
+Rust workspace and deploy assets, builds `pod-tracker-web`,
 `pod-tracker-worker`, and `pod-tracker-migrate` with Cargo, applies SQLx
 migrations with `POD_TRACKER_MIGRATION_DATABASE_URL`, advances
 `/opt/pod-tracker/current`, restarts the web and worker services, and
-reloads Caddy. Keep `POD_TRACKER_DATABASE_URL` on the runtime role and
-`POD_TRACKER_MIGRATION_DATABASE_URL` on the more privileged migration
-role.
+reloads Caddy.
 
-Check health:
+Check Rust V1 health:
 
 ```sh
 systemctl status pod-tracker-web.service
@@ -107,96 +145,6 @@ curl -fsS https://pod-tracker.app/healthz
 curl -fsS https://pod-tracker.app/readyz
 ```
 
-For local release smoke before touching production:
-
-```sh
-just release
-POD_TRACKER_ADDR=127.0.0.1:18083 \
-  POD_TRACKER_DATABASE_URL=postgres://pod_tracker:pod_tracker@localhost:5432/pod_tracker?sslmode=disable \
-  target/release/pod-tracker-web
-curl -fsS http://127.0.0.1:18083/healthz
-curl -fsS http://127.0.0.1:18083/readyz
-```
-
-## Backup
-
-Run:
-
-```sh
-sudo deploy/scripts/backup.sh
-```
-
-The script loads `/etc/pod-tracker/env`, runs `pg_dump` in custom format,
-stores the dump under `/var/backups/pod-tracker`, and prints the backup
-path. Copy backups off the VM through the normal server backup channel.
-
-## Restore Drill
-
-Use a real local/non-production snapshot for drills. The checked-in drill
-creates two disposable local PostgreSQL databases, migrates the source
-database, inserts a non-sensitive marker row, takes a custom-format
-`pg_dump` snapshot through `deploy/scripts/backup.sh`, restores that
-snapshot through `deploy/scripts/restore.sh`, applies any pending
-checked-in migrations against the restored database, and verifies the
-SQLx migration table, readiness-critical schema, and restored marker row:
-
-```sh
-just backup-restore-drill
-```
-
-The drill refuses database names that do not start with
-`pod_tracker_drill_` and deletes its temporary databases and dump file
-when it exits. To inspect artifacts after a failed or manual drill:
-
-```sh
-POD_TRACKER_DRILL_KEEP_ARTIFACTS=1 just backup-restore-drill
-```
-
-For a manual non-production restore:
-
-```sh
-createdb pod_tracker_restore_drill
-POD_TRACKER_RESTORE_DATABASE_URL=postgres://pod_tracker:CHANGE_ME@127.0.0.1:5432/pod_tracker_restore_drill?sslmode=disable \
-  deploy/scripts/restore.sh /var/backups/pod-tracker/pod_tracker_TIMESTAMP.dump
-```
-
-After restore, run migrations and readiness checks against the restored
-database. A production restore requires an explicit maintenance window,
-a fresh backup, stopped services, and confirmation that the target URL is
-the intended database.
-
-Rust migration and readiness commands for the restored database:
-
-```sh
-POD_TRACKER_MIGRATION_DATABASE_URL="$POD_TRACKER_RESTORE_DATABASE_URL" \
-  /opt/pod-tracker/current/bin/pod-tracker-migrate up
-POD_TRACKER_DATABASE_URL="$POD_TRACKER_RESTORE_DATABASE_URL" \
-  POD_TRACKER_ADDR=127.0.0.1:18084 \
-  /opt/pod-tracker/current/bin/pod-tracker-web
-curl -fsS http://127.0.0.1:18084/readyz
-```
-
-## Rollback
-
-List releases:
-
-```sh
-ls -1 /opt/pod-tracker/releases
-```
-
-Point `current` back to the previous release and restart:
-
-```sh
-sudo ln -sfn /opt/pod-tracker/releases/PREVIOUS_RELEASE /opt/pod-tracker/current
-sudo systemctl restart pod-tracker-web.service pod-tracker-worker.service
-```
-
-Database migrations are forward-only during normal deploys. If a schema
-change requires a data rollback, write a specific recovery plan before
-deploying it.
-
-## Current Readiness
-
-`/readyz` checks the database when `POD_TRACKER_DATABASE_URL` is set and
-requires the SQLx migration table plus `core.users`,
-`ops.background_jobs`, and `ops.email_deliveries`.
+Production restore requires an explicit maintenance window, a fresh
+backup, stopped services, and confirmation that the target URL is the
+intended database.

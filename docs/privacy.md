@@ -1,9 +1,11 @@
 # Privacy Model
 
-Pod Tracker stores game-night coordination data for self-hosted
-playgroups. The privacy model is scoped around playgroup membership,
-event participation, invite tokens, and host-controlled address
-visibility. This document describes product expectations and implementation
+Pod Tracker stores live game-night data for self-hosted playgroups. The
+privacy model is scoped around playgroup membership, event participation,
+invite tokens, host-controlled address visibility, and explicit user
+choice about what local life-counter data becomes a saved group record.
+
+This document describes product expectations and implementation
 boundaries; it is not a security guarantee beyond the code and database
 checks that exist.
 
@@ -17,10 +19,34 @@ Treat these fields as sensitive:
   timing details.
 - Session cookies, CSRF tokens, invite tokens, calendar feed access, and
   production environment values.
+- Life-counter local notes, unsaved local sessions, and pending sync
+  actions.
 - Production logs, database dumps, backups, and restore artifacts.
 
 Do not commit sensitive data, database dumps, `.env` files, production
-logs, private config, or real invite tokens.
+logs, private config, real invite tokens, host addresses, or local
+life-counter session exports.
+
+## Life Counter Data
+
+Standalone `/life` sessions can run without an account. Local counter
+state, player notes, unsaved action history, and offline sessions remain
+in the browser unless the user explicitly saves or links the session to
+an event, pod, or game record.
+
+Event-linked and pod-linked counters may import event participants,
+declared decks, commanders, and pod seats that the current viewer is
+authorized to see. They must not expose host addresses, guest details,
+private RSVP notes, or invite tokens through counter setup or spectator
+views.
+
+Saved game records may include participants, commanders, decks, result
+type, winners, finish order, eliminations, commander-damage losses,
+poison losses, and explicitly saved notes. Unsaved local notes must not
+be copied into group history by default.
+
+Offline sync must distinguish local-only state from saved-to-group state.
+Conflict handling must not silently overwrite newer server data.
 
 ## Viewer Scopes
 
@@ -37,14 +63,9 @@ equivalent authorization. They can show event planning context, but must
 not reveal private host details unless the event and address visibility
 rules explicitly allow it.
 
-Deck, collection, wishlist, and recommendation surfaces must preserve the
-same viewer scopes. Heuristic recommendations may use decklists and
-collection quantities only after the source collection and candidate decks
-are visible to the requesting user, and should return aggregate coverage
-or reason labels rather than private notes or card storage locations.
-Optional semantic search must follow the same visibility rules and must
-not embed private notes, host addresses, invite tokens, contact details,
-production logs, backups, or database dumps.
+Deck declaration surfaces must preserve the same viewer scopes. Avoid
+collection, wishlist, proxy-list, and recommendation behavior in the
+rewrite unless Stephen explicitly expands scope.
 
 ## Address Visibility
 
@@ -71,9 +92,10 @@ and the same address visibility rules.
 ## Logging
 
 Application logs should favor request IDs, route names, status codes, and
-high-level failure reasons over user-provided content. Logs must not print
-session tokens, CSRF tokens, invite tokens, passwords, environment values,
-raw production email payloads, host street addresses, or database URLs.
+high-level failure reasons over user-provided content. Logs must not
+print session tokens, CSRF tokens, invite tokens, passwords, environment
+values, raw production email payloads, host street addresses, database
+URLs, local notes, or unsaved life-counter action payloads.
 
 When debugging requires sensitive production context, capture the minimum
 necessary data outside the repository and delete it when the incident is
@@ -81,16 +103,13 @@ closed.
 
 ## Database Boundaries
 
-The app currently relies on scoped repository queries and route-level
-authorization checks. RLS or equivalent scoped-query tests should be added
-before claiming tenant isolation as a database-enforced guarantee.
+The Rust app currently relies on scoped repository queries and
+route-level authorization checks. The TypeScript rewrite should use RLS,
+public-safe views, or equivalent scoped-query tests before claiming
+tenant isolation as a database-enforced guarantee.
 
 Public-safe views remain the preferred shape for tokenized public event
 and guest surfaces as the schema matures.
-
-Natural-language meta exploration must not execute arbitrary SQL against
-raw tables. Keep it constrained to approved query shapes or
-security-barrier views with declared viewer scope and public-safe outputs.
 
 ## Backups And Restores
 

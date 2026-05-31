@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: pod_tracker
+      POSTGRES_USER: pod_tracker
+      POSTGRES_PASSWORD: pod_tracker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pod_tracker -d pod_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - pod_tracker_postgres:/var/lib/postgresql/data
+
+  valkey:
+    image: valkey/valkey:9-alpine
+    profiles: ["optional"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - pod_tracker_valkey:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: ["optional"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: pod_tracker
+      MINIO_ROOT_PASSWORD: pod_tracker_dev_only
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - pod_tracker_minio:/data
+
+  umami-postgres:
+    image: postgres:18-alpine
+    profiles: ["analytics"]
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - pod_tracker_umami_postgres:/var/lib/postgresql/data
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    profiles: ["analytics"]
+    depends_on:
+      - umami-postgres
+    environment:
+      DATABASE_URL: postgres://umami:umami@umami-postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: pod_tracker_dev_only_change_me
+    ports:
+      - "3001:3000"
+
+volumes:
+  pod_tracker_postgres:
+  pod_tracker_valkey:
+  pod_tracker_minio:
+  pod_tracker_umami_postgres:

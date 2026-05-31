@@ -1,119 +1,95 @@
 # Pod Tracker
 
-**Live self-hosted URL:** [https://pod-tracker.app/](https://pod-tracker.app/)
+**Live self-hosted V1 URL:** [https://pod-tracker.app/](https://pod-tracker.app/)
 
-Pod Tracker is a self-hosted Commander playgroup operating system for
-planning game nights, collecting RSVPs, forming fair pods, tracking
-decks, logging games, and understanding a playgroup's evolving meta.
+Pod Tracker is a self-hosted Commander night operating system centered on
+two product pillars:
 
-The point is not to build another deckbuilder. The point is to build the
-best PostgreSQL-first Commander night planner on the internet.
+1. The best Commander life counter on the internet.
+2. Group, event, RSVP, deck declaration, pod, and game-night tracking.
+
+The product is not a full deckbuilder, collection manager, paid SaaS
+platform, native mobile app, or Moxfield replacement. Decks exist here so
+players can declare what they are bringing, hosts can seat fair pods,
+games can become history, and the playgroup can understand its meta over
+time.
 
 ## Product Thesis
 
-Commander groups do not only need deck tools. They need one place to
-answer:
+Commander groups need one durable place to answer:
 
 - Who is playing this week?
 - Where and when are we meeting?
 - Who is hosting, and who can see the address?
-- What decks are people bringing?
+- What decks and commanders are people bringing?
 - Which pods are fair tonight?
 - Which players and decks have not seen each other lately?
-- What happened last time?
+- What happened during the game?
 - What does the group meta look like over time?
 
-Pod Tracker is built around the game-night loop:
+Pod Tracker is built around the live game-night loop:
 
-1. Create a playgroup.
-2. Schedule an event.
-3. Invite players.
-4. Collect RSVPs and deck declarations.
-5. Generate and adjust pods.
-6. Log games.
-7. Refresh the meta dashboard.
+1. Open a local or event-linked life counter.
+2. Create or choose a playgroup.
+3. Schedule an event.
+4. Invite players and collect RSVPs.
+5. Collect lightweight deck declarations.
+6. Generate and adjust pods.
+7. Log games from pods or completed counter sessions.
+8. Refresh group history and meta health.
 
-## Stack
+## Current Status
 
-- **Rust** application monolith.
-- **Axum** for HTTP routing, middleware, and server edges.
-- **Leptos** for server-rendered application UI and focused hydrated
-  interactions where they earn their place.
-- **Tokio** for async runtime.
-- **PostgreSQL** as the source of truth.
-- **Server-rendered HTML** for the core product.
-- **Restrained plain CSS** by default; add a heavier styling pipeline only
-  when the product proves it needs one.
-- **SSE** and PostgreSQL `LISTEN` / `NOTIFY` for lightweight realtime.
-- **sqlx** for explicit typed database access.
-- **No Docker PostgreSQL** for local development or production.
+The existing Rust/Axum/Leptos/sqlx application is the production V1 and
+remains the reference implementation until the TypeScript replacement
+covers the core flows and Stephen approves cutover.
 
-Local development uses an installed PostgreSQL service. Do not use
-Docker PostgreSQL for local development or production.
+V1 supports:
 
-Production target:
+- Login and sessions.
+- Playgroups and memberships.
+- Event creation.
+- Host locations and address privacy.
+- RSVPs and guests.
+- Calendar export.
+- Reminder jobs.
+- Lightweight deck registry and event deck declarations.
+- Pod generation, manual edits, locking, and publishing.
+- Quick game logging.
+- Basic meta dashboard.
+- Scryfall import and card search.
+- Health and readiness endpoints.
+- Backup, restore, Caddy, and systemd deployment documentation.
 
-```text
-Cloudflare DNS
-  -> Ubuntu VM
-  -> Caddy
-  -> pod-tracker-web
-  -> pod-tracker-worker
-  -> PostgreSQL service
-```
+## Rewrite Direction
 
-Product work proceeds through the live Rust/Leptos/Axum application, with
-PostgreSQL remaining the visible engine of the product.
+The TypeScript rewrite starts side-by-side in `apps/web` so the Rust app
+can keep running while the replacement is built and verified.
 
-## PostgreSQL Showcase
+Target stack:
 
-Pod Tracker should make PostgreSQL visible as the engine of the product,
-not an interchangeable persistence layer.
-
-Core PostgreSQL features to demonstrate:
-
-- Relational modeling for players, playgroups, events, RSVPs, decks,
-  pods, games, cards, and collection data.
-- `pg_trgm` fuzzy search for card, commander, deck, and player lookup.
-- Full-text search over cards, house rules, deck notes, and game logs.
-- JSONB for raw Scryfall payloads and flexible event/deck metadata.
-- Materialized views for meta dashboards and pairing history summaries.
-- Background job tables using `FOR UPDATE SKIP LOCKED`.
-- `LISTEN` / `NOTIFY` for realtime UI events.
-- Row-Level Security for playgroup, guest, event, and host-address
-  boundaries.
-- Optional local `pgvector` support for semantic card and deck search,
-  kept outside the default migration path.
-
-## V1 Scope
-
-V1 is complete and supports a real playgroup planning and running a
-Commander night from invitation to pod assignment to game results.
-
-Current surface:
-
-- Login and sessions work.
-- Playgroups and memberships work.
-- Events can be created.
-- Host locations and address privacy work.
-- RSVPs work.
-- Calendar export works.
-- Reminder jobs work.
-- Deck registry and event deck declarations work.
-- Pods can be generated, manually edited, locked, and published.
-- Games can be logged quickly.
-- Basic meta dashboard exists.
-- Scryfall import and card search work locally.
-- Backup and restore are documented.
-- Caddy/systemd deployment is documented.
-- No secrets, local config, or database dumps are committed.
+- Next.js App Router with React Server Components where they fit.
+- React with TypeScript strict mode.
+- Tailwind CSS with local design tokens.
+- shadcn/ui-compatible local components, Radix primitives, and
+  `lucide-react`.
+- Motion for focused state transitions only.
+- Better Auth for self-hosted authentication.
+- PostgreSQL as source of truth.
+- Drizzle ORM and Drizzle Kit for TypeScript schema history.
+- Dexie over IndexedDB for offline life-counter and app state.
+- Docker Compose for local and future self-hosted services.
+- Caddy behind Cloudflare DNS/proxy or Cloudflare Tunnel.
+- Valkey, MinIO, Umami, and GlitchTip/Sentry-compatible reporting when
+  the app has real integration points.
+- Vitest, Testing Library, and Playwright.
 
 ## Development Status
 
-This repository runs the PostgreSQL-first Rust application using Axum and
-Leptos in production. V1.0 is complete; [BUILD.md](BUILD.md) is reserved
-for future planning and [AGENTS.md](AGENTS.md) holds repo-local operating
-rules.
+`BUILD.md` is the active phased roadmap for the rewrite. `AGENTS.md`
+holds repo-local operating rules. Rust V1 code and SQLx migrations should
+not be deleted or destabilized until equivalent TypeScript flows are
+implemented, verified, and approved for cutover.
 
 ## License
 

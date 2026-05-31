@@ -299,55 +299,55 @@ Schema rules:
 
 ## Phase 0 - Align Docs And Scope
 
-- [ ] Update `AGENTS.md` so the durable repo stack rules match the
+- [x] Update `AGENTS.md` so the durable repo stack rules match the
   TypeScript/Next.js rewrite direction.
-- [ ] Update `README.md` to describe the new product thesis: life counter
+- [x] Update `README.md` to describe the new product thesis: life counter
   plus Commander game-night coordination.
-- [ ] Update `docs/development.md` for the TypeScript, Docker Compose,
+- [x] Update `docs/development.md` for the TypeScript, Docker Compose,
   Drizzle, and Next.js workflow.
-- [ ] Update `docs/operations.md` for the future Docker Compose, Caddy,
+- [x] Update `docs/operations.md` for the future Docker Compose, Caddy,
   Cloudflare, Postgres, Valkey, MinIO, analytics, and error reporting
   deployment shape.
-- [ ] Update `docs/privacy.md` with life counter session data, offline
+- [x] Update `docs/privacy.md` with life counter session data, offline
   state, saved game records, and event-linked counter scopes.
-- [ ] Mark `docs/advanced-intelligence.md` as deferred or archive its
+- [x] Mark `docs/advanced-intelligence.md` as deferred or archive its
   contents into a clearly non-roadmap reference.
-- [ ] Document which current Rust-era features are preserved,
+- [x] Document which current Rust-era features are preserved,
   simplified, removed, or deferred.
-- [ ] Decide whether the first Next.js app lives at the repo root or in
+- [x] Decide whether the first Next.js app lives at the repo root or in
   `apps/web` during side-by-side migration.
-- [ ] Define the minimum data migration strategy for existing production
+- [x] Define the minimum data migration strategy for existing production
   data before any production cutover work begins.
 
 ## Phase 1 - Scaffold The TypeScript App
 
-- [ ] Create the Next.js App Router application in the agreed location.
-- [ ] Enable TypeScript strict mode and fail builds on type errors.
-- [ ] Add Tailwind CSS with a small token set for color, spacing,
+- [x] Create the Next.js App Router application in the agreed location.
+- [x] Enable TypeScript strict mode and fail builds on type errors.
+- [x] Add Tailwind CSS with a small token set for color, spacing,
   radius, typography, and focus states.
-- [ ] Add shadcn/ui-compatible local component structure.
-- [ ] Add Radix primitives where accessibility needs them.
-- [ ] Add `lucide-react` and use icons for primary actions.
-- [ ] Add Motion and document when motion is allowed.
-- [ ] Add Vitest, Testing Library, and Playwright.
-- [ ] Add lint, format, typecheck, unit test, integration test, and
+- [x] Add shadcn/ui-compatible local component structure.
+- [x] Add Radix primitives where accessibility needs them.
+- [x] Add `lucide-react` and use icons for primary actions.
+- [x] Add Motion and document when motion is allowed.
+- [x] Add Vitest, Testing Library, and Playwright.
+- [x] Add lint, format, typecheck, unit test, integration test, and
   Playwright scripts.
 - [ ] Add Docker Compose for local Postgres, Valkey, MinIO, Umami, and
   GlitchTip or a Sentry-compatible endpoint.
-- [ ] Keep optional services optional until they have working product
+- [x] Keep optional services optional until they have working product
   integrations.
-- [ ] Add health and readiness routes for the Next.js app.
-- [ ] Verify the scaffold with local tests and a browser smoke test.
+- [x] Add health and readiness routes for the Next.js app.
+- [x] Verify the scaffold with local tests and a browser smoke test.
 
 ## Phase 2 - Design System And App Shell
 
-- [ ] Build the primary app shell with Life Counter and Game Night as the
+- [x] Build the primary app shell with Life Counter and Game Night as the
   first navigation items.
 - [ ] Build responsive layouts for phone, tablet, laptop, and wide
   desktop.
 - [ ] Create reusable button, icon button, dialog, drawer, menu, tabs,
   segmented control, toast, form field, and empty-state components.
-- [ ] Create player color tokens that work for Commander seating without
+- [x] Create player color tokens that work for Commander seating without
   becoming a one-note palette.
 - [ ] Create dense planning views for hosts without marketing-page
   styling.
@@ -604,7 +604,7 @@ Future browser smoke coverage:
 
 ## Open Decisions
 
-- [ ] Whether the TypeScript app starts in `apps/web` for side-by-side
+- [x] Whether the TypeScript app starts in `apps/web` for side-by-side
   migration or replaces the repo root immediately.
 - [ ] Whether standalone `/life` should be installable as a PWA in the
   first life-counter release.
@@ -612,5 +612,5 @@ Future browser smoke coverage:
   multi-device sync in the first release or only save on completion.
 - [ ] Whether Scryfall data should be imported locally in the TypeScript
   app or replaced initially with lightweight commander lookup.
-- [ ] Whether existing production data should be migrated table-by-table
+- [x] Whether existing production data should be migrated table-by-table
   or exported/imported through typed application-level scripts.

@@ -351,7 +351,7 @@ Schema rules:
   becoming a one-note palette.
 - [x] Create dense planning views for hosts without marketing-page
   styling.
-- [ ] Create full-screen table-display styles for the life counter.
+- [x] Create full-screen table-display styles for the life counter.
 - [ ] Add dark and light themes only if both are complete and verified.
 - [x] Verify text does not overflow controls on mobile or desktop.
 - [x] Add visual regression or screenshot checks for the app shell and
@@ -393,12 +393,12 @@ Schema rules:
 - [x] Build player setup for 2 to 8 players.
 - [x] Add player names, colors, seats, commanders, starting life, and
   optional deck labels.
-- [ ] Support multiple commanders per player.
+- [x] Support multiple commanders per player.
 - [x] Build the main counter board with large stable hit targets.
 - [x] Add life adjustments by 1, 5, and 10.
-- [ ] Add commander damage by defending player and commander source.
+- [x] Add commander damage by defending player and commander source.
 - [x] Add poison counters.
-- [ ] Add commander tax or cast count per commander.
+- [x] Add commander tax or cast count per commander.
 - [ ] Add monarch, initiative, city's blessing, day/night, experience,
   energy, rad, storm, treasure, floating mana, and custom counters.
 - [ ] Add elimination, winner, draw, and no-contest states.

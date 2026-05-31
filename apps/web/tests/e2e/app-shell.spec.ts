@@ -64,18 +64,67 @@ test("standalone life counter updates local table state", async ({ page }) => {
   await page.getByRole("radio", { name: "6" }).click();
   await expect(page.getByTestId("life-player-card")).toHaveCount(6);
 
-  await page.getByLabel("Player name").first().fill("Stephen");
-  await page.getByLabel("Commander").first().fill("Atraxa");
-  await page.getByLabel("Deck label").first().fill("Counters");
+  const firstPlayer = page.getByTestId("life-player-card").first();
+
+  await firstPlayer.getByLabel("Player name").fill("Stephen");
+  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await firstPlayer
+    .getByRole("button", { name: "Add commander", exact: true })
+    .click();
+  await firstPlayer.getByLabel("Commander 2", { exact: true }).fill("Tekuthal");
+  await firstPlayer.getByLabel("Deck label").fill("Counters");
   await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
 
-  await page.getByRole("button", { name: "-5" }).first().click();
-  await expect(page.getByTestId("life-player-card").first()).toContainText(
-    "35",
-  );
+  await firstPlayer.getByRole("button", { name: "-5" }).click();
+  await expect(firstPlayer).toContainText("35");
 
   await page.getByRole("button", { name: "Add poison to Stephen" }).click();
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+
+  await firstPlayer.getByRole("button", { name: "Add cast to Atraxa" }).click();
+  await expect(page.getByTestId("player-1-commander-1-cast-count")).toHaveText(
+    "1",
+  );
+});
+
+test("standalone life counter tracks commander damage by source", async ({
+  page,
+}) => {
+  await page.goto("/life");
+
+  const firstPlayer = page.getByTestId("life-player-card").nth(0);
+  const secondPlayer = page.getByTestId("life-player-card").nth(1);
+
+  await firstPlayer.getByLabel("Player name").fill("Stephen");
+  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await secondPlayer.getByLabel("Player name").fill("Alex");
+
+  await secondPlayer
+    .getByRole("button", {
+      name: "Add commander damage from Atraxa to Alex",
+    })
+    .click();
+
+  await expect(
+    page.getByTestId("player-2-player-1-commander-1-commander-damage"),
+  ).toHaveText("1");
+});
+
+test("standalone life counter opens a table display overlay", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/life");
+
+  await page.getByRole("button", { name: "Table display" }).click();
+
+  const tableDisplay = page.getByTestId("life-table-display");
+  await expect(tableDisplay).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exit table" })).toBeVisible();
+
+  const box = await tableDisplay.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(1360);
+  expect(box?.height).toBeGreaterThanOrEqual(760);
 });
 
 test("health and readiness probes return ok", async ({ request }) => {

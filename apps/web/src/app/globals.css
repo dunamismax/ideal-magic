@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f4ee;
-  --foreground: #181714;
-  --surface: #fffaf0;
-  --surface-strong: #f2e7d2;
-  --border: #ded1bc;
-  --muted: #6d665c;
+  --background: #f4f7f2;
+  --foreground: #172019;
+  --surface: #ffffff;
+  --surface-strong: #e7ede3;
+  --border: #cbd6c7;
+  --muted: #58645b;
   --accent: #0f766e;
   --accent-foreground: #f8fffb;
   --danger: #b42318;
@@ -15,6 +15,10 @@
   --player-b: #2563eb;
   --player-c: #16a34a;
   --player-d: #d97706;
+  --player-e: #7c3aed;
+  --player-f: #0891b2;
+  --player-g: #ca8a04;
+  --player-h: #db2777;
   --radius-control: 0.5rem;
   --radius-panel: 0.75rem;
   --space-shell: clamp(1rem, 2vw, 1.75rem);
@@ -35,6 +39,10 @@
   --color-player-b: var(--player-b);
   --color-player-c: var(--player-c);
   --color-player-d: var(--player-d);
+  --color-player-e: var(--player-e);
+  --color-player-f: var(--player-f);
+  --color-player-g: var(--player-g);
+  --color-player-h: var(--player-h);
   --radius-control: var(--radius-control);
   --radius-panel: var(--radius-panel);
   --spacing-shell: var(--space-shell);
@@ -46,6 +54,12 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 :focus-visible {

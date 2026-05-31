@@ -332,7 +332,7 @@ Schema rules:
 - [x] Add Vitest, Testing Library, and Playwright.
 - [x] Add lint, format, typecheck, unit test, integration test, and
   Playwright scripts.
-- [ ] Add Docker Compose for local Postgres, Valkey, MinIO, Umami, and
+- [x] Add Docker Compose for local Postgres, Valkey, MinIO, Umami, and
   GlitchTip or a Sentry-compatible endpoint.
 - [x] Keep optional services optional until they have working product
   integrations.
@@ -343,18 +343,18 @@ Schema rules:
 
 - [x] Build the primary app shell with Life Counter and Game Night as the
   first navigation items.
-- [ ] Build responsive layouts for phone, tablet, laptop, and wide
+- [x] Build responsive layouts for phone, tablet, laptop, and wide
   desktop.
-- [ ] Create reusable button, icon button, dialog, drawer, menu, tabs,
+- [x] Create reusable button, icon button, dialog, drawer, menu, tabs,
   segmented control, toast, form field, and empty-state components.
 - [x] Create player color tokens that work for Commander seating without
   becoming a one-note palette.
-- [ ] Create dense planning views for hosts without marketing-page
+- [x] Create dense planning views for hosts without marketing-page
   styling.
 - [ ] Create full-screen table-display styles for the life counter.
 - [ ] Add dark and light themes only if both are complete and verified.
-- [ ] Verify text does not overflow controls on mobile or desktop.
-- [ ] Add visual regression or screenshot checks for the app shell and
+- [x] Verify text does not overflow controls on mobile or desktop.
+- [x] Add visual regression or screenshot checks for the app shell and
   life counter layout.
 
 ## Phase 3 - Auth And Authorization
@@ -389,15 +389,15 @@ Schema rules:
 
 ## Phase 5 - Life Counter V1: Offline Standalone
 
-- [ ] Build `/life` as a primary public route.
-- [ ] Build player setup for 2 to 8 players.
-- [ ] Add player names, colors, seats, commanders, starting life, and
+- [x] Build `/life` as a primary public route.
+- [x] Build player setup for 2 to 8 players.
+- [x] Add player names, colors, seats, commanders, starting life, and
   optional deck labels.
 - [ ] Support multiple commanders per player.
-- [ ] Build the main counter board with large stable hit targets.
-- [ ] Add life adjustments by 1, 5, and 10.
+- [x] Build the main counter board with large stable hit targets.
+- [x] Add life adjustments by 1, 5, and 10.
 - [ ] Add commander damage by defending player and commander source.
-- [ ] Add poison counters.
+- [x] Add poison counters.
 - [ ] Add commander tax or cast count per commander.
 - [ ] Add monarch, initiative, city's blessing, day/night, experience,
   energy, rad, storm, treasure, floating mana, and custom counters.

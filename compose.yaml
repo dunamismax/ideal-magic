@@ -17,7 +17,7 @@ services:
 
   valkey:
     image: valkey/valkey:9-alpine
-    profiles: ["optional"]
+    profiles: ["optional", "errors"]
     ports:
       - "6379:6379"
     volumes:
@@ -54,12 +54,41 @@ services:
     environment:
       DATABASE_URL: postgres://umami:umami@umami-postgres:5432/umami
       DATABASE_TYPE: postgresql
-      APP_SECRET: pod_tracker_dev_only_change_me
+      APP_SECRET: ${UMAMI_APP_SECRET:-pod_tracker_dev_only_change_me}
     ports:
       - "3001:3000"
+
+  glitchtip-postgres:
+    image: postgres:18-alpine
+    profiles: ["errors"]
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: glitchtip
+    volumes:
+      - pod_tracker_glitchtip_postgres:/var/lib/postgresql/data
+
+  glitchtip:
+    image: glitchtip/glitchtip:v4.0
+    profiles: ["errors"]
+    depends_on:
+      - glitchtip-postgres
+      - valkey
+    environment:
+      DATABASE_URL: postgres://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-pod_tracker_dev_only_change_me}
+      EMAIL_URL: consolemail://
+      DEFAULT_FROM_EMAIL: glitchtip.local@example.invalid
+      GLITCHTIP_DOMAIN: http://localhost:8000
+      GLITCHTIP_EMBED_WORKER: "true"
+      VALKEY_URL: redis://valkey:6379/0
+      ENABLE_USER_REGISTRATION: "true"
+    ports:
+      - "8000:8000"
 
 volumes:
   pod_tracker_postgres:
   pod_tracker_valkey:
   pod_tracker_minio:
   pod_tracker_umami_postgres:
+  pod_tracker_glitchtip_postgres:

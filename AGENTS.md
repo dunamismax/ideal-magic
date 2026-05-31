@@ -3,9 +3,9 @@
 Repo-local operating manual for Pod Tracker. Reading this file plus
 `README.md` and `BUILD.md` is sufficient context to begin work.
 
-`README.md` explains the product. `BUILD.md` is reserved for future build
-plans now that V1.0 is complete. This file holds durable operator,
-engineering, product, database, and deployment rules.
+`README.md` explains the current product. `BUILD.md` holds the active
+future build plan. This file holds durable operator, engineering,
+product, database, and deployment rules.
 
 ## Read Order
 
@@ -45,9 +45,13 @@ claims, or bury the lede.
 
 ## Product Boundaries
 
-- Pod Tracker is the self-hosted operating system for Commander night.
-- The product center is playgroups, events, RSVPs, deck declarations,
-  pod generation, game logging, and meta insight.
+- Pod Tracker is the self-hosted operating system and live life counter
+  for Commander night.
+- The product center is the life counter plus playgroups, events, RSVPs,
+  deck declarations, pod generation, game logging, and meta health.
+- The life counter is a primary surface, not a side widget. It must
+  support player names, commanders, life totals, commander damage,
+  poison, relevant Commander counters, undo/redo, and offline local play.
 - Deckbuilding exists to support game-night planning. Do not let it take
   over the MVP.
 - PostgreSQL must be visibly powerful through real planning, search,
@@ -57,64 +61,92 @@ claims, or bury the lede.
   planning.
 - Host addresses, schedules, notes, phone numbers, emails, invite tokens,
   and guest details are sensitive.
+- Life counter local notes and unsaved local sessions stay local unless a
+  user explicitly saves or links them to an event, pod, or game record.
 - Guests see only what their invite or event scope permits.
 - Public event pages must be tokenized and backed by public-safe views or
   equivalent authorization.
-- Scryfall data is imported locally; raw payloads stay in JSONB and
-  important fields are normalized.
-- Commander Brackets and Game Changers are versioned data. Do not
-  hard-code them permanently.
+- Scryfall or commander catalog data should be limited to what supports
+  deck declarations, commander lookup, and game records. If imported
+  locally, raw payloads stay in JSONB and important fields are
+  normalized.
+- Commander Brackets and Game Changers are versioned data if used. Do
+  not hard-code them permanently.
 
 Do not build these first: full deckbuilder UI, paid SaaS billing, native
-mobile app, push notifications, pgvector/AI, route traffic integration,
-or full Moxfield replacement.
+mobile app, push notifications, collection manager, wishlists, proxy
+print lists, pgvector/AI, route traffic integration, or full Moxfield
+replacement.
 
 ---
 
 ## Stack Rules
 
-- Rust application monolith with separate web and worker binaries.
-- Cargo workspace with focused crates under `crates/`.
-- Axum for HTTP routing, middleware, extractors, and server edges.
-- Leptos for server-rendered UI, reusable app components, forms/actions,
-  and narrowly hydrated interactions where they earn their place.
-- Tokio as the async runtime.
+Target stack for new rewrite work unless `BUILD.md` or Stephen's
+explicit direction changes it:
+
+- Next.js App Router for the public site and logged-in app.
+- React with TypeScript strict mode.
+- Tailwind CSS for styling.
+- shadcn/ui-compatible local components, Radix primitives, and
+  `lucide-react` for accessible components and icons.
+- Motion for focused transitions and microinteractions where useful.
+- Better Auth for self-hosted authentication.
 - PostgreSQL as source of truth.
-- Server-rendered HTML for primary screens.
-- SSE for browser event streams.
-- PostgreSQL `LISTEN` / `NOTIFY` for lightweight realtime.
-- PostgreSQL-backed job tables with `FOR UPDATE SKIP LOCKED`.
-- sqlx preferred for typed SQL, migrations, and PostgreSQL pool access.
-- Migrations are canonical schema history.
-- Caddy and systemd for production on the Ubuntu VM.
-- **No Docker PostgreSQL** in local development or production.
+- Drizzle ORM and Drizzle Kit for schema and migrations.
+- Dexie over IndexedDB for offline life-counter and app state.
+- MinIO for S3-compatible object storage when static assets are no
+  longer enough.
+- Valkey for cache, rate limiting, and later queues when needed.
+- Umami for respectful analytics.
+- GlitchTip or Sentry-compatible error reporting.
+- Docker Compose for local and self-hosted production services.
+- Caddy reverse proxy behind Cloudflare DNS/proxy or Cloudflare Tunnel.
+- Vitest, Testing Library, and Playwright for quality.
+
+Current repo reality:
+
+- The existing Rust/Axum/Leptos/sqlx workspace is the V1 implementation
+  and production reference until the TypeScript replacement is verified.
+- Do not delete or destabilize the Rust app until equivalent TypeScript
+  core flows are implemented, verified, and Stephen approves cutover.
+- Use Rust-era verification when touching Rust code or SQLx migrations.
+- Use the TypeScript target stack for new product implementation.
 
 Default against:
 
-- Client-side SPA routing.
-- Runtime JavaScript frameworks before evidence earns them.
-- ORMs that hide SQL.
-- Microservices, Kubernetes, queues, Redis, or managed-service lock-in
-  before the monolith proves it needs them.
-- AI/RAG beyond the documented optional pgvector foundation before the
-  core product needs it.
+- Client-only SPA routing for primary app surfaces.
+- Database abstractions that hide authorization boundaries or important
+  query behavior.
+- Microservices, Kubernetes, extra queues, cache layers, or
+  managed-service lock-in before the product proves it needs them.
+- AI/RAG, full card inventory, or deckbuilder complexity before the life
+  counter and game-night planning pillars are excellent.
 
-The live product path is Rust, Leptos, Axum, Tokio, sqlx, PostgreSQL,
-Caddy, and systemd.
+The future product path is Next.js, React, TypeScript, Tailwind, Better
+Auth, Drizzle, Dexie, PostgreSQL, Docker Compose, Caddy, and focused
+self-hosted services.
 
 ---
 
 ## Database Rules
 
 - PostgreSQL is product architecture, not just storage.
-- Required extensions: `pgcrypto`, `pg_trgm`, `pg_stat_statements`,
-  `btree_gin`.
+- Drizzle migrations are the target schema history for the TypeScript
+  rewrite. SQLx migrations remain the Rust V1 schema history until
+  cutover.
+- Useful extensions may include `pgcrypto`, `pg_trgm`,
+  `pg_stat_statements`, and `btree_gin`; add extensions only when the
+  target schema actually uses them.
 - Use RLS, scoped queries, or public-safe views for tenant, guest, and
   host-address boundaries.
 - Add constraints for invariants the database can enforce.
 - Prefer explicit check constraints or lookup tables over unchecked
   strings.
-- Normalize important Scryfall fields and retain raw JSONB.
+- Model life-counter sessions with an action log so undo, redo, sync,
+  and game-log conversion are auditable.
+- Normalize important commander/card fields and retain raw JSONB for any
+  imported external card payloads.
 - Use materialized views for expensive meta and pairing summaries.
 - Use full-text search and trigram search where they fit.
 - Test migrations against real PostgreSQL.
@@ -160,12 +192,12 @@ Red lines:
 
 - Prefer correct, complete implementations over minimal ones.
 - Fix root causes, not symptoms.
-- Keep boundaries clear: handlers validate and route, services hold
-  domain behavior, repositories own database access, migrations own
-  schema truth.
+- Keep boundaries clear: route handlers and server actions validate and
+  route, services hold domain behavior, data-access modules own database
+  access, migrations own schema truth.
 - Use explicit SQL for important behavior.
-- Keep Leptos components, pages, and server functions small and
-  inspectable.
+- Keep React components, route modules, server actions, and client-only
+  life-counter state modules small and inspectable.
 - Include error handling and validation where reliability depends on it.
 - Do not hide domain behavior in broad utility packages or template
   conditionals.
@@ -179,14 +211,19 @@ Build the actual app, not a marketing shell.
 
 - Prioritize dense, repeated-use workflows for admins, hosts, and
   players.
+- Make the life counter beautiful, fast, offline-capable, and reliable
+  under repeated taps during live Commander games.
 - Make event planning, RSVPs, pod generation, and game logging fast.
-- Use server-rendered Leptos pages and forms/actions.
-- Keep JavaScript or hydration small and feature-scoped.
+- Use Next.js App Router, React Server Components, and server actions
+  where they fit.
+- Use client components intentionally for interactive workflows,
+  especially the offline life counter.
 - Use icons for clear actions where available.
 - Do not use in-app prose to explain obvious mechanics.
 - Verify responsive layouts with real browser checks once UI exists.
 - Critical flows need browser smoke tests: signup, login, event creation,
-  RSVP, deck declaration, pod generation, and game logging.
+  RSVP, deck declaration, pod generation, standalone life counter,
+  pod-linked life counter, and game logging.
 
 ---
 
@@ -218,7 +255,7 @@ Docs-only work:
 git diff --check
 ```
 
-Normal Rust workspace gate:
+When touching current Rust V1 code:
 
 ```sh
 just fmt
@@ -232,14 +269,28 @@ local app database is stale, use a freshly migrated temporary local
 database for verification instead of loosening production-like app
 credentials.
 
+When TypeScript scripts exist, normal TypeScript gate:
+
+```sh
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+When Drizzle exists, test migrations against real PostgreSQL through the
+documented Docker Compose workflow.
+
 Expected coverage:
 
-- Rust tests.
+- TypeScript unit and integration tests for new app code.
+- Testing Library coverage for important components and forms.
 - Migration tests against real PostgreSQL.
-- sqlx query/migration checks.
+- Drizzle schema/migration checks for the rewrite.
+- Rust tests and SQLx query/migration checks when touching Rust V1.
 - Server startup smoke.
 - `/healthz` and `/readyz`.
-- Leptos component/page rendering tests.
+- React page/component rendering tests.
 - Playwright smoke for critical workflows.
 - Caddy config validation.
 - Backup and restore drill for operational readiness.
@@ -260,7 +311,7 @@ This file is the only persistent local prompt for this repo.
 - Keep `README.md` for product current state, `BUILD.md` for future build
   planning, durable `docs/` for stable technical material, and this file
   for operator rules.
-- Keep `BUILD.md` short while there is no active phase; add future
-  sections there only when new work is concrete enough to plan.
+- Keep `BUILD.md` as the active phased roadmap while the TypeScript
+  rewrite is underway.
 - Keep wording portable across agents and vendors. Every line should pay
   rent.

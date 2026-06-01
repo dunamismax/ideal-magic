@@ -89,6 +89,94 @@ test("standalone life counter updates local table state", async ({ page }) => {
   );
 });
 
+test("standalone life counter tracks Commander counters and table roles", async ({
+  page,
+}) => {
+  await page.goto("/life");
+
+  const firstPlayer = page.getByTestId("life-player-card").first();
+
+  await firstPlayer.getByLabel("Player name").fill("Stephen");
+  await firstPlayer
+    .getByRole("button", { name: "Make Stephen monarch" })
+    .click();
+  await firstPlayer
+    .getByRole("button", { name: "Give initiative to Stephen" })
+    .click();
+  await firstPlayer
+    .getByRole("button", { name: "Give city's blessing to Stephen" })
+    .click();
+
+  await expect(page.getByTestId("monarch-holder")).toHaveText(
+    "Stephen monarch",
+  );
+  await expect(page.getByTestId("initiative-holder")).toHaveText(
+    "Stephen initiative",
+  );
+  await expect(page.getByTestId("player-1-city-blessing")).toHaveText(
+    "City's blessing",
+  );
+
+  await page.getByRole("button", { name: "Night" }).click();
+  await page.getByRole("button", { name: "Add storm" }).click();
+  await page.getByRole("button", { name: "Add storm" }).click();
+  await expect(page.getByTestId("day-night-state")).toHaveText("night");
+  await expect(page.getByTestId("storm-count")).toHaveText("2");
+
+  await firstPlayer
+    .getByRole("button", { name: "Add experience to Stephen" })
+    .click();
+  await firstPlayer
+    .getByRole("button", { name: "Add energy to Stephen" })
+    .click();
+  await firstPlayer.getByRole("button", { name: "Add rad to Stephen" }).click();
+  await firstPlayer
+    .getByRole("button", { name: "Add treasure to Stephen" })
+    .click();
+  await firstPlayer
+    .getByRole("button", { name: "Add White floating mana to Stephen" })
+    .click();
+
+  await expect(page.getByTestId("player-1-experience-count")).toHaveText("1");
+  await expect(page.getByTestId("player-1-energy-count")).toHaveText("1");
+  await expect(page.getByTestId("player-1-rad-count")).toHaveText("1");
+  await expect(page.getByTestId("player-1-treasure-count")).toHaveText("1");
+  await expect(page.getByTestId("player-1-floating-mana-W-count")).toHaveText(
+    "1",
+  );
+
+  await firstPlayer
+    .getByRole("button", { name: "Add custom counter for Stephen" })
+    .click();
+  const customCounter = page.getByTestId("player-1-custom-counter-row").first();
+  await customCounter
+    .getByLabel("Custom counter name 1 for Stephen")
+    .fill("Shield");
+  await customCounter
+    .getByRole("button", { name: "Add Shield to Stephen" })
+    .click();
+  await expect(customCounter.locator("[data-testid$='-count']")).toHaveText(
+    "1",
+  );
+
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(page.getByTestId("monarch-holder")).toHaveText("No monarch");
+  await expect(page.getByTestId("initiative-holder")).toHaveText(
+    "No initiative",
+  );
+  await expect(page.getByTestId("day-night-state")).toHaveText(
+    "Day/night unset",
+  );
+  await expect(page.getByTestId("storm-count")).toHaveText("0");
+  await expect(page.getByTestId("player-1-experience-count")).toHaveText("0");
+  await expect(page.getByTestId("player-1-floating-mana-W-count")).toHaveText(
+    "0",
+  );
+  await expect(customCounter.locator("[data-testid$='-count']")).toHaveText(
+    "0",
+  );
+});
+
 test("standalone life counter tracks commander damage by source", async ({
   page,
 }) => {
@@ -190,6 +278,9 @@ test("standalone life counter supports desktop keyboard play", async ({
   page,
 }) => {
   await page.goto("/life");
+  await expect(
+    page.getByRole("button", { name: "Add 10 life to Player 1" }),
+  ).toBeVisible();
 
   await page.keyboard.press("2");
   await page.keyboard.press("ArrowDown");

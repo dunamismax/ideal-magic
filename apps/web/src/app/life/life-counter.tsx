@@ -3,16 +3,25 @@
 import {
   Ban,
   CircleDot,
+  Coins,
+  Crown,
+  Flag,
+  Flame,
+  Gem,
   Maximize2,
   Minimize2,
   Minus,
   Plus,
+  Radiation,
   RotateCcw,
   Shuffle,
   Skull,
+  Sparkles,
   Swords,
+  SunMoon,
   Trophy,
   UserPlus,
+  Zap,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -32,6 +41,15 @@ type Commander = {
 
 type PlayerStatus = "active" | "eliminated" | "winner";
 type GameResult = "in-progress" | "winner" | "draw" | "no-contest";
+type DayNightState = "unset" | "day" | "night";
+type PlayerCounterKey = "experience" | "energy" | "rad" | "treasure";
+type ManaSymbol = "W" | "U" | "B" | "R" | "G" | "C";
+
+type CustomCounter = {
+  id: string;
+  name: string;
+  value: number;
+};
 
 type Player = {
   id: string;
@@ -43,6 +61,13 @@ type Player = {
   life: number;
   poison: number;
   status: PlayerStatus;
+  cityBlessing: boolean;
+  experience: number;
+  energy: number;
+  rad: number;
+  treasure: number;
+  floatingMana: Record<ManaSymbol, number>;
+  customCounters: CustomCounter[];
 };
 
 type CommanderSource = {
@@ -82,6 +107,24 @@ const startingLifeOptions = [
   { value: "30", label: "30" },
   { value: "40", label: "40" },
 ];
+const playerCounterOptions = [
+  { key: "experience", label: "Experience", Icon: Sparkles },
+  { key: "energy", label: "Energy", Icon: Zap },
+  { key: "rad", label: "Rad", Icon: Radiation },
+  { key: "treasure", label: "Treasure", Icon: Coins },
+] satisfies {
+  key: PlayerCounterKey;
+  label: string;
+  Icon: typeof Sparkles;
+}[];
+const manaOptions = [
+  { symbol: "W", label: "White" },
+  { symbol: "U", label: "Blue" },
+  { symbol: "B", label: "Black" },
+  { symbol: "R", label: "Red" },
+  { symbol: "G", label: "Green" },
+  { symbol: "C", label: "Colorless" },
+] satisfies { symbol: ManaSymbol; label: string }[];
 
 function createCommander(playerId: string, commanderNumber = 1): Commander {
   return {
@@ -89,6 +132,17 @@ function createCommander(playerId: string, commanderNumber = 1): Commander {
     name: "",
     castCount: 0,
     damageByDefender: {},
+  };
+}
+
+function createFloatingMana(): Record<ManaSymbol, number> {
+  return {
+    W: 0,
+    U: 0,
+    B: 0,
+    R: 0,
+    G: 0,
+    C: 0,
   };
 }
 
@@ -106,6 +160,13 @@ function createPlayers(startingLife: number): Player[] {
       life: startingLife,
       poison: 0,
       status: "active",
+      cityBlessing: false,
+      experience: 0,
+      energy: 0,
+      rad: 0,
+      treasure: 0,
+      floatingMana: createFloatingMana(),
+      customCounters: [],
     };
   });
 }
@@ -145,6 +206,16 @@ function resetPlayerCounters(player: Player, life: number): Player {
     life,
     poison: 0,
     status: "active",
+    cityBlessing: false,
+    experience: 0,
+    energy: 0,
+    rad: 0,
+    treasure: 0,
+    floatingMana: createFloatingMana(),
+    customCounters: player.customCounters.map((counter) => ({
+      ...counter,
+      value: 0,
+    })),
     commanders: player.commanders.map((commander) => ({
       ...commander,
       castCount: 0,
@@ -170,6 +241,12 @@ export function LifeCounter() {
   const [playerCount, setPlayerCount] = useState(4);
   const [tableMode, setTableMode] = useState(false);
   const [activePlayerId, setActivePlayerId] = useState("player-1");
+  const [monarchPlayerId, setMonarchPlayerId] = useState<string | null>(null);
+  const [initiativePlayerId, setInitiativePlayerId] = useState<string | null>(
+    null,
+  );
+  const [dayNight, setDayNight] = useState<DayNightState>("unset");
+  const [stormCount, setStormCount] = useState(0);
   const [gameResult, setGameResult] = useState<GameResult>("in-progress");
   const [announcement, setAnnouncement] = useState("Local life counter ready.");
   const [players, setPlayers] = useState<Player[]>(() =>
@@ -196,6 +273,12 @@ export function LifeCounter() {
   const activePlayer =
     visiblePlayers.find((player) => player.id === activePlayerId) ??
     visiblePlayers[0];
+  const monarchPlayer = visiblePlayers.find(
+    (player) => player.id === monarchPlayerId,
+  );
+  const initiativePlayer = visiblePlayers.find(
+    (player) => player.id === initiativePlayerId,
+  );
   const effectiveActivePlayerId = activePlayer?.id ?? "player-1";
   const winner = visiblePlayers.find((player) => player.status === "winner");
   const gameResultLabel =
@@ -291,6 +374,29 @@ export function LifeCounter() {
     );
   }
 
+  function updatePlayerCount(value: string) {
+    const nextPlayerCount = Number(value);
+    const nextVisibleIds = players
+      .slice(0, nextPlayerCount)
+      .map((player) => player.id);
+
+    setPlayerCount(nextPlayerCount);
+
+    if (!nextVisibleIds.includes(activePlayerId)) {
+      setActivePlayerId(nextVisibleIds[0] ?? "player-1");
+    }
+
+    if (monarchPlayerId && !nextVisibleIds.includes(monarchPlayerId)) {
+      setMonarchPlayerId(null);
+    }
+
+    if (initiativePlayerId && !nextVisibleIds.includes(initiativePlayerId)) {
+      setInitiativePlayerId(null);
+    }
+
+    setAnnouncement(`Player count changed to ${nextPlayerCount}.`);
+  }
+
   function updateCommander(
     playerId: string,
     commanderId: string,
@@ -373,6 +479,216 @@ export function LifeCounter() {
     }
   }
 
+  function adjustPlayerCounter(
+    playerId: string,
+    key: PlayerCounterKey,
+    amount: number,
+  ) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    const counterLabel =
+      playerCounterOptions.find((counter) => counter.key === key)?.label ?? key;
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? { ...player, [key]: Math.max(0, player[key] + amount) }
+          : player,
+      ),
+    );
+
+    if (targetPlayer) {
+      setAnnouncement(
+        `${targetPlayer.name} ${counterLabel.toLowerCase()} changed by ${amount > 0 ? "+" : ""}${amount}.`,
+      );
+    }
+  }
+
+  function adjustFloatingMana(
+    playerId: string,
+    symbol: ManaSymbol,
+    amount: number,
+  ) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              floatingMana: {
+                ...player.floatingMana,
+                [symbol]: Math.max(0, player.floatingMana[symbol] + amount),
+              },
+            }
+          : player,
+      ),
+    );
+
+    if (targetPlayer) {
+      setAnnouncement(
+        `${targetPlayer.name} ${symbol} floating mana changed by ${amount > 0 ? "+" : ""}${amount}.`,
+      );
+    }
+  }
+
+  function setTableRole(role: "monarch" | "initiative", playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    const currentHolderId =
+      role === "monarch" ? monarchPlayerId : initiativePlayerId;
+    const nextHolderId = currentHolderId === playerId ? null : playerId;
+    const label = role === "monarch" ? "monarch" : "initiative";
+
+    if (role === "monarch") {
+      setMonarchPlayerId(nextHolderId);
+    } else {
+      setInitiativePlayerId(nextHolderId);
+    }
+
+    if (targetPlayer) {
+      setAnnouncement(
+        nextHolderId
+          ? `${targetPlayer.name} has the ${label}.`
+          : `${targetPlayer.name} no longer has the ${label}.`,
+      );
+    }
+  }
+
+  function toggleCityBlessing(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? { ...player, cityBlessing: !player.cityBlessing }
+          : player,
+      ),
+    );
+
+    if (targetPlayer) {
+      setAnnouncement(
+        targetPlayer.cityBlessing
+          ? `${targetPlayer.name} lost city's blessing.`
+          : `${targetPlayer.name} gained city's blessing.`,
+      );
+    }
+  }
+
+  function addCustomCounter(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+
+    setPlayers((current) =>
+      current.map((player) => {
+        if (player.id !== playerId) {
+          return player;
+        }
+
+        const nextNumber = player.customCounters.length + 1;
+
+        return {
+          ...player,
+          customCounters: [
+            ...player.customCounters,
+            {
+              id: `${player.id}-custom-${Date.now()}-${nextNumber}`,
+              name: `Custom ${nextNumber}`,
+              value: 0,
+            },
+          ],
+        };
+      }),
+    );
+
+    if (targetPlayer) {
+      setAnnouncement(`Custom counter added for ${targetPlayer.name}.`);
+    }
+  }
+
+  function updateCustomCounter(
+    playerId: string,
+    counterId: string,
+    patch: Partial<CustomCounter>,
+  ) {
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              customCounters: player.customCounters.map((counter) =>
+                counter.id === counterId ? { ...counter, ...patch } : counter,
+              ),
+            }
+          : player,
+      ),
+    );
+  }
+
+  function adjustCustomCounter(
+    playerId: string,
+    counterId: string,
+    amount: number,
+  ) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    const targetCounter = targetPlayer?.customCounters.find(
+      (counter) => counter.id === counterId,
+    );
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              customCounters: player.customCounters.map((counter) =>
+                counter.id === counterId
+                  ? { ...counter, value: Math.max(0, counter.value + amount) }
+                  : counter,
+              ),
+            }
+          : player,
+      ),
+    );
+
+    if (targetPlayer && targetCounter) {
+      setAnnouncement(
+        `${targetPlayer.name} ${targetCounter.name} changed by ${amount > 0 ? "+" : ""}${amount}.`,
+      );
+    }
+  }
+
+  function removeCustomCounter(playerId: string, counterId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              customCounters: player.customCounters.filter(
+                (counter) => counter.id !== counterId,
+              ),
+            }
+          : player,
+      ),
+    );
+
+    if (targetPlayer) {
+      setAnnouncement(`Custom counter removed from ${targetPlayer.name}.`);
+    }
+  }
+
   function adjustCommanderCastCount(
     playerId: string,
     commanderId: string,
@@ -431,18 +747,12 @@ export function LifeCounter() {
     const nextStartingLife = Number(value);
     setStartingLife(nextStartingLife);
     setGameResult("in-progress");
+    setMonarchPlayerId(null);
+    setInitiativePlayerId(null);
+    setDayNight("unset");
+    setStormCount(0);
     setPlayers((current) =>
-      current.map((player) => ({
-        ...player,
-        life: nextStartingLife,
-        poison: 0,
-        status: "active",
-        commanders: player.commanders.map((commander) => ({
-          ...commander,
-          castCount: 0,
-          damageByDefender: {},
-        })),
-      })),
+      current.map((player) => resetPlayerCounters(player, nextStartingLife)),
     );
     setAnnouncement(`Starting life changed to ${nextStartingLife}.`);
   }
@@ -452,12 +762,32 @@ export function LifeCounter() {
       (player) => player.id === playerId,
     );
     setGameResult("in-progress");
+    if (monarchPlayerId === playerId) {
+      setMonarchPlayerId(null);
+    }
+    if (initiativePlayerId === playerId) {
+      setInitiativePlayerId(null);
+    }
     setPlayers((current) =>
       current.map((player) => ({
         ...player,
         life: player.id === playerId ? startingLife : player.life,
         poison: player.id === playerId ? 0 : player.poison,
         status: player.id === playerId ? "active" : player.status,
+        cityBlessing: player.id === playerId ? false : player.cityBlessing,
+        experience: player.id === playerId ? 0 : player.experience,
+        energy: player.id === playerId ? 0 : player.energy,
+        rad: player.id === playerId ? 0 : player.rad,
+        treasure: player.id === playerId ? 0 : player.treasure,
+        floatingMana:
+          player.id === playerId ? createFloatingMana() : player.floatingMana,
+        customCounters:
+          player.id === playerId
+            ? player.customCounters.map((counter) => ({
+                ...counter,
+                value: 0,
+              }))
+            : player.customCounters,
         commanders: player.commanders.map((commander) => {
           const nextDamageByDefender = { ...commander.damageByDefender };
           delete nextDamageByDefender[playerId];
@@ -478,6 +808,10 @@ export function LifeCounter() {
 
   function resetGame() {
     setGameResult("in-progress");
+    setMonarchPlayerId(null);
+    setInitiativePlayerId(null);
+    setDayNight("unset");
+    setStormCount(0);
     setPlayers((current) =>
       current.map((player) => resetPlayerCounters(player, startingLife)),
     );
@@ -488,6 +822,10 @@ export function LifeCounter() {
     const nextActivePlayerId = visiblePlayers[1]?.id ?? visiblePlayers[0]?.id;
 
     setGameResult("in-progress");
+    setMonarchPlayerId(null);
+    setInitiativePlayerId(null);
+    setDayNight("unset");
+    setStormCount(0);
     setPlayers((current) => {
       const visible = current.slice(0, playerCount);
       const hidden = current.slice(playerCount);
@@ -510,6 +848,10 @@ export function LifeCounter() {
     setStartingLife(40);
     setPlayerCount(4);
     setTableMode(false);
+    setMonarchPlayerId(null);
+    setInitiativePlayerId(null);
+    setDayNight("unset");
+    setStormCount(0);
     setGameResult("in-progress");
     setPlayers(createPlayers(40));
     setActivePlayerId("player-1");
@@ -606,7 +948,7 @@ export function LifeCounter() {
         <SegmentedControl
           className="grid-cols-7"
           label="Player count"
-          onValueChange={(value) => setPlayerCount(Number(value))}
+          onValueChange={updatePlayerCount}
           options={playerCountOptions}
           value={String(playerCount)}
         />
@@ -678,6 +1020,97 @@ export function LifeCounter() {
         </div>
       </div>
 
+      <div className="grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm lg:grid-cols-[1.1fr_1fr]">
+        <div className="grid gap-2">
+          <p className="text-xs font-bold uppercase text-muted">Table roles</p>
+          <div className="flex flex-wrap gap-2">
+            <span
+              className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold"
+              data-testid="monarch-holder"
+            >
+              <Crown className="mr-2 size-4 text-player-d" aria-hidden="true" />
+              {monarchPlayer ? `${monarchPlayer.name} monarch` : "No monarch"}
+            </span>
+            <span
+              className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold"
+              data-testid="initiative-holder"
+            >
+              <Flag className="mr-2 size-4 text-accent" aria-hidden="true" />
+              {initiativePlayer
+                ? `${initiativePlayer.name} initiative`
+                : "No initiative"}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <p className="text-xs font-bold uppercase text-muted">
+            Day, night, and storm
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <span
+              className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold capitalize"
+              data-testid="day-night-state"
+            >
+              <SunMoon
+                className="mr-2 size-4 text-player-g"
+                aria-hidden="true"
+              />
+              {dayNight === "unset" ? "Day/night unset" : dayNight}
+            </span>
+            <Button
+              onClick={() => setDayNight("day")}
+              size="sm"
+              type="button"
+              variant={dayNight === "day" ? "primary" : "secondary"}
+            >
+              Day
+            </Button>
+            <Button
+              onClick={() => setDayNight("night")}
+              size="sm"
+              type="button"
+              variant={dayNight === "night" ? "primary" : "secondary"}
+            >
+              Night
+            </Button>
+            <Button
+              onClick={() => setDayNight("unset")}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              Clear
+            </Button>
+            <span className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold">
+              <Flame className="mr-2 size-4 text-danger" aria-hidden="true" />
+              Storm{" "}
+              <span className="ml-1 tabular-nums" data-testid="storm-count">
+                {stormCount}
+              </span>
+            </span>
+            <IconButton
+              className="size-8"
+              label="Subtract storm"
+              onClick={() =>
+                setStormCount((current) => Math.max(0, current - 1))
+              }
+              variant="secondary"
+            >
+              <Minus className="size-4" aria-hidden="true" />
+            </IconButton>
+            <IconButton
+              className="size-8"
+              label="Add storm"
+              onClick={() => setStormCount((current) => current + 1)}
+              variant="secondary"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+            </IconButton>
+          </div>
+        </div>
+      </div>
+
       <div
         className={cn(
           "grid gap-3 md:grid-cols-2 xl:grid-cols-4",
@@ -724,6 +1157,30 @@ export function LifeCounter() {
                     {player.id === effectiveActivePlayerId ? (
                       <span className="inline-flex h-7 items-center rounded-control border border-focus bg-background px-2 text-xs font-bold">
                         Keyboard
+                      </span>
+                    ) : null}
+                    {player.id === monarchPlayerId ? (
+                      <span
+                        className="inline-flex h-7 items-center rounded-control border border-player-d bg-background px-2 text-xs font-bold"
+                        data-testid={`${player.id}-monarch`}
+                      >
+                        Monarch
+                      </span>
+                    ) : null}
+                    {player.id === initiativePlayerId ? (
+                      <span
+                        className="inline-flex h-7 items-center rounded-control border border-accent bg-background px-2 text-xs font-bold"
+                        data-testid={`${player.id}-initiative`}
+                      >
+                        Initiative
+                      </span>
+                    ) : null}
+                    {player.cityBlessing ? (
+                      <span
+                        className="inline-flex h-7 items-center rounded-control border border-player-e bg-background px-2 text-xs font-bold"
+                        data-testid={`${player.id}-city-blessing`}
+                      >
+                        {"City's blessing"}
                       </span>
                     ) : null}
                   </div>
@@ -838,6 +1295,226 @@ export function LifeCounter() {
                     </span>
                     <span className="text-muted">poison</span>
                   </div>
+                </div>
+
+                <div className="grid gap-2 rounded-control border border-border bg-background p-2">
+                  <p className="text-xs font-bold uppercase text-muted">
+                    Roles
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      aria-label={
+                        player.id === monarchPlayerId
+                          ? `Clear monarch from ${player.name}`
+                          : `Make ${player.name} monarch`
+                      }
+                      onClick={() => setTableRole("monarch", player.id)}
+                      size="sm"
+                      type="button"
+                      variant={
+                        player.id === monarchPlayerId ? "primary" : "secondary"
+                      }
+                    >
+                      <Crown className="size-4" aria-hidden="true" />
+                      Monarch
+                    </Button>
+                    <Button
+                      aria-label={
+                        player.id === initiativePlayerId
+                          ? `Clear initiative from ${player.name}`
+                          : `Give initiative to ${player.name}`
+                      }
+                      onClick={() => setTableRole("initiative", player.id)}
+                      size="sm"
+                      type="button"
+                      variant={
+                        player.id === initiativePlayerId
+                          ? "primary"
+                          : "secondary"
+                      }
+                    >
+                      <Flag className="size-4" aria-hidden="true" />
+                      Initiative
+                    </Button>
+                    <Button
+                      aria-label={
+                        player.cityBlessing
+                          ? `Remove city's blessing from ${player.name}`
+                          : `Give city's blessing to ${player.name}`
+                      }
+                      onClick={() => toggleCityBlessing(player.id)}
+                      size="sm"
+                      type="button"
+                      variant={player.cityBlessing ? "primary" : "secondary"}
+                    >
+                      <Gem className="size-4" aria-hidden="true" />
+                      Blessing
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 rounded-control border border-border bg-background p-2">
+                  <p className="text-xs font-bold uppercase text-muted">
+                    Counters
+                  </p>
+                  {playerCounterOptions.map(({ key, label, Icon }) => (
+                    <div
+                      className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2"
+                      key={key}
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-bold">
+                        <Icon
+                          className="size-4 shrink-0 text-muted"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{label}</span>
+                      </span>
+                      <span
+                        className="w-8 text-center text-lg font-black tabular-nums"
+                        data-testid={`${player.id}-${key}-count`}
+                      >
+                        {player[key]}
+                      </span>
+                      <IconButton
+                        className="size-8"
+                        label={`Subtract ${label.toLowerCase()} from ${player.name}`}
+                        onClick={() => adjustPlayerCounter(player.id, key, -1)}
+                        variant="secondary"
+                      >
+                        <Minus className="size-4" aria-hidden="true" />
+                      </IconButton>
+                      <IconButton
+                        className="size-8"
+                        label={`Add ${label.toLowerCase()} to ${player.name}`}
+                        onClick={() => adjustPlayerCounter(player.id, key, 1)}
+                        variant="secondary"
+                      >
+                        <Plus className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-2 rounded-control border border-border bg-background p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase text-muted">
+                      Floating mana
+                    </p>
+                    <Flame className="size-4 text-muted" aria-hidden="true" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {manaOptions.map(({ symbol, label }) => (
+                      <div
+                        className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1"
+                        key={symbol}
+                      >
+                        <span className="text-sm font-black">{symbol}</span>
+                        <span
+                          className="w-7 text-center text-sm font-black tabular-nums"
+                          data-testid={`${player.id}-floating-mana-${symbol}-count`}
+                        >
+                          {player.floatingMana[symbol]}
+                        </span>
+                        <IconButton
+                          className="size-7"
+                          label={`Subtract ${label} floating mana from ${player.name}`}
+                          onClick={() =>
+                            adjustFloatingMana(player.id, symbol, -1)
+                          }
+                          variant="secondary"
+                        >
+                          <Minus className="size-3.5" aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                          className="size-7"
+                          label={`Add ${label} floating mana to ${player.name}`}
+                          onClick={() =>
+                            adjustFloatingMana(player.id, symbol, 1)
+                          }
+                          variant="secondary"
+                        >
+                          <Plus className="size-3.5" aria-hidden="true" />
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-2 rounded-control border border-border bg-background p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase text-muted">
+                      Custom counters
+                    </p>
+                    <Button
+                      aria-label={`Add custom counter for ${player.name}`}
+                      onClick={() => addCustomCounter(player.id)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      <Plus className="size-4" aria-hidden="true" />
+                      Add
+                    </Button>
+                  </div>
+                  {player.customCounters.length === 0 ? (
+                    <p className="text-sm font-medium text-muted">
+                      No custom counters
+                    </p>
+                  ) : null}
+                  {player.customCounters.map((counter, index) => (
+                    <div
+                      className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2"
+                      data-testid={`${player.id}-custom-counter-row`}
+                      key={counter.id}
+                    >
+                      <input
+                        aria-label={`Custom counter name ${index + 1} for ${player.name}`}
+                        className={cn(fieldControlClassName, "h-9 min-w-0")}
+                        onChange={(event) =>
+                          updateCustomCounter(player.id, counter.id, {
+                            name: event.target.value,
+                          })
+                        }
+                        value={counter.name}
+                      />
+                      <span
+                        className="w-8 text-center text-lg font-black tabular-nums"
+                        data-testid={`${counter.id}-count`}
+                      >
+                        {counter.value}
+                      </span>
+                      <IconButton
+                        className="size-8"
+                        label={`Subtract ${counter.name} from ${player.name}`}
+                        onClick={() =>
+                          adjustCustomCounter(player.id, counter.id, -1)
+                        }
+                        variant="secondary"
+                      >
+                        <Minus className="size-4" aria-hidden="true" />
+                      </IconButton>
+                      <IconButton
+                        className="size-8"
+                        label={`Add ${counter.name} to ${player.name}`}
+                        onClick={() =>
+                          adjustCustomCounter(player.id, counter.id, 1)
+                        }
+                        variant="secondary"
+                      >
+                        <Plus className="size-4" aria-hidden="true" />
+                      </IconButton>
+                      <IconButton
+                        className="size-8"
+                        label={`Remove ${counter.name} from ${player.name}`}
+                        onClick={() =>
+                          removeCustomCounter(player.id, counter.id)
+                        }
+                        variant="secondary"
+                      >
+                        <X className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="grid gap-2 rounded-control border border-border bg-background p-2">

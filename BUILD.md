@@ -399,7 +399,7 @@ Schema rules:
 - [x] Add commander damage by defending player and commander source.
 - [x] Add poison counters.
 - [x] Add commander tax or cast count per commander.
-- [ ] Add monarch, initiative, city's blessing, day/night, experience,
+- [x] Add monarch, initiative, city's blessing, day/night, experience,
   energy, rad, storm, treasure, floating mana, and custom counters.
 - [x] Add elimination, winner, draw, and no-contest states.
 - [ ] Add game timer, turn timer, active player, turn order, and turn
@@ -411,7 +411,7 @@ Schema rules:
 - [x] Add accessible labels, focus management, and screen-reader
   friendly state changes.
 - [ ] Verify reload persistence without a network connection.
-- [ ] Verify mobile, tablet, desktop, and wide desktop layouts with
+- [x] Verify mobile, tablet, desktop, and wide desktop layouts with
   Playwright screenshots.
 
 ## Phase 6 - Life Counter V2: Event And Pod Integration

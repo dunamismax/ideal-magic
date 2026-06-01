@@ -1,17 +1,21 @@
 "use client";
 
 import {
+  Ban,
+  CircleDot,
   Maximize2,
   Minimize2,
   Minus,
   Plus,
   RotateCcw,
+  Shuffle,
   Skull,
   Swords,
+  Trophy,
   UserPlus,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fieldControlClassName, FormField } from "@/components/ui/form-field";
@@ -26,6 +30,9 @@ type Commander = {
   damageByDefender: Record<string, number>;
 };
 
+type PlayerStatus = "active" | "eliminated" | "winner";
+type GameResult = "in-progress" | "winner" | "draw" | "no-contest";
+
 type Player = {
   id: string;
   seat: string;
@@ -35,6 +42,7 @@ type Player = {
   color: string;
   life: number;
   poison: number;
+  status: PlayerStatus;
 };
 
 type CommanderSource = {
@@ -97,6 +105,7 @@ function createPlayers(startingLife: number): Player[] {
       color: colorOptions[index].value,
       life: startingLife,
       poison: 0,
+      status: "active",
     };
   });
 }
@@ -117,10 +126,52 @@ function nextCommanderNumber(player: Player) {
   );
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
+function resetPlayerCounters(player: Player, life: number): Player {
+  return {
+    ...player,
+    life,
+    poison: 0,
+    status: "active",
+    commanders: player.commanders.map((commander) => ({
+      ...commander,
+      castCount: 0,
+      damageByDefender: {},
+    })),
+  };
+}
+
+function playerStatusLabel(status: PlayerStatus) {
+  if (status === "winner") {
+    return "Winner";
+  }
+
+  if (status === "eliminated") {
+    return "Eliminated";
+  }
+
+  return "Active";
+}
+
 export function LifeCounter() {
   const [startingLife, setStartingLife] = useState(40);
   const [playerCount, setPlayerCount] = useState(4);
   const [tableMode, setTableMode] = useState(false);
+  const [activePlayerId, setActivePlayerId] = useState("player-1");
+  const [gameResult, setGameResult] = useState<GameResult>("in-progress");
+  const [announcement, setAnnouncement] = useState("Local life counter ready.");
   const [players, setPlayers] = useState<Player[]>(() =>
     createPlayers(startingLife),
   );
@@ -141,6 +192,96 @@ export function LifeCounter() {
       ),
     [visiblePlayers],
   );
+
+  const activePlayer =
+    visiblePlayers.find((player) => player.id === activePlayerId) ??
+    visiblePlayers[0];
+  const effectiveActivePlayerId = activePlayer?.id ?? "player-1";
+  const winner = visiblePlayers.find((player) => player.status === "winner");
+  const gameResultLabel =
+    gameResult === "winner" && winner
+      ? `${winner.name} wins`
+      : gameResult === "draw"
+        ? "Draw"
+        : gameResult === "no-contest"
+          ? "No contest"
+          : "In progress";
+
+  useEffect(() => {
+    if (tableMode) {
+      document
+        .querySelector<HTMLButtonElement>("[data-table-display-toggle]")
+        ?.focus();
+    }
+  }, [tableMode]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      const numericSeat = Number(event.key);
+      if (
+        Number.isInteger(numericSeat) &&
+        numericSeat >= 1 &&
+        numericSeat <= visiblePlayers.length
+      ) {
+        const nextPlayer = visiblePlayers[numericSeat - 1];
+        event.preventDefault();
+        setActivePlayerId(nextPlayer.id);
+        setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const currentIndex = Math.max(
+          0,
+          visiblePlayers.findIndex(
+            (player) => player.id === effectiveActivePlayerId,
+          ),
+        );
+        const offset = event.key === "ArrowRight" ? 1 : -1;
+        const nextIndex =
+          (currentIndex + offset + visiblePlayers.length) %
+          visiblePlayers.length;
+        const nextPlayer = visiblePlayers[nextIndex];
+        setActivePlayerId(nextPlayer.id);
+        setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
+        return;
+      }
+
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+
+      const currentActivePlayer = visiblePlayers.find(
+        (player) => player.id === effectiveActivePlayerId,
+      );
+
+      if (!currentActivePlayer) {
+        return;
+      }
+
+      event.preventDefault();
+      const step = event.altKey ? 10 : event.shiftKey ? 5 : 1;
+      const amount = event.key === "ArrowUp" ? step : -step;
+      setPlayers((current) =>
+        current.map((player) =>
+          player.id === currentActivePlayer.id
+            ? { ...player, life: player.life + amount }
+            : player,
+        ),
+      );
+      setAnnouncement(
+        `${currentActivePlayer.name} ${amount > 0 ? "gained" : "lost"} ${Math.abs(amount)} life.`,
+      );
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [effectiveActivePlayerId, visiblePlayers]);
 
   function updatePlayer(id: string, patch: Partial<Player>) {
     setPlayers((current) =>
@@ -203,14 +344,21 @@ export function LifeCounter() {
   }
 
   function adjustLife(id: string, amount: number) {
+    const targetPlayer = visiblePlayers.find((player) => player.id === id);
     setPlayers((current) =>
       current.map((player) =>
         player.id === id ? { ...player, life: player.life + amount } : player,
       ),
     );
+    if (targetPlayer) {
+      setAnnouncement(
+        `${targetPlayer.name} ${amount > 0 ? "gained" : "lost"} ${Math.abs(amount)} life.`,
+      );
+    }
   }
 
   function adjustPoison(id: string, amount: number) {
+    const targetPlayer = visiblePlayers.find((player) => player.id === id);
     setPlayers((current) =>
       current.map((player) =>
         player.id === id
@@ -218,6 +366,11 @@ export function LifeCounter() {
           : player,
       ),
     );
+    if (targetPlayer) {
+      setAnnouncement(
+        `${targetPlayer.name} poison changed by ${amount > 0 ? "+" : ""}${amount}.`,
+      );
+    }
   }
 
   function adjustCommanderCastCount(
@@ -277,11 +430,13 @@ export function LifeCounter() {
   function applyStartingLife(value: string) {
     const nextStartingLife = Number(value);
     setStartingLife(nextStartingLife);
+    setGameResult("in-progress");
     setPlayers((current) =>
       current.map((player) => ({
         ...player,
         life: nextStartingLife,
         poison: 0,
+        status: "active",
         commanders: player.commanders.map((commander) => ({
           ...commander,
           castCount: 0,
@@ -289,14 +444,20 @@ export function LifeCounter() {
         })),
       })),
     );
+    setAnnouncement(`Starting life changed to ${nextStartingLife}.`);
   }
 
   function resetPlayer(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    setGameResult("in-progress");
     setPlayers((current) =>
       current.map((player) => ({
         ...player,
         life: player.id === playerId ? startingLife : player.life,
         poison: player.id === playerId ? 0 : player.poison,
+        status: player.id === playerId ? "active" : player.status,
         commanders: player.commanders.map((commander) => {
           const nextDamageByDefender = { ...commander.damageByDefender };
           delete nextDamageByDefender[playerId];
@@ -310,6 +471,120 @@ export function LifeCounter() {
         }),
       })),
     );
+    if (targetPlayer) {
+      setAnnouncement(`${targetPlayer.name} reset.`);
+    }
+  }
+
+  function resetGame() {
+    setGameResult("in-progress");
+    setPlayers((current) =>
+      current.map((player) => resetPlayerCounters(player, startingLife)),
+    );
+    setAnnouncement("Game reset. Player setup was kept.");
+  }
+
+  function rematch() {
+    const nextActivePlayerId = visiblePlayers[1]?.id ?? visiblePlayers[0]?.id;
+
+    setGameResult("in-progress");
+    setPlayers((current) => {
+      const visible = current.slice(0, playerCount);
+      const hidden = current.slice(playerCount);
+      const rotated = [...visible.slice(1), ...visible.slice(0, 1)].map(
+        (player, index) => ({
+          ...resetPlayerCounters(player, startingLife),
+          seat: seats[index],
+        }),
+      );
+
+      return [...rotated, ...hidden];
+    });
+    if (nextActivePlayerId) {
+      setActivePlayerId(nextActivePlayerId);
+    }
+    setAnnouncement("Rematch ready. Players rotated one seat.");
+  }
+
+  function newGame() {
+    setStartingLife(40);
+    setPlayerCount(4);
+    setTableMode(false);
+    setGameResult("in-progress");
+    setPlayers(createPlayers(40));
+    setActivePlayerId("player-1");
+    setAnnouncement("New game ready.");
+  }
+
+  function eliminatePlayer(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    setGameResult("in-progress");
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? { ...player, status: "eliminated" }
+          : player.status === "winner"
+            ? { ...player, status: "active" }
+            : player,
+      ),
+    );
+    if (targetPlayer) {
+      setAnnouncement(`${targetPlayer.name} eliminated.`);
+    }
+  }
+
+  function restorePlayer(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    setGameResult("in-progress");
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId ? { ...player, status: "active" } : player,
+      ),
+    );
+    if (targetPlayer) {
+      setAnnouncement(`${targetPlayer.name} restored.`);
+    }
+  }
+
+  function markWinner(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    setGameResult("winner");
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? { ...player, status: "winner" }
+          : visiblePlayers.some(
+                (visiblePlayer) => visiblePlayer.id === player.id,
+              )
+            ? { ...player, status: "eliminated" }
+            : player,
+      ),
+    );
+    if (targetPlayer) {
+      setAnnouncement(`${targetPlayer.name} marked as winner.`);
+    }
+  }
+
+  function setSharedResult(
+    nextResult: Extract<GameResult, "draw" | "no-contest">,
+  ) {
+    setGameResult(nextResult);
+    setPlayers((current) =>
+      current.map((player) =>
+        visiblePlayers.some((visiblePlayer) => visiblePlayer.id === player.id)
+          ? { ...player, status: "active" }
+          : player,
+      ),
+    );
+    setAnnouncement(
+      nextResult === "draw" ? "Game marked draw." : "Game marked no contest.",
+    );
   }
 
   const board = (
@@ -317,11 +592,15 @@ export function LifeCounter() {
       className={cn("grid gap-4", tableMode && "h-full grid-rows-[auto_1fr]")}
       data-testid="life-counter-board"
     >
+      <p className="sr-only" aria-live="polite">
+        {announcement}
+      </p>
       <div className="grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm lg:grid-cols-[1fr_auto_auto_auto] lg:items-center">
         <div className="grid gap-1">
           <h2 className="text-base font-bold">Table setup</h2>
           <p className="text-sm font-medium text-muted">
-            Four-player Commander is the default.
+            {gameResultLabel}. Active keyboard player:{" "}
+            {activePlayer?.name ?? "Player 1"}.
           </p>
         </div>
         <SegmentedControl
@@ -340,6 +619,7 @@ export function LifeCounter() {
         />
         <Button
           className="justify-self-start lg:justify-self-end"
+          data-table-display-toggle
           onClick={() => setTableMode((current) => !current)}
           type="button"
           variant="secondary"
@@ -351,6 +631,51 @@ export function LifeCounter() {
           )}
           {tableMode ? "Exit table" : "Table display"}
         </Button>
+      </div>
+
+      <div className="grid gap-2 rounded-panel border border-border bg-surface p-3 shadow-sm md:grid-cols-[1fr_auto] md:items-center">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold"
+            data-testid="life-game-result"
+            role="status"
+          >
+            {gameResultLabel}
+          </span>
+          <span className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold">
+            <CircleDot className="mr-2 size-4 text-accent" aria-hidden="true" />
+            {activePlayer?.name ?? "Player 1"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          <Button onClick={resetGame} type="button" variant="secondary">
+            <RotateCcw className="size-4" aria-hidden="true" />
+            Reset
+          </Button>
+          <Button onClick={rematch} type="button" variant="secondary">
+            <Shuffle className="size-4" aria-hidden="true" />
+            Rematch
+          </Button>
+          <Button onClick={newGame} type="button" variant="secondary">
+            <Plus className="size-4" aria-hidden="true" />
+            New game
+          </Button>
+          <Button
+            onClick={() => setSharedResult("draw")}
+            type="button"
+            variant="secondary"
+          >
+            Draw
+          </Button>
+          <Button
+            onClick={() => setSharedResult("no-contest")}
+            type="button"
+            variant="secondary"
+          >
+            <Ban className="size-4" aria-hidden="true" />
+            No contest
+          </Button>
+        </div>
       </div>
 
       <div
@@ -368,8 +693,11 @@ export function LifeCounter() {
             <article
               className={cn(
                 "grid min-h-[34rem] grid-rows-[auto_auto_1fr_auto] rounded-panel border border-border bg-surface p-3 shadow-sm",
+                player.id === effectiveActivePlayerId && "ring-2 ring-focus",
+                player.status === "eliminated" && "opacity-75",
                 tableMode && "min-h-[32rem]",
               )}
+              aria-label={`${player.name}, ${playerStatusLabel(player.status)}, ${player.life} life, ${player.poison} poison`}
               data-testid="life-player-card"
               key={player.id}
             >
@@ -379,6 +707,26 @@ export function LifeCounter() {
                     Seat {player.seat}
                   </p>
                   <h2 className="truncate text-lg font-black">{player.name}</h2>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <span
+                      className={cn(
+                        "inline-flex h-7 items-center rounded-control border px-2 text-xs font-bold",
+                        player.status === "winner"
+                          ? "border-accent bg-accent text-accent-foreground"
+                          : player.status === "eliminated"
+                            ? "border-danger bg-red-50 text-danger"
+                            : "border-border bg-background text-muted",
+                      )}
+                      data-testid={`${player.id}-status`}
+                    >
+                      {playerStatusLabel(player.status)}
+                    </span>
+                    {player.id === effectiveActivePlayerId ? (
+                      <span className="inline-flex h-7 items-center rounded-control border border-focus bg-background px-2 text-xs font-bold">
+                        Keyboard
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <span
                   className={cn(
@@ -604,6 +952,7 @@ export function LifeCounter() {
                 <div className="grid grid-cols-3 gap-2">
                   {[-10, -5, -1].map((amount) => (
                     <Button
+                      aria-label={`Subtract ${Math.abs(amount)} life from ${player.name}`}
                       className="h-14 text-lg"
                       key={amount}
                       onClick={() => adjustLife(player.id, amount)}
@@ -616,6 +965,7 @@ export function LifeCounter() {
                 <div className="grid grid-cols-3 gap-2">
                   {[1, 5, 10].map((amount) => (
                     <Button
+                      aria-label={`Add ${amount} life to ${player.name}`}
                       className="h-14 text-lg"
                       key={amount}
                       onClick={() => adjustLife(player.id, amount)}
@@ -627,6 +977,7 @@ export function LifeCounter() {
                 </div>
                 <div className="grid grid-cols-[1fr_auto_auto] gap-2">
                   <Button
+                    aria-label={`Subtract poison from ${player.name}`}
                     onClick={() => adjustPoison(player.id, -1)}
                     variant="secondary"
                   >
@@ -647,6 +998,54 @@ export function LifeCounter() {
                   >
                     <RotateCcw className="size-4" aria-hidden="true" />
                   </IconButton>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    aria-label={`Set ${player.name} as active keyboard player`}
+                    onClick={() => {
+                      setActivePlayerId(player.id);
+                      setAnnouncement(
+                        `${player.name} selected for keyboard controls.`,
+                      );
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Active
+                  </Button>
+                  {player.status === "eliminated" ||
+                  player.status === "winner" ? (
+                    <Button
+                      aria-label={`Restore ${player.name}`}
+                      onClick={() => restorePlayer(player.id)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Restore
+                    </Button>
+                  ) : (
+                    <Button
+                      aria-label={`Eliminate ${player.name}`}
+                      onClick={() => eliminatePlayer(player.id)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Eliminate
+                    </Button>
+                  )}
+                  <Button
+                    aria-label={`Mark ${player.name} as winner`}
+                    onClick={() => markWinner(player.id)}
+                    size="sm"
+                    type="button"
+                    variant="primary"
+                  >
+                    <Trophy className="size-4" aria-hidden="true" />
+                    Winner
+                  </Button>
                 </div>
               </div>
             </article>

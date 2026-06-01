@@ -280,6 +280,10 @@ pnpm test
 pnpm test:e2e
 ```
 
+Next dev and Playwright can rewrite `apps/web/next-env.d.ts` to point at
+`.next/dev/types/routes.d.ts`. Restore the tracked `.next/types/routes.d.ts`
+import before committing unless the Next.js config intentionally changes.
+
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow.
 

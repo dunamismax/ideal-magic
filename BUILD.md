@@ -401,14 +401,14 @@ Schema rules:
 - [x] Add commander tax or cast count per commander.
 - [ ] Add monarch, initiative, city's blessing, day/night, experience,
   energy, rad, storm, treasure, floating mana, and custom counters.
-- [ ] Add elimination, winner, draw, and no-contest states.
+- [x] Add elimination, winner, draw, and no-contest states.
 - [ ] Add game timer, turn timer, active player, turn order, and turn
   count.
 - [ ] Store counter state and action history in Dexie.
 - [ ] Add undo and redo from the action log.
-- [ ] Add reset, rematch, and new game flows.
-- [ ] Add keyboard behavior for desktop play.
-- [ ] Add accessible labels, focus management, and screen-reader
+- [x] Add reset, rematch, and new game flows.
+- [x] Add keyboard behavior for desktop play.
+- [x] Add accessible labels, focus management, and screen-reader
   friendly state changes.
 - [ ] Verify reload persistence without a network connection.
 - [ ] Verify mobile, tablet, desktop, and wide desktop layouts with

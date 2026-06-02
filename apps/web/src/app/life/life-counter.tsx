@@ -3,6 +3,7 @@
 import {
   Ban,
   CircleDot,
+  Clock,
   Coins,
   Crown,
   Flag,
@@ -11,10 +12,13 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Pause,
   Plus,
+  Play,
   Radiation,
   RotateCcw,
   Shuffle,
+  SkipForward,
   Skull,
   Sparkles,
   Swords,
@@ -236,11 +240,29 @@ function playerStatusLabel(status: PlayerStatus) {
   return "Active";
 }
 
+function formatDuration(totalSeconds: number) {
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  const paddedSeconds = String(seconds).padStart(2, "0");
+  const paddedMinutes = String(minutes).padStart(2, "0");
+
+  if (hours > 0) {
+    return `${hours}:${paddedMinutes}:${paddedSeconds}`;
+  }
+
+  return `${paddedMinutes}:${paddedSeconds}`;
+}
+
 export function LifeCounter() {
   const [startingLife, setStartingLife] = useState(40);
   const [playerCount, setPlayerCount] = useState(4);
   const [tableMode, setTableMode] = useState(false);
   const [activePlayerId, setActivePlayerId] = useState("player-1");
+  const [gameElapsedSeconds, setGameElapsedSeconds] = useState(0);
+  const [turnElapsedSeconds, setTurnElapsedSeconds] = useState(0);
+  const [timersRunning, setTimersRunning] = useState(false);
+  const [turnCount, setTurnCount] = useState(1);
   const [monarchPlayerId, setMonarchPlayerId] = useState<string | null>(null);
   const [initiativePlayerId, setInitiativePlayerId] = useState<string | null>(
     null,
@@ -289,6 +311,9 @@ export function LifeCounter() {
         : gameResult === "no-contest"
           ? "No contest"
           : "In progress";
+  const turnOrderLabel = visiblePlayers
+    .map((player) => player.name)
+    .join(" -> ");
 
   useEffect(() => {
     if (tableMode) {
@@ -297,6 +322,19 @@ export function LifeCounter() {
         ?.focus();
     }
   }, [tableMode]);
+
+  useEffect(() => {
+    if (!timersRunning) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setGameElapsedSeconds((current) => current + 1);
+      setTurnElapsedSeconds((current) => current + 1);
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [timersRunning]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -313,6 +351,7 @@ export function LifeCounter() {
         const nextPlayer = visiblePlayers[numericSeat - 1];
         event.preventDefault();
         setActivePlayerId(nextPlayer.id);
+        setTurnElapsedSeconds(0);
         setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
         return;
       }
@@ -331,6 +370,7 @@ export function LifeCounter() {
           visiblePlayers.length;
         const nextPlayer = visiblePlayers[nextIndex];
         setActivePlayerId(nextPlayer.id);
+        setTurnElapsedSeconds(0);
         setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
         return;
       }
@@ -365,6 +405,61 @@ export function LifeCounter() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [effectiveActivePlayerId, visiblePlayers]);
+
+  function resetTurnTracking(nextActivePlayerId = visiblePlayers[0]?.id) {
+    setTimersRunning(false);
+    setGameElapsedSeconds(0);
+    setTurnElapsedSeconds(0);
+    setTurnCount(1);
+
+    if (nextActivePlayerId) {
+      setActivePlayerId(nextActivePlayerId);
+    }
+  }
+
+  function toggleTimers() {
+    setTimersRunning((current) => {
+      const nextRunning = !current;
+      setAnnouncement(nextRunning ? "Timers started." : "Timers paused.");
+      return nextRunning;
+    });
+  }
+
+  function resetTimers() {
+    resetTurnTracking();
+    setAnnouncement("Timers reset.");
+  }
+
+  function resetTurnTimer() {
+    setTurnElapsedSeconds(0);
+    setAnnouncement("Turn timer reset.");
+  }
+
+  function advanceTurn() {
+    const activeTurnPlayers = visiblePlayers.filter(
+      (player) => player.status === "active",
+    );
+    const turnPlayers =
+      activeTurnPlayers.length > 0 ? activeTurnPlayers : visiblePlayers;
+
+    if (turnPlayers.length === 0) {
+      return;
+    }
+
+    const currentIndex = turnPlayers.findIndex(
+      (player) => player.id === effectiveActivePlayerId,
+    );
+    const nextIndex =
+      currentIndex === -1 ? 0 : (currentIndex + 1) % turnPlayers.length;
+    const nextPlayer = turnPlayers[nextIndex];
+    const nextTurnCount =
+      currentIndex !== -1 && nextIndex === 0 ? turnCount + 1 : turnCount;
+
+    setActivePlayerId(nextPlayer.id);
+    setTurnElapsedSeconds(0);
+    setTurnCount(nextTurnCount);
+    setAnnouncement(`${nextPlayer.name} is active for turn ${nextTurnCount}.`);
+  }
 
   function updatePlayer(id: string, patch: Partial<Player>) {
     setPlayers((current) =>
@@ -751,6 +846,7 @@ export function LifeCounter() {
     setInitiativePlayerId(null);
     setDayNight("unset");
     setStormCount(0);
+    resetTurnTracking();
     setPlayers((current) =>
       current.map((player) => resetPlayerCounters(player, nextStartingLife)),
     );
@@ -812,6 +908,7 @@ export function LifeCounter() {
     setInitiativePlayerId(null);
     setDayNight("unset");
     setStormCount(0);
+    resetTurnTracking();
     setPlayers((current) =>
       current.map((player) => resetPlayerCounters(player, startingLife)),
     );
@@ -826,6 +923,10 @@ export function LifeCounter() {
     setInitiativePlayerId(null);
     setDayNight("unset");
     setStormCount(0);
+    setTimersRunning(false);
+    setGameElapsedSeconds(0);
+    setTurnElapsedSeconds(0);
+    setTurnCount(1);
     setPlayers((current) => {
       const visible = current.slice(0, playerCount);
       const hidden = current.slice(playerCount);
@@ -852,6 +953,10 @@ export function LifeCounter() {
     setInitiativePlayerId(null);
     setDayNight("unset");
     setStormCount(0);
+    setTimersRunning(false);
+    setGameElapsedSeconds(0);
+    setTurnElapsedSeconds(0);
+    setTurnCount(1);
     setGameResult("in-progress");
     setPlayers(createPlayers(40));
     setActivePlayerId("player-1");
@@ -897,6 +1002,7 @@ export function LifeCounter() {
       (player) => player.id === playerId,
     );
     setGameResult("winner");
+    setTimersRunning(false);
     setPlayers((current) =>
       current.map((player) =>
         player.id === playerId
@@ -917,6 +1023,7 @@ export function LifeCounter() {
     nextResult: Extract<GameResult, "draw" | "no-contest">,
   ) {
     setGameResult(nextResult);
+    setTimersRunning(false);
     setPlayers((current) =>
       current.map((player) =>
         visiblePlayers.some((visiblePlayer) => visiblePlayer.id === player.id)
@@ -988,6 +1095,12 @@ export function LifeCounter() {
             <CircleDot className="mr-2 size-4 text-accent" aria-hidden="true" />
             {activePlayer?.name ?? "Player 1"}
           </span>
+          <span
+            className="inline-flex h-8 items-center rounded-control border border-border bg-background px-3 text-sm font-bold"
+            data-testid="turn-count"
+          >
+            Turn {turnCount}
+          </span>
         </div>
         <div className="flex flex-wrap gap-2 md:justify-end">
           <Button onClick={resetGame} type="button" variant="secondary">
@@ -1016,6 +1129,94 @@ export function LifeCounter() {
           >
             <Ban className="size-4" aria-hidden="true" />
             No contest
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.25fr_auto] xl:items-center">
+        <div className="grid gap-1 rounded-control border border-border bg-background p-3">
+          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase text-muted">
+            <Clock className="size-4" aria-hidden="true" />
+            Game timer
+          </p>
+          <p
+            className="text-3xl font-black tabular-nums"
+            data-testid="game-timer"
+          >
+            {formatDuration(gameElapsedSeconds)}
+          </p>
+        </div>
+        <div className="grid gap-1 rounded-control border border-border bg-background p-3">
+          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase text-muted">
+            <Clock className="size-4" aria-hidden="true" />
+            Turn timer
+          </p>
+          <p
+            className="text-3xl font-black tabular-nums"
+            data-testid="turn-timer"
+          >
+            {formatDuration(turnElapsedSeconds)}
+          </p>
+        </div>
+        <div className="grid gap-2 rounded-control border border-border bg-background p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase text-muted">
+              Active turn
+            </span>
+            <span
+              className="rounded-control border border-focus px-2 py-1 text-sm font-black"
+              data-testid="active-turn-player"
+            >
+              {activePlayer?.name ?? "Player 1"}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1" data-testid="turn-order">
+            {visiblePlayers.map((player, index) => (
+              <span
+                className={cn(
+                  "rounded-control border px-2 py-1 text-xs font-bold",
+                  player.id === effectiveActivePlayerId
+                    ? "border-focus bg-surface-strong"
+                    : "border-border",
+                )}
+                key={player.id}
+                title={turnOrderLabel}
+              >
+                {index + 1}. {player.name}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-1">
+          <Button
+            aria-label={timersRunning ? "Pause timers" : "Start timers"}
+            onClick={toggleTimers}
+            type="button"
+            variant={timersRunning ? "primary" : "secondary"}
+          >
+            {timersRunning ? (
+              <Pause className="size-4" aria-hidden="true" />
+            ) : (
+              <Play className="size-4" aria-hidden="true" />
+            )}
+            {timersRunning ? "Pause" : "Start"}
+          </Button>
+          <Button onClick={advanceTurn} type="button" variant="secondary">
+            <SkipForward className="size-4" aria-hidden="true" />
+            Next turn
+          </Button>
+          <Button onClick={resetTurnTimer} type="button" variant="secondary">
+            <RotateCcw className="size-4" aria-hidden="true" />
+            Turn timer
+          </Button>
+          <Button
+            aria-label="Reset timers"
+            onClick={resetTimers}
+            type="button"
+            variant="secondary"
+          >
+            <RotateCcw className="size-4" aria-hidden="true" />
+            Timers
           </Button>
         </div>
       </div>
@@ -1681,6 +1882,7 @@ export function LifeCounter() {
                     aria-label={`Set ${player.name} as active keyboard player`}
                     onClick={() => {
                       setActivePlayerId(player.id);
+                      setTurnElapsedSeconds(0);
                       setAnnouncement(
                         `${player.name} selected for keyboard controls.`,
                       );

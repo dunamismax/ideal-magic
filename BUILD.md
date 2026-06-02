@@ -402,7 +402,7 @@ Schema rules:
 - [x] Add monarch, initiative, city's blessing, day/night, experience,
   energy, rad, storm, treasure, floating mana, and custom counters.
 - [x] Add elimination, winner, draw, and no-contest states.
-- [ ] Add game timer, turn timer, active player, turn order, and turn
+- [x] Add game timer, turn timer, active player, turn order, and turn
   count.
 - [ ] Store counter state and action history in Dexie.
 - [ ] Add undo and redo from the action log.

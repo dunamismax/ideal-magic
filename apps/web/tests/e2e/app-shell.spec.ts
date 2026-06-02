@@ -295,6 +295,72 @@ test("standalone life counter supports desktop keyboard play", async ({
   await expect(thirdPlayer).toContainText("Keyboard");
 });
 
+test("standalone life counter tracks timers and turn order", async ({
+  page,
+}) => {
+  await page.goto("/life");
+  await page.clock.install({
+    time: new Date("2026-01-01T00:00:00Z"),
+  });
+
+  await expect(page.getByTestId("game-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("active-turn-player")).toHaveText("Player 1");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
+  await expect(page.getByTestId("turn-order")).toContainText("1. Player 1");
+
+  await page.getByRole("button", { name: "Start timers" }).click();
+  await page.clock.fastForward(3000);
+  await expect(page.getByTestId("game-timer")).toHaveText("00:03");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:03");
+
+  await page.getByRole("button", { name: "Pause timers" }).click();
+  await page.clock.fastForward(2000);
+  await expect(page.getByTestId("game-timer")).toHaveText("00:03");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:03");
+
+  await page.getByRole("button", { name: "Start timers" }).click();
+  await page.clock.fastForward(1000);
+  await expect(page.getByTestId("game-timer")).toHaveText("00:04");
+
+  await page.getByRole("button", { name: "Next turn" }).click();
+  await expect(page.getByTestId("active-turn-player")).toHaveText("Player 2");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
+
+  await page.clock.fastForward(2000);
+  await expect(page.getByTestId("game-timer")).toHaveText("00:06");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:02");
+
+  await page.getByRole("button", { name: "Turn timer" }).click();
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+
+  await page.getByRole("button", { name: "Next turn" }).click();
+  await page.getByRole("button", { name: "Next turn" }).click();
+  await page.getByRole("button", { name: "Next turn" }).click();
+  await expect(page.getByTestId("active-turn-player")).toHaveText("Player 1");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 2");
+
+  await page.getByRole("button", { name: "Reset timers" }).click();
+  await expect(page.getByTestId("game-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
+
+  await page.getByRole("button", { name: "Start timers" }).click();
+  await page.clock.fastForward(1000);
+  await page.getByRole("button", { name: "Rematch" }).click();
+  await expect(page.getByTestId("game-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
+
+  await page.getByRole("button", { name: "Start timers" }).click();
+  await page.clock.fastForward(1000);
+  await page.getByRole("button", { name: "New game" }).click();
+  await expect(page.getByTestId("game-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-timer")).toHaveText("00:00");
+  await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
+});
+
 test("standalone life counter opens a table display overlay", async ({
   page,
 }) => {

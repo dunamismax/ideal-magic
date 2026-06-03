@@ -374,18 +374,29 @@ Schema rules:
 
 ## Phase 4 - Drizzle Schema And Core Persistence
 
-- [ ] Translate the preserved Rust-era schema concepts into Drizzle
+- [x] Translate the preserved Rust-era schema concepts into Drizzle
   schema files.
-- [ ] Generate Drizzle migrations for the new TypeScript schema.
+- [x] Generate Drizzle migrations for the new TypeScript schema.
 - [ ] Add seed data with fake non-sensitive playgroups, events, decks,
   pods, and games.
 - [ ] Add database helpers for transactions, pagination, and scoped
   queries.
 - [ ] Add public-safe query paths for tokenized event and guest pages.
-- [ ] Add schema tests for constraints, indexes, and cascade behavior.
+- [x] Add schema tests for constraints, indexes, and cascade behavior.
 - [ ] Add migration smoke tests against real Postgres in Docker Compose.
 - [ ] Document how old SQLx migrations map to the new Drizzle schema.
 - [ ] Keep app runtime credentials separate from migration credentials.
+
+Current Phase 4 groundwork defines the TypeScript rewrite schema in
+Drizzle and generates the first migration under `apps/web/src/db`. It
+covers Better Auth-shaped identity tables, groups, invites, events,
+RSVPs, locations, lightweight decks, deck declarations, pods, games,
+matchup history, and action-log-based life-counter persistence. It adds
+PGlite-backed integration tests for migration application, representative
+constraints, indexes, and cascade behavior. It does not yet wire runtime
+routes to Postgres, add seed data, prove Docker/PostgreSQL migrations in
+this environment, implement public-safe guest query paths, or complete
+auth/server save behavior.
 
 ## Phase 5 - Life Counter V1: Offline Standalone
 
@@ -590,7 +601,7 @@ pnpm test:e2e
 Future database gate once Drizzle exists:
 
 ```sh
-pnpm drizzle-kit check
+pnpm db:check
 docker compose up -d postgres
 pnpm db:migrate
 pnpm db:test

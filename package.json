@@ -10,6 +10,11 @@
     "typecheck": "pnpm --filter @pod-tracker/web typecheck",
     "test": "pnpm --filter @pod-tracker/web test",
     "test:integration": "pnpm --filter @pod-tracker/web test:integration",
-    "test:e2e": "pnpm --filter @pod-tracker/web test:e2e"
+    "test:e2e": "pnpm --filter @pod-tracker/web test:e2e",
+    "drizzle-kit": "pnpm --filter @pod-tracker/web drizzle-kit",
+    "db:generate": "pnpm --filter @pod-tracker/web db:generate",
+    "db:check": "pnpm --filter @pod-tracker/web db:check",
+    "db:migrate": "pnpm --filter @pod-tracker/web db:migrate",
+    "db:test": "pnpm --filter @pod-tracker/web db:test"
   }
 }

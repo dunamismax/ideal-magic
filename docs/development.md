@@ -75,15 +75,25 @@ credentials.
 Drizzle migrations are the target schema history for the TypeScript app.
 SQLx migrations remain the Rust V1 schema history until cutover.
 
+The rewrite schema now lives in `apps/web/src/db/schema`. The generated
+Drizzle migration history lives in `apps/web/src/db/migrations`.
+Database helpers are intentionally not wired into app routes until auth,
+authorization, and server persistence flows exist.
+
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow:
 
 ```sh
-pnpm drizzle-kit check
+pnpm db:check
 docker compose up -d postgres
 pnpm db:migrate
 pnpm db:test
 ```
+
+`pnpm db:test` also runs an in-memory migration smoke with PGlite so
+constraint, index, and cascade coverage can run on machines where Docker
+or `psql` is not installed. That does not replace the Docker/PostgreSQL
+gate before persistence features are claimed complete.
 
 ## Rust V1 Development
 

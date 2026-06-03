@@ -35,11 +35,14 @@ pnpm db:generate
 pnpm db:check
 docker compose up -d postgres
 pnpm db:migrate
+pnpm db:seed
 pnpm db:test
 ```
 
 Set `POD_TRACKER_MIGRATION_DATABASE_URL` for migration/admin work and
-`POD_TRACKER_DATABASE_URL` for app runtime database access.
+`POD_TRACKER_DATABASE_URL` for app runtime database access. The seed
+command is idempotent and inserts only fake `example.test` identities,
+synthetic playgroup planning data, and a clearly fake location.
 
 This app is intentionally side-by-side with the Rust V1 workspace until
 the TypeScript core flows are implemented, verified, and approved for

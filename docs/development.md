@@ -77,8 +77,10 @@ SQLx migrations remain the Rust V1 schema history until cutover.
 
 The rewrite schema now lives in `apps/web/src/db/schema`. The generated
 Drizzle migration history lives in `apps/web/src/db/migrations`.
-Database helpers are intentionally not wired into app routes until auth,
-authorization, and server persistence flows exist.
+Development seed data lives in `apps/web/src/db/seed.ts` and uses only
+fake `example.test` identities and synthetic locations. Database helpers
+are intentionally not wired into app routes until auth, authorization,
+and server persistence flows exist.
 
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow:
@@ -87,6 +89,7 @@ documented Docker Compose workflow:
 pnpm db:check
 docker compose up -d postgres
 pnpm db:migrate
+pnpm db:seed
 pnpm db:test
 ```
 

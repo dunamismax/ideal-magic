@@ -377,9 +377,9 @@ Schema rules:
 - [x] Translate the preserved Rust-era schema concepts into Drizzle
   schema files.
 - [x] Generate Drizzle migrations for the new TypeScript schema.
-- [ ] Add seed data with fake non-sensitive playgroups, events, decks,
+- [x] Add seed data with fake non-sensitive playgroups, events, decks,
   pods, and games.
-- [ ] Add database helpers for transactions, pagination, and scoped
+- [x] Add database helpers for transactions, pagination, and scoped
   queries.
 - [ ] Add public-safe query paths for tokenized event and guest pages.
 - [x] Add schema tests for constraints, indexes, and cascade behavior.
@@ -392,11 +392,14 @@ Drizzle and generates the first migration under `apps/web/src/db`. It
 covers Better Auth-shaped identity tables, groups, invites, events,
 RSVPs, locations, lightweight decks, deck declarations, pods, games,
 matchup history, and action-log-based life-counter persistence. It adds
-PGlite-backed integration tests for migration application, representative
-constraints, indexes, and cascade behavior. It does not yet wire runtime
-routes to Postgres, add seed data, prove Docker/PostgreSQL migrations in
-this environment, implement public-safe guest query paths, or complete
-auth/server save behavior.
+fake non-sensitive development seed data plus transaction, pagination,
+and scoped event-planning query helpers. PGlite-backed integration tests
+cover migration application, representative constraints, indexes,
+cascade behavior, seed idempotency, scoped event counts, upcoming-event
+pagination, and host-address redaction. It does not yet wire runtime
+routes to Postgres, prove Docker/PostgreSQL migrations in this
+environment, implement tokenized public-safe guest query paths, or
+complete auth/server save behavior.
 
 ## Phase 5 - Life Counter V1: Offline Standalone
 

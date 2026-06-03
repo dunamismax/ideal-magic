@@ -15,6 +15,7 @@
     "db:generate": "pnpm --filter @pod-tracker/web db:generate",
     "db:check": "pnpm --filter @pod-tracker/web db:check",
     "db:migrate": "pnpm --filter @pod-tracker/web db:migrate",
+    "db:seed": "pnpm --filter @pod-tracker/web db:seed",
     "db:test": "pnpm --filter @pod-tracker/web db:test"
   }
 }

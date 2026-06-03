@@ -33,14 +33,14 @@ function getDatabase() {
   return database;
 }
 
-export async function loadStandaloneLifeCounterSession() {
+export async function loadLifeCounterSession(sessionId: string) {
   const db = getDatabase();
 
   if (!db) {
     return null;
   }
 
-  const session = await db.sessions.get(STANDALONE_LIFE_SESSION_ID);
+  const session = await db.sessions.get(sessionId);
 
   if (!session || session.schemaVersion !== LIFE_COUNTER_SCHEMA_VERSION) {
     return null;
@@ -49,9 +49,7 @@ export async function loadStandaloneLifeCounterSession() {
   return stripPersistenceMetadata(session);
 }
 
-export async function saveStandaloneLifeCounterSession(
-  session: LifeCounterSession,
-) {
+export async function saveLifeCounterSession(session: LifeCounterSession) {
   const db = getDatabase();
 
   if (!db) {
@@ -62,6 +60,16 @@ export async function saveStandaloneLifeCounterSession(
     ...session,
     persistedAt: new Date().toISOString(),
   });
+}
+
+export async function loadStandaloneLifeCounterSession() {
+  return loadLifeCounterSession(STANDALONE_LIFE_SESSION_ID);
+}
+
+export async function saveStandaloneLifeCounterSession(
+  session: LifeCounterSession,
+) {
+  return saveLifeCounterSession(session);
 }
 
 function stripPersistenceMetadata(

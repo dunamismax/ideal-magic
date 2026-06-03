@@ -446,6 +446,66 @@ test("standalone life counter opens a table display overlay", async ({
   expect(box?.height).toBeGreaterThanOrEqual(760);
 });
 
+test("event-linked life counter imports event participants and decks", async ({
+  page,
+}) => {
+  await page.goto("/events/commander-night-demo/life");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Wednesday Commander Night Life Counter",
+    }),
+  ).toBeVisible();
+  await expect(page.getByTestId("linked-life-status")).toContainText(
+    "6 event players imported",
+  );
+  await expect(page.getByTestId("life-player-card")).toHaveCount(6);
+
+  const firstPlayer = page.getByTestId("life-player-card").first();
+  await expect(firstPlayer.getByLabel("Player name")).toHaveValue("Nora");
+  await expect(
+    firstPlayer.getByLabel("Commander 1", { exact: true }),
+  ).toHaveValue("Muldrotha, the Gravetide");
+  await expect(firstPlayer.getByLabel("Deck label")).toHaveValue(
+    "Graveyard Value",
+  );
+
+  const partnerPlayer = page.getByTestId("life-player-card").nth(4);
+  await expect(
+    partnerPlayer.getByLabel("Commander 1", { exact: true }),
+  ).toHaveValue("Kraum, Ludevic's Opus");
+  await expect(
+    partnerPlayer.getByLabel("Commander 2", { exact: true }),
+  ).toHaveValue("Tymna the Weaver");
+});
+
+test("pod-linked life counter imports published pod seats", async ({
+  page,
+}) => {
+  await page.goto("/events/commander-night-demo/pods/pod-alpha/life");
+
+  await expect(
+    page.getByRole("heading", { name: "Pod Alpha Life Counter" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("linked-life-status")).toContainText(
+    "4 published pod seats imported",
+  );
+  await expect(page.getByTestId("life-player-card")).toHaveCount(4);
+
+  await expect(page.getByTestId("life-player-card").nth(0)).toContainText(
+    "Seat North",
+  );
+  await expect(
+    page.getByTestId("life-player-card").nth(0).getByLabel("Player name"),
+  ).toHaveValue("Nora");
+  await expect(page.getByTestId("life-player-card").nth(3)).toContainText(
+    "Seat West",
+  );
+  await expect(
+    page.getByTestId("life-player-card").nth(3).getByLabel("Player name"),
+  ).toHaveValue("Sol");
+});
+
 test("health and readiness probes return ok", async ({ request }) => {
   await expect((await request.get("/healthz")).ok()).toBeTruthy();
   await expect((await request.get("/readyz")).ok()).toBeTruthy();

@@ -1,21 +1,20 @@
-import type { ComponentProps, ReactNode } from "react";
+import { forwardRef, type ComponentProps, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function IconButton({
-  label,
-  className,
-  children,
-  ...props
-}: Omit<ComponentProps<typeof Button>, "size" | "children"> & {
-  label: string;
-  children: ReactNode;
-}) {
+export const IconButton = forwardRef<
+  HTMLButtonElement,
+  Omit<ComponentProps<typeof Button>, "size" | "children"> & {
+    label: string;
+    children: ReactNode;
+  }
+>(({ label, className, children, ...props }, ref) => {
   return (
     <Button
       aria-label={label}
       className={cn("relative", className)}
+      ref={ref}
       size="icon"
       title={label}
       {...props}
@@ -23,4 +22,5 @@ export function IconButton({
       {children}
     </Button>
   );
-}
+});
+IconButton.displayName = "IconButton";

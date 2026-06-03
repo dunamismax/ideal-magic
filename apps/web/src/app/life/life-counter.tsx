@@ -37,8 +37,8 @@ import { fieldControlClassName, FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
-  loadStandaloneLifeCounterSession,
-  saveStandaloneLifeCounterSession,
+  loadLifeCounterSession,
+  saveLifeCounterSession,
 } from "@/features/life/local-session-store";
 import {
   canRedoLifeCounterAction,
@@ -56,6 +56,7 @@ import {
   type DayNightState,
   type GameResult,
   type LifeCounterAction,
+  type LifeCounterSession,
   type LifeCounterSnapshot,
   type ManaSymbol,
   type Player,
@@ -64,6 +65,11 @@ import {
   type TableRole,
 } from "@/features/life/session";
 import { cn } from "@/lib/utils";
+
+type LifeCounterProps = {
+  initialSession?: LifeCounterSession;
+  linkedStatusLabel?: string;
+};
 
 type CommanderSource = {
   commander: Commander;
@@ -166,11 +172,14 @@ function formatDuration(totalSeconds: number) {
   return `${paddedMinutes}:${paddedSeconds}`;
 }
 
-export function LifeCounter() {
+export function LifeCounter({
+  initialSession,
+  linkedStatusLabel,
+}: LifeCounterProps = {}) {
   const [session, dispatch] = useReducer(
     lifeCounterReducer,
-    undefined,
-    createInitialLifeCounterSession,
+    initialSession,
+    (providedSession) => providedSession ?? createInitialLifeCounterSession(),
   );
   const [tableMode, setTableMode] = useState(false);
   const [announcement, setAnnouncement] = useState("Local life counter ready.");
@@ -244,7 +253,7 @@ export function LifeCounter() {
   useEffect(() => {
     let cancelled = false;
 
-    loadStandaloneLifeCounterSession()
+    loadLifeCounterSession(session.id)
       .then((storedSession) => {
         if (cancelled) {
           return;
@@ -267,14 +276,14 @@ export function LifeCounter() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session.id]);
 
   useEffect(() => {
     if (!localStoreReady) {
       return;
     }
 
-    saveStandaloneLifeCounterSession(session).catch(() => {
+    saveLifeCounterSession(session).catch(() => {
       setAnnouncement("Local session could not be saved.");
     });
   }, [localStoreReady, session]);
@@ -1080,7 +1089,14 @@ export function LifeCounter() {
     const before = currentSnapshot();
     const after = {
       ...before,
-      ...getLifeCounterSnapshot(createInitialLifeCounterSession(now())),
+      ...getLifeCounterSnapshot(
+        createInitialLifeCounterSession(now(), {
+          id: session.id,
+          snapshot: initialSession
+            ? getLifeCounterSnapshot(initialSession)
+            : undefined,
+        }),
+      ),
     };
 
     setTableMode(false);
@@ -1215,6 +1231,14 @@ export function LifeCounter() {
             {gameResultLabel}. Active keyboard player:{" "}
             {activePlayer?.name ?? "Player 1"}.
           </p>
+          {linkedStatusLabel ? (
+            <p
+              className="text-xs font-bold text-accent"
+              data-testid="linked-life-status"
+            >
+              {linkedStatusLabel}
+            </p>
+          ) : null}
         </div>
         <SegmentedControl
           className="grid-cols-7"

@@ -328,10 +328,14 @@ export function createInitialLifeCounterSnapshot(
 
 export function createInitialLifeCounterSession(
   now = new Date().toISOString(),
+  options: {
+    id?: string;
+    snapshot?: LifeCounterSnapshot;
+  } = {},
 ): LifeCounterSession {
   return {
-    ...createInitialLifeCounterSnapshot(),
-    id: STANDALONE_LIFE_SESSION_ID,
+    ...(options.snapshot ?? createInitialLifeCounterSnapshot()),
+    id: options.id ?? STANDALONE_LIFE_SESSION_ID,
     schemaVersion: LIFE_COUNTER_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,

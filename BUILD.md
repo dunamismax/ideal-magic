@@ -417,10 +417,10 @@ Schema rules:
 
 ## Phase 6 - Life Counter V2: Event And Pod Integration
 
-- [ ] Build `/events/[eventId]/life`.
-- [ ] Build `/events/[eventId]/pods/[podId]/life`.
-- [ ] Import event participants and declared decks into a counter setup.
-- [ ] Import published pod seats into a counter setup.
+- [x] Build `/events/[eventId]/life`.
+- [x] Build `/events/[eventId]/pods/[podId]/life`.
+- [x] Import event participants and declared decks into a counter setup.
+- [x] Import published pod seats into a counter setup.
 - [ ] Allow a standalone local session to be attached to an event when
   the user logs in and has permission.
 - [ ] Save counter snapshots to Postgres when explicitly linked to an
@@ -433,6 +433,12 @@ Schema rules:
   scoped safely.
 - [ ] Verify linked counter setup, reload, offline behavior, and game
   save with Playwright.
+
+Current Phase 6 foundation uses deterministic local fixture data in the
+TypeScript app to prove linked route shape, setup import, and local Dexie
+session separation. It does not implement authenticated event access,
+Postgres snapshot save, server sync, conflict handling, or game-log
+conversion.
 
 ## Phase 7 - Groups And Events
 

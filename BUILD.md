@@ -431,14 +431,18 @@ Schema rules:
   server state silently.
 - [ ] Add a read-only table display or spectator view if it can be
   scoped safely.
-- [ ] Verify linked counter setup, reload, offline behavior, and game
-  save with Playwright.
+- [x] Verify linked counter setup, reload, and post-load local behavior
+  with network requests blocked using Playwright.
+- [ ] Verify linked game save with Playwright once Postgres save and
+  game-log conversion exist.
 
 Current Phase 6 foundation uses deterministic local fixture data in the
 TypeScript app to prove linked route shape, setup import, and local Dexie
 session separation. It does not implement authenticated event access,
 Postgres snapshot save, server sync, conflict handling, or game-log
-conversion.
+conversion. Linked counters now show explicit local save state and
+local-only scope indicators so players can see that the session has not
+been saved to the group.
 
 ## Phase 7 - Groups And Events
 
@@ -521,7 +525,7 @@ conversion.
 
 - [ ] Define the Dexie schema for local counter sessions and pending
   sync actions.
-- [ ] Add clear local-only versus saved-to-group state indicators.
+- [x] Add clear local-only versus saved-to-group state indicators.
 - [ ] Add conflict handling for event-linked counter sessions.
 - [ ] Add PWA manifest and install behavior if it improves live play.
 - [ ] Verify offline launch for previously loaded life counter assets.

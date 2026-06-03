@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const appNetworkRequestTypes = new Set(["document", "fetch", "xhr"]);
+
 test("app shell exposes primary Commander workflows", async ({ page }) => {
   await page.goto("/");
 
@@ -133,7 +135,9 @@ test("standalone life counter restores local Dexie state after refresh", async (
 
   let blockedRequests = 0;
   await page.route("**/*", async (route) => {
-    blockedRequests += 1;
+    if (appNetworkRequestTypes.has(route.request().resourceType())) {
+      blockedRequests += 1;
+    }
     await route.abort();
   });
 
@@ -479,6 +483,58 @@ test("event-linked life counter imports event participants and decks", async ({
   ).toHaveValue("Tymna the Weaver");
 });
 
+test("event-linked life counter restores keyed local state after refresh", async ({
+  page,
+}) => {
+  await page.goto("/events/commander-night-demo/life");
+
+  await expect(page.getByTestId("life-save-status")).toHaveText(
+    "Saved locally",
+  );
+  await expect(page.getByTestId("life-sync-scope")).toHaveText(
+    "Local only - not saved to group",
+  );
+
+  const firstPlayer = page.getByTestId("life-player-card").first();
+
+  let blockedRequests = 0;
+  await page.route("**/*", async (route) => {
+    if (appNetworkRequestTypes.has(route.request().resourceType())) {
+      blockedRequests += 1;
+    }
+    await route.abort();
+  });
+
+  await firstPlayer
+    .getByRole("button", { name: "Subtract 5 life from Nora" })
+    .click();
+  await page.getByRole("button", { name: "Add poison to Nora" }).click();
+  await expect(firstPlayer).toContainText("35");
+  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+  expect(blockedRequests).toBe(0);
+
+  await page.unroute("**/*");
+  await page.reload();
+
+  const restoredFirstPlayer = page.getByTestId("life-player-card").first();
+  await expect(
+    page.getByRole("heading", {
+      name: "Wednesday Commander Night Life Counter",
+    }),
+  ).toBeVisible();
+  await expect(
+    restoredFirstPlayer.getByLabel("Commander 1", { exact: true }),
+  ).toHaveValue("Muldrotha, the Gravetide");
+  await expect(restoredFirstPlayer).toContainText("35");
+  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+  await expect(page.getByTestId("life-save-status")).toHaveText(
+    "Saved locally",
+  );
+  await expect(page.getByTestId("life-sync-scope")).toHaveText(
+    "Local only - not saved to group",
+  );
+});
+
 test("pod-linked life counter imports published pod seats", async ({
   page,
 }) => {
@@ -504,6 +560,52 @@ test("pod-linked life counter imports published pod seats", async ({
   await expect(
     page.getByTestId("life-player-card").nth(3).getByLabel("Player name"),
   ).toHaveValue("Sol");
+});
+
+test("pod-linked life counter restores keyed local state after refresh", async ({
+  page,
+}) => {
+  await page.goto("/events/commander-night-demo/pods/pod-alpha/life");
+
+  await expect(page.getByTestId("life-save-status")).toHaveText(
+    "Saved locally",
+  );
+  await expect(page.getByTestId("life-sync-scope")).toHaveText(
+    "Local only - not saved to group",
+  );
+
+  const westSeat = page.getByTestId("life-player-card").nth(3);
+
+  let blockedRequests = 0;
+  await page.route("**/*", async (route) => {
+    if (appNetworkRequestTypes.has(route.request().resourceType())) {
+      blockedRequests += 1;
+    }
+    await route.abort();
+  });
+
+  await westSeat
+    .getByRole("button", { name: "Subtract 10 life from Sol" })
+    .click();
+  await expect(westSeat).toContainText("30");
+  expect(blockedRequests).toBe(0);
+
+  await page.unroute("**/*");
+  await page.reload();
+
+  const restoredWestSeat = page.getByTestId("life-player-card").nth(3);
+  await expect(
+    page.getByRole("heading", { name: "Pod Alpha Life Counter" }),
+  ).toBeVisible();
+  await expect(restoredWestSeat).toContainText("Seat West");
+  await expect(restoredWestSeat.getByLabel("Player name")).toHaveValue("Sol");
+  await expect(restoredWestSeat).toContainText("30");
+  await expect(page.getByTestId("life-save-status")).toHaveText(
+    "Saved locally",
+  );
+  await expect(page.getByTestId("life-sync-scope")).toHaveText(
+    "Local only - not saved to group",
+  );
 });
 
 test("health and readiness probes return ok", async ({ request }) => {

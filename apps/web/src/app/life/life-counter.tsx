@@ -71,6 +71,8 @@ type LifeCounterProps = {
   linkedStatusLabel?: string;
 };
 
+type LocalSaveState = "checking" | "saved" | "unavailable" | "error";
+
 type CommanderSource = {
   commander: Commander;
   commanderNumber: number;
@@ -176,6 +178,7 @@ export function LifeCounter({
   initialSession,
   linkedStatusLabel,
 }: LifeCounterProps = {}) {
+  const isLinkedSession = Boolean(linkedStatusLabel);
   const [session, dispatch] = useReducer(
     lifeCounterReducer,
     initialSession,
@@ -184,6 +187,8 @@ export function LifeCounter({
   const [tableMode, setTableMode] = useState(false);
   const [announcement, setAnnouncement] = useState("Local life counter ready.");
   const [localStoreReady, setLocalStoreReady] = useState(false);
+  const [localSaveState, setLocalSaveState] =
+    useState<LocalSaveState>("checking");
   const {
     activePlayerId,
     dayNight,
@@ -241,6 +246,17 @@ export function LifeCounter({
   const turnOrderLabel = visiblePlayers
     .map((player) => player.name)
     .join(" -> ");
+  const localSaveLabel =
+    localSaveState === "checking"
+      ? "Checking local save"
+      : localSaveState === "saved"
+        ? "Saved locally"
+        : localSaveState === "unavailable"
+          ? "Local storage unavailable"
+          : "Local save failed";
+  const syncScopeLabel = isLinkedSession
+    ? "Local only - not saved to group"
+    : "Local only";
 
   useEffect(() => {
     if (tableMode) {
@@ -269,6 +285,7 @@ export function LifeCounter({
       .catch(() => {
         if (!cancelled) {
           setLocalStoreReady(true);
+          setLocalSaveState("unavailable");
           setAnnouncement("Local life counter ready. Storage unavailable.");
         }
       });
@@ -283,9 +300,14 @@ export function LifeCounter({
       return;
     }
 
-    saveLifeCounterSession(session).catch(() => {
-      setAnnouncement("Local session could not be saved.");
-    });
+    saveLifeCounterSession(session)
+      .then(() => {
+        setLocalSaveState("saved");
+      })
+      .catch(() => {
+        setLocalSaveState("error");
+        setAnnouncement("Local session could not be saved.");
+      });
   }, [localStoreReady, session]);
 
   useEffect(() => {
@@ -1239,6 +1261,20 @@ export function LifeCounter({
               {linkedStatusLabel}
             </p>
           ) : null}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <span
+              className="inline-flex h-7 items-center rounded-control border border-border bg-background px-2.5 text-xs font-bold text-foreground"
+              data-testid="life-save-status"
+            >
+              {localSaveLabel}
+            </span>
+            <span
+              className="inline-flex h-7 items-center rounded-control border border-border bg-background px-2.5 text-xs font-bold text-muted"
+              data-testid="life-sync-scope"
+            >
+              {syncScopeLabel}
+            </span>
+          </div>
         </div>
         <SegmentedControl
           className="grid-cols-7"

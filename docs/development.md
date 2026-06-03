@@ -78,9 +78,11 @@ SQLx migrations remain the Rust V1 schema history until cutover.
 The rewrite schema now lives in `apps/web/src/db/schema`. The generated
 Drizzle migration history lives in `apps/web/src/db/migrations`.
 Development seed data lives in `apps/web/src/db/seed.ts` and uses only
-fake `example.test` identities and synthetic locations. Database helpers
-are intentionally not wired into app routes until auth, authorization,
-and server persistence flows exist.
+fake `example.test` identities, synthetic locations, and hashed fake
+event-token values. Database helpers now include scoped event-planning
+reads plus token-scoped public-safe event and guest RSVP aggregate reads;
+they are intentionally not wired into app routes until auth,
+authorization, guest RSVP forms, and server persistence flows exist.
 
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow:

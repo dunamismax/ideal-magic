@@ -1,6 +1,7 @@
 import {
   decks,
   eventDeckDeclarations,
+  eventGuests,
   eventHosts,
   eventLocations,
   eventRsvps,
@@ -16,6 +17,7 @@ import {
   users,
 } from "./schema";
 import { type AppDatabase, runInTransaction } from "./client";
+import { hashInviteToken } from "./tokens";
 
 export const developmentSeedIds = {
   users: {
@@ -42,6 +44,9 @@ export const developmentSeedIds = {
     solWednesday: "10000000-0000-4000-8000-000000000404",
     priyaWednesday: "10000000-0000-4000-8000-000000000405",
     guestWednesday: "10000000-0000-4000-8000-000000000406",
+  },
+  eventGuests: {
+    guestWednesdayPlusOne: "10000000-0000-4000-8000-000000000451",
   },
   decks: {
     muldrotha: "10000000-0000-4000-8000-000000000501",
@@ -199,6 +204,7 @@ async function insertDevelopmentSeedRows(db: SeedInsertTarget) {
         startsAt: startsAt.wednesdayCommander,
         locationId: developmentSeedIds.locations.exampleTabletopRoom,
         visibility: "members",
+        inviteTokenHash: hashInviteToken("fixture-wednesday-event-access"),
         createdByUserId: developmentSeedIds.users.nora,
       },
       {
@@ -207,6 +213,7 @@ async function insertDevelopmentSeedRows(db: SeedInsertTarget) {
         title: "Sunday Pod Tune-Up",
         startsAt: startsAt.sundayPods,
         visibility: "invite_only",
+        inviteTokenHash: hashInviteToken("fixture-sunday-event-access"),
         createdByUserId: developmentSeedIds.users.theo,
       },
     ])
@@ -229,6 +236,8 @@ async function insertDevelopmentSeedRows(db: SeedInsertTarget) {
         eventId: developmentSeedIds.events.wednesdayCommander,
         userId: developmentSeedIds.users.nora,
         status: "yes",
+        arrivalTime: new Date("2026-06-10T22:45:00.000Z"),
+        notes: "Private fixture RSVP note for scoped query redaction.",
       },
       {
         id: developmentSeedIds.rsvps.theoWednesday,
@@ -259,8 +268,19 @@ async function insertDevelopmentSeedRows(db: SeedInsertTarget) {
         eventId: developmentSeedIds.events.wednesdayCommander,
         guestName: "Example Guest",
         status: "yes",
+        notes: "Private guest RSVP note that must not reach public-safe reads.",
       },
     ])
+    .onConflictDoNothing();
+
+  await db
+    .insert(eventGuests)
+    .values({
+      id: developmentSeedIds.eventGuests.guestWednesdayPlusOne,
+      eventId: developmentSeedIds.events.wednesdayCommander,
+      rsvpId: developmentSeedIds.rsvps.guestWednesday,
+      name: "Example Guest Plus-One",
+    })
     .onConflictDoNothing();
 
   await db

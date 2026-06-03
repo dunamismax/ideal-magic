@@ -42,7 +42,13 @@ pnpm db:test
 Set `POD_TRACKER_MIGRATION_DATABASE_URL` for migration/admin work and
 `POD_TRACKER_DATABASE_URL` for app runtime database access. The seed
 command is idempotent and inserts only fake `example.test` identities,
-synthetic playgroup planning data, and a clearly fake location.
+synthetic playgroup planning data, hashed fake event-token values, and a
+clearly fake location.
+
+The database query layer includes scoped event-planning reads and
+token-scoped public-safe event and guest RSVP aggregate reads. Those
+public-safe reads are data-access foundations only; runtime public event
+routes and guest RSVP forms are not implemented yet.
 
 This app is intentionally side-by-side with the Rust V1 workspace until
 the TypeScript core flows are implemented, verified, and approved for

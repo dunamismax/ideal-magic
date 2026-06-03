@@ -381,7 +381,7 @@ Schema rules:
   pods, and games.
 - [x] Add database helpers for transactions, pagination, and scoped
   queries.
-- [ ] Add public-safe query paths for tokenized event and guest pages.
+- [x] Add public-safe query paths for tokenized event and guest pages.
 - [x] Add schema tests for constraints, indexes, and cascade behavior.
 - [ ] Add migration smoke tests against real Postgres in Docker Compose.
 - [ ] Document how old SQLx migrations map to the new Drizzle schema.
@@ -393,13 +393,16 @@ covers Better Auth-shaped identity tables, groups, invites, events,
 RSVPs, locations, lightweight decks, deck declarations, pods, games,
 matchup history, and action-log-based life-counter persistence. It adds
 fake non-sensitive development seed data plus transaction, pagination,
-and scoped event-planning query helpers. PGlite-backed integration tests
-cover migration application, representative constraints, indexes,
-cascade behavior, seed idempotency, scoped event counts, upcoming-event
-pagination, and host-address redaction. It does not yet wire runtime
-routes to Postgres, prove Docker/PostgreSQL migrations in this
-environment, implement tokenized public-safe guest query paths, or
-complete auth/server save behavior.
+scoped event-planning query helpers, hashed fake event-token seed values,
+and token-scoped public-safe event and guest RSVP aggregate query paths.
+PGlite-backed integration tests cover migration application,
+representative constraints, indexes, cascade behavior, seed idempotency,
+scoped event counts, upcoming-event pagination, host-address redaction,
+token denial, and public-safe projections that omit host addresses,
+location notes, RSVP notes, user emails, invite tokens, and guest names.
+It does not yet wire runtime routes to Postgres, prove Docker/PostgreSQL
+migrations in this environment, implement public event or guest RSVP UI,
+or complete auth/server save behavior.
 
 ## Phase 5 - Life Counter V1: Offline Standalone
 

@@ -1,7 +1,8 @@
-import { and, asc, count, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, isNull, sql } from "drizzle-orm";
 
 import {
   eventDeckDeclarations,
+  eventGuests,
   eventHosts,
   eventLocations,
   eventRsvps,
@@ -20,6 +21,7 @@ import {
 } from "../scopes";
 import { normalizePageRequest, type PageRequest } from "../pagination";
 import type { AppDatabase } from "../client";
+import { hashInviteToken, normalizeInviteToken } from "../tokens";
 
 type PlanningDatabase = Pick<AppDatabase, "select">;
 
@@ -75,6 +77,38 @@ export type UpcomingEventListItem = {
     slug: string;
   };
   viewerRole: PlaygroupRole | null;
+};
+
+export type PublicSafeEventSummary = {
+  id: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  visibility: EventVisibility;
+  playgroup: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  location: {
+    id: string;
+    name: string | null;
+  } | null;
+  counts: {
+    rsvps: Record<RsvpStatus, number>;
+    guestRsvps: number;
+    namedGuests: number;
+    deckDeclarations: number;
+    pods: number;
+    loggedGames: number;
+  };
+};
+
+export type PublicSafeGuestRsvpSummary = {
+  eventId: string;
+  rsvps: Record<RsvpStatus, number>;
+  guestRsvps: number;
+  namedGuests: number;
 };
 
 const rsvpStatuses = ["yes", "maybe", "no", "waitlist"] as const;
@@ -261,6 +295,114 @@ export async function listUpcomingEventsForViewer(
   }));
 }
 
+export async function getPublicSafeEventSummaryByInviteToken(
+  db: PlanningDatabase,
+  input: {
+    inviteToken: string;
+  },
+): Promise<PublicSafeEventSummary | null> {
+  const eventRow = await getPublicSafeEventRowByInviteToken(db, input);
+
+  if (!eventRow) {
+    return null;
+  }
+
+  const [rsvpCounts, guestCounts, deckDeclarationCount, podCount, gameCount] =
+    await Promise.all([
+      countRsvpsByStatus(db, eventRow.id),
+      countGuestRsvpsForEvent(db, eventRow.id),
+      countDeckDeclarationsForEvent(db, eventRow.id),
+      countPodsForEvent(db, eventRow.id),
+      countLoggedGamesForEvent(db, eventRow.id),
+    ]);
+
+  return {
+    id: eventRow.id,
+    title: eventRow.title,
+    startsAt: eventRow.startsAt,
+    endsAt: eventRow.endsAt,
+    visibility: asEventVisibility(eventRow.visibility),
+    playgroup: {
+      id: eventRow.playgroupId,
+      name: eventRow.playgroupName,
+      slug: eventRow.playgroupSlug,
+    },
+    location: eventRow.locationId
+      ? {
+          id: eventRow.locationId,
+          name: eventRow.locationName,
+        }
+      : null,
+    counts: {
+      rsvps: rsvpCounts,
+      guestRsvps: guestCounts.guestRsvps,
+      namedGuests: guestCounts.namedGuests,
+      deckDeclarations: deckDeclarationCount,
+      pods: podCount,
+      loggedGames: gameCount,
+    },
+  };
+}
+
+export async function getPublicSafeGuestRsvpSummaryByInviteToken(
+  db: PlanningDatabase,
+  input: {
+    inviteToken: string;
+  },
+): Promise<PublicSafeGuestRsvpSummary | null> {
+  const eventRow = await getPublicSafeEventRowByInviteToken(db, input);
+
+  if (!eventRow) {
+    return null;
+  }
+
+  const [rsvps, guestCounts] = await Promise.all([
+    countRsvpsByStatus(db, eventRow.id),
+    countGuestRsvpsForEvent(db, eventRow.id),
+  ]);
+
+  return {
+    eventId: eventRow.id,
+    rsvps,
+    guestRsvps: guestCounts.guestRsvps,
+    namedGuests: guestCounts.namedGuests,
+  };
+}
+
+async function getPublicSafeEventRowByInviteToken(
+  db: PlanningDatabase,
+  input: {
+    inviteToken: string;
+  },
+) {
+  const normalizedToken = normalizeInviteToken(input.inviteToken);
+
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const [eventRow] = await db
+    .select({
+      id: events.id,
+      title: events.title,
+      startsAt: events.startsAt,
+      endsAt: events.endsAt,
+      visibility: events.visibility,
+      playgroupId: playgroups.id,
+      playgroupName: playgroups.name,
+      playgroupSlug: playgroups.slug,
+      locationId: eventLocations.id,
+      locationName: eventLocations.name,
+    })
+    .from(events)
+    .innerJoin(playgroups, eq(events.playgroupId, playgroups.id))
+    .leftJoin(eventLocations, eq(events.locationId, eventLocations.id))
+    .where(eq(events.inviteTokenHash, hashInviteToken(normalizedToken)))
+    .limit(1);
+
+  return eventRow ?? null;
+}
+
 async function getViewerRole(
   db: PlanningDatabase,
   input: {
@@ -357,6 +499,28 @@ async function countRsvpsByStatus(db: PlanningDatabase, eventId: string) {
   }
 
   return totals;
+}
+
+async function countGuestRsvpsForEvent(db: PlanningDatabase, eventId: string) {
+  const [guestRsvpRow, namedGuestRow] = await Promise.all([
+    db
+      .select({
+        total: count(),
+      })
+      .from(eventRsvps)
+      .where(and(eq(eventRsvps.eventId, eventId), isNull(eventRsvps.userId))),
+    db
+      .select({
+        total: count(),
+      })
+      .from(eventGuests)
+      .where(eq(eventGuests.eventId, eventId)),
+  ]);
+
+  return {
+    guestRsvps: guestRsvpRow[0]?.total ?? 0,
+    namedGuests: namedGuestRow[0]?.total ?? 0,
+  };
 }
 
 async function countDeckDeclarationsForEvent(

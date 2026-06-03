@@ -2,10 +2,13 @@ import { describe, expect, test } from "vitest";
 
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import {
+  getPublicSafeEventSummaryByInviteToken,
+  getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
   listUpcomingEventsForViewer,
 } from "./event-planning";
 import { developmentSeedIds, seedDevelopmentData } from "../seed";
+import { hashInviteToken } from "../tokens";
 
 describe("event planning data access", () => {
   test("seeds fake planning rows idempotently and returns scoped event counts", async () => {
@@ -113,5 +116,110 @@ describe("event planning data access", () => {
       viewerRole: "owner",
     });
     expect(anonymousEvents).toEqual([]);
+  });
+
+  test("returns a token-scoped public-safe event summary without private fields", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await seedDevelopmentData(db);
+
+    const summary = await getPublicSafeEventSummaryByInviteToken(db, {
+      inviteToken: "fixture-wednesday-event-access",
+    });
+
+    expect(summary).toMatchObject({
+      id: developmentSeedIds.events.wednesdayCommander,
+      title: "Wednesday Commander Night",
+      visibility: "members",
+      playgroup: {
+        slug: "example-city-commander",
+      },
+      location: {
+        id: developmentSeedIds.locations.exampleTabletopRoom,
+        name: "Example Tabletop Room",
+      },
+      counts: {
+        rsvps: {
+          yes: 3,
+          maybe: 1,
+          no: 1,
+          waitlist: 1,
+        },
+        guestRsvps: 1,
+        namedGuests: 1,
+        deckDeclarations: 5,
+        pods: 1,
+        loggedGames: 1,
+      },
+    });
+
+    const publicPayload = JSON.stringify(summary);
+
+    expect(publicPayload).not.toContain("101 Example Tabletop Way");
+    expect(publicPayload).not.toContain("Synthetic local fixture address");
+    expect(publicPayload).not.toContain("Private fixture RSVP note");
+    expect(publicPayload).not.toContain("Private guest RSVP note");
+    expect(publicPayload).not.toContain("nora@example.test");
+    expect(publicPayload).not.toContain("fixture-wednesday-event-access");
+    expect(publicPayload).not.toContain(
+      hashInviteToken("fixture-wednesday-event-access"),
+    );
+    expect(publicPayload).not.toContain("Example Guest");
+  });
+
+  test("returns token-scoped guest RSVP counts without guest details", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await seedDevelopmentData(db);
+
+    const summary = await getPublicSafeGuestRsvpSummaryByInviteToken(db, {
+      inviteToken: "fixture-wednesday-event-access",
+    });
+
+    expect(summary).toEqual({
+      eventId: developmentSeedIds.events.wednesdayCommander,
+      rsvps: {
+        yes: 3,
+        maybe: 1,
+        no: 1,
+        waitlist: 1,
+      },
+      guestRsvps: 1,
+      namedGuests: 1,
+    });
+
+    const publicPayload = JSON.stringify(summary);
+
+    expect(publicPayload).not.toContain("Example Guest");
+    expect(publicPayload).not.toContain("Private guest RSVP note");
+    expect(publicPayload).not.toContain("theo@example.test");
+    expect(publicPayload).not.toContain("fixture-wednesday-event-access");
+    expect(publicPayload).not.toContain(
+      hashInviteToken("fixture-wednesday-event-access"),
+    );
+  });
+
+  test("rejects missing, blank, and wrong public-safe event tokens", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await seedDevelopmentData(db);
+
+    await expect(
+      getPublicSafeEventSummaryByInviteToken(db, {
+        inviteToken: "",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      getPublicSafeEventSummaryByInviteToken(db, {
+        inviteToken: "   ",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      getPublicSafeEventSummaryByInviteToken(db, {
+        inviteToken: "wrong-event-token",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      getPublicSafeGuestRsvpSummaryByInviteToken(db, {
+        inviteToken: "wrong-event-token",
+      }),
+    ).resolves.toBeNull();
   });
 });

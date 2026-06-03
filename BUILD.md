@@ -3,7 +3,7 @@
 Future build plan for Pod Tracker. `README.md` describes the current
 product and `AGENTS.md` holds durable repo operating rules.
 
-Last reviewed: 2026-05-31.
+Last reviewed: 2026-06-03.
 
 ---
 
@@ -404,13 +404,14 @@ Schema rules:
 - [x] Add elimination, winner, draw, and no-contest states.
 - [x] Add game timer, turn timer, active player, turn order, and turn
   count.
-- [ ] Store counter state and action history in Dexie.
-- [ ] Add undo and redo from the action log.
+- [x] Store counter state and action history in Dexie.
+- [x] Add undo and redo from the action log.
 - [x] Add reset, rematch, and new game flows.
 - [x] Add keyboard behavior for desktop play.
 - [x] Add accessible labels, focus management, and screen-reader
   friendly state changes.
-- [ ] Verify reload persistence without a network connection.
+- [x] Verify refresh recovery and post-load local counter behavior with
+  network requests blocked. Full offline launch remains Phase 12.
 - [x] Verify mobile, tablet, desktop, and wide desktop layouts with
   Playwright screenshots.
 

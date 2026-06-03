@@ -16,6 +16,7 @@ import {
   Plus,
   Play,
   Radiation,
+  Redo2,
   RotateCcw,
   Shuffle,
   SkipForward,
@@ -24,55 +25,45 @@ import {
   Swords,
   SunMoon,
   Trophy,
+  Undo2,
   UserPlus,
   Zap,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fieldControlClassName, FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import {
+  loadStandaloneLifeCounterSession,
+  saveStandaloneLifeCounterSession,
+} from "@/features/life/local-session-store";
+import {
+  canRedoLifeCounterAction,
+  canUndoLifeCounterAction,
+  clampAtZero,
+  createCommander,
+  createInitialLifeCounterSession,
+  createLifeCounterAction,
+  getLifeCounterSnapshot,
+  lifeCounterReducer,
+  resetPlayerCounters,
+  seats,
+  type Commander,
+  type CustomCounter,
+  type DayNightState,
+  type GameResult,
+  type LifeCounterAction,
+  type LifeCounterSnapshot,
+  type ManaSymbol,
+  type Player,
+  type PlayerCounterKey,
+  type PlayerStatus,
+  type TableRole,
+} from "@/features/life/session";
 import { cn } from "@/lib/utils";
-
-type Commander = {
-  id: string;
-  name: string;
-  castCount: number;
-  damageByDefender: Record<string, number>;
-};
-
-type PlayerStatus = "active" | "eliminated" | "winner";
-type GameResult = "in-progress" | "winner" | "draw" | "no-contest";
-type DayNightState = "unset" | "day" | "night";
-type PlayerCounterKey = "experience" | "energy" | "rad" | "treasure";
-type ManaSymbol = "W" | "U" | "B" | "R" | "G" | "C";
-
-type CustomCounter = {
-  id: string;
-  name: string;
-  value: number;
-};
-
-type Player = {
-  id: string;
-  seat: string;
-  name: string;
-  commanders: Commander[];
-  deck: string;
-  color: string;
-  life: number;
-  poison: number;
-  status: PlayerStatus;
-  cityBlessing: boolean;
-  experience: number;
-  energy: number;
-  rad: number;
-  treasure: number;
-  floatingMana: Record<ManaSymbol, number>;
-  customCounters: CustomCounter[];
-};
 
 type CommanderSource = {
   commander: Commander;
@@ -80,16 +71,6 @@ type CommanderSource = {
   player: Player;
 };
 
-const seats = [
-  "North",
-  "East",
-  "South",
-  "West",
-  "Northwest",
-  "Northeast",
-  "Southeast",
-  "Southwest",
-];
 const colorOptions = [
   { value: "player-a", label: "Rose", className: "bg-player-a" },
   { value: "player-b", label: "Blue", className: "bg-player-b" },
@@ -130,51 +111,6 @@ const manaOptions = [
   { symbol: "C", label: "Colorless" },
 ] satisfies { symbol: ManaSymbol; label: string }[];
 
-function createCommander(playerId: string, commanderNumber = 1): Commander {
-  return {
-    id: `${playerId}-commander-${commanderNumber}`,
-    name: "",
-    castCount: 0,
-    damageByDefender: {},
-  };
-}
-
-function createFloatingMana(): Record<ManaSymbol, number> {
-  return {
-    W: 0,
-    U: 0,
-    B: 0,
-    R: 0,
-    G: 0,
-    C: 0,
-  };
-}
-
-function createPlayers(startingLife: number): Player[] {
-  return seats.map((seat, index) => {
-    const playerId = `player-${index + 1}`;
-
-    return {
-      id: playerId,
-      seat,
-      name: `Player ${index + 1}`,
-      commanders: [createCommander(playerId)],
-      deck: "",
-      color: colorOptions[index].value,
-      life: startingLife,
-      poison: 0,
-      status: "active",
-      cityBlessing: false,
-      experience: 0,
-      energy: 0,
-      rad: 0,
-      treasure: 0,
-      floatingMana: createFloatingMana(),
-      customCounters: [],
-    };
-  });
-}
-
 function commanderDisplayName(source: CommanderSource) {
   return (
     source.commander.name.trim() ||
@@ -204,30 +140,6 @@ function isEditableTarget(target: EventTarget | null) {
   );
 }
 
-function resetPlayerCounters(player: Player, life: number): Player {
-  return {
-    ...player,
-    life,
-    poison: 0,
-    status: "active",
-    cityBlessing: false,
-    experience: 0,
-    energy: 0,
-    rad: 0,
-    treasure: 0,
-    floatingMana: createFloatingMana(),
-    customCounters: player.customCounters.map((counter) => ({
-      ...counter,
-      value: 0,
-    })),
-    commanders: player.commanders.map((commander) => ({
-      ...commander,
-      castCount: 0,
-      damageByDefender: {},
-    })),
-  };
-}
-
 function playerStatusLabel(status: PlayerStatus) {
   if (status === "winner") {
     return "Winner";
@@ -255,25 +167,31 @@ function formatDuration(totalSeconds: number) {
 }
 
 export function LifeCounter() {
-  const [startingLife, setStartingLife] = useState(40);
-  const [playerCount, setPlayerCount] = useState(4);
+  const [session, dispatch] = useReducer(
+    lifeCounterReducer,
+    undefined,
+    createInitialLifeCounterSession,
+  );
   const [tableMode, setTableMode] = useState(false);
-  const [activePlayerId, setActivePlayerId] = useState("player-1");
-  const [gameElapsedSeconds, setGameElapsedSeconds] = useState(0);
-  const [turnElapsedSeconds, setTurnElapsedSeconds] = useState(0);
-  const [timersRunning, setTimersRunning] = useState(false);
-  const [turnCount, setTurnCount] = useState(1);
-  const [monarchPlayerId, setMonarchPlayerId] = useState<string | null>(null);
-  const [initiativePlayerId, setInitiativePlayerId] = useState<string | null>(
-    null,
-  );
-  const [dayNight, setDayNight] = useState<DayNightState>("unset");
-  const [stormCount, setStormCount] = useState(0);
-  const [gameResult, setGameResult] = useState<GameResult>("in-progress");
   const [announcement, setAnnouncement] = useState("Local life counter ready.");
-  const [players, setPlayers] = useState<Player[]>(() =>
-    createPlayers(startingLife),
-  );
+  const [localStoreReady, setLocalStoreReady] = useState(false);
+  const {
+    activePlayerId,
+    dayNight,
+    gameElapsedSeconds,
+    gameResult,
+    initiativePlayerId,
+    monarchPlayerId,
+    playerCount,
+    players,
+    startingLife,
+    stormCount,
+    timersRunning,
+    turnCount,
+    turnElapsedSeconds,
+  } = session;
+  const canUndo = canUndoLifeCounterAction(session);
+  const canRedo = canRedoLifeCounterAction(session);
 
   const visiblePlayers = useMemo(
     () => players.slice(0, playerCount),
@@ -324,19 +242,94 @@ export function LifeCounter() {
   }, [tableMode]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    loadStandaloneLifeCounterSession()
+      .then((storedSession) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (storedSession) {
+          dispatch({ type: "hydrate", session: storedSession });
+          setAnnouncement("Local life counter restored.");
+        }
+
+        setLocalStoreReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLocalStoreReady(true);
+          setAnnouncement("Local life counter ready. Storage unavailable.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!localStoreReady) {
+      return;
+    }
+
+    saveStandaloneLifeCounterSession(session).catch(() => {
+      setAnnouncement("Local session could not be saved.");
+    });
+  }, [localStoreReady, session]);
+
+  useEffect(() => {
     if (!timersRunning) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
-      setGameElapsedSeconds((current) => current + 1);
-      setTurnElapsedSeconds((current) => current + 1);
+      dispatch({
+        type: "tick-timers",
+        now: new Date().toISOString(),
+        seconds: 1,
+      });
     }, 1000);
 
     return () => window.clearInterval(intervalId);
   }, [timersRunning]);
 
+  function now() {
+    return new Date().toISOString();
+  }
+
+  function currentSnapshot() {
+    return getLifeCounterSnapshot(session);
+  }
+
+  function recordAction(action: LifeCounterAction, message: string) {
+    dispatch({ type: "record", action });
+    setAnnouncement(message);
+  }
+
+  function updateSetup(
+    update: (snapshot: LifeCounterSnapshot) => LifeCounterSnapshot,
+    message: string,
+  ) {
+    dispatch({ type: "update-setup", now: now(), update });
+    setAnnouncement(message);
+  }
+
   useEffect(() => {
+    function recordKeyboardActiveSelection(nextPlayer: Player) {
+      dispatch({
+        type: "record",
+        action: createLifeCounterAction("set-active-player", {
+          previousActivePlayerId: effectiveActivePlayerId,
+          nextActivePlayerId: nextPlayer.id,
+          previousTurnElapsedSeconds: turnElapsedSeconds,
+          nextTurnElapsedSeconds: 0,
+        }),
+      });
+      setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if (isEditableTarget(event.target)) {
         return;
@@ -350,9 +343,7 @@ export function LifeCounter() {
       ) {
         const nextPlayer = visiblePlayers[numericSeat - 1];
         event.preventDefault();
-        setActivePlayerId(nextPlayer.id);
-        setTurnElapsedSeconds(0);
-        setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
+        recordKeyboardActiveSelection(nextPlayer);
         return;
       }
 
@@ -369,9 +360,7 @@ export function LifeCounter() {
           (currentIndex + offset + visiblePlayers.length) %
           visiblePlayers.length;
         const nextPlayer = visiblePlayers[nextIndex];
-        setActivePlayerId(nextPlayer.id);
-        setTurnElapsedSeconds(0);
-        setAnnouncement(`${nextPlayer.name} selected for keyboard controls.`);
+        recordKeyboardActiveSelection(nextPlayer);
         return;
       }
 
@@ -390,13 +379,15 @@ export function LifeCounter() {
       event.preventDefault();
       const step = event.altKey ? 10 : event.shiftKey ? 5 : 1;
       const amount = event.key === "ArrowUp" ? step : -step;
-      setPlayers((current) =>
-        current.map((player) =>
-          player.id === currentActivePlayer.id
-            ? { ...player, life: player.life + amount }
-            : player,
-        ),
-      );
+      dispatch({
+        type: "record",
+        action: createLifeCounterAction("adjust-life", {
+          playerId: currentActivePlayer.id,
+          amount,
+          previousLife: currentActivePlayer.life,
+          nextLife: currentActivePlayer.life + amount,
+        }),
+      });
       setAnnouncement(
         `${currentActivePlayer.name} ${amount > 0 ? "gained" : "lost"} ${Math.abs(amount)} life.`,
       );
@@ -404,35 +395,96 @@ export function LifeCounter() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [effectiveActivePlayerId, visiblePlayers]);
+  }, [effectiveActivePlayerId, turnElapsedSeconds, visiblePlayers]);
 
-  function resetTurnTracking(nextActivePlayerId = visiblePlayers[0]?.id) {
-    setTimersRunning(false);
-    setGameElapsedSeconds(0);
-    setTurnElapsedSeconds(0);
-    setTurnCount(1);
+  function resetTurnTrackingSnapshot(
+    snapshot: LifeCounterSnapshot,
+    nextActivePlayerId = snapshot.players.slice(0, snapshot.playerCount)[0]?.id,
+  ): LifeCounterSnapshot {
+    return {
+      ...snapshot,
+      activePlayerId: nextActivePlayerId ?? "player-1",
+      timersRunning: false,
+      gameElapsedSeconds: 0,
+      turnElapsedSeconds: 0,
+      turnCount: 1,
+    };
+  }
 
-    if (nextActivePlayerId) {
-      setActivePlayerId(nextActivePlayerId);
+  function createUiId(prefix: string) {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return `${prefix}-${crypto.randomUUID()}`;
     }
+
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function undoLastAction() {
+    if (!canUndo) {
+      return;
+    }
+
+    dispatch({ type: "undo", now: now() });
+    setAnnouncement("Last life counter action undone.");
+  }
+
+  function redoNextAction() {
+    if (!canRedo) {
+      return;
+    }
+
+    dispatch({ type: "redo", now: now() });
+    setAnnouncement("Life counter action redone.");
   }
 
   function toggleTimers() {
-    setTimersRunning((current) => {
-      const nextRunning = !current;
-      setAnnouncement(nextRunning ? "Timers started." : "Timers paused.");
-      return nextRunning;
+    const action = createLifeCounterAction("set-timers-running", {
+      previousValue: timersRunning,
+      nextValue: !timersRunning,
     });
+
+    recordAction(action, !timersRunning ? "Timers started." : "Timers paused.");
   }
 
   function resetTimers() {
-    resetTurnTracking();
-    setAnnouncement("Timers reset.");
+    const before = currentSnapshot();
+    const after = resetTurnTrackingSnapshot(before);
+
+    recordAction(
+      createLifeCounterAction("reset-timers", { before, after }),
+      "Timers reset.",
+    );
   }
 
   function resetTurnTimer() {
-    setTurnElapsedSeconds(0);
-    setAnnouncement("Turn timer reset.");
+    const action = createLifeCounterAction("reset-turn-timer", {
+      previousTurnElapsedSeconds: turnElapsedSeconds,
+      nextTurnElapsedSeconds: 0,
+    });
+
+    recordAction(action, "Turn timer reset.");
+  }
+
+  function selectActivePlayer(playerId: string) {
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+
+    if (!targetPlayer) {
+      return;
+    }
+
+    const action = createLifeCounterAction("set-active-player", {
+      previousActivePlayerId: effectiveActivePlayerId,
+      nextActivePlayerId: playerId,
+      previousTurnElapsedSeconds: turnElapsedSeconds,
+      nextTurnElapsedSeconds: 0,
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} selected for keyboard controls.`,
+    );
   }
 
   function advanceTurn() {
@@ -455,41 +507,59 @@ export function LifeCounter() {
     const nextTurnCount =
       currentIndex !== -1 && nextIndex === 0 ? turnCount + 1 : turnCount;
 
-    setActivePlayerId(nextPlayer.id);
-    setTurnElapsedSeconds(0);
-    setTurnCount(nextTurnCount);
-    setAnnouncement(`${nextPlayer.name} is active for turn ${nextTurnCount}.`);
+    const action = createLifeCounterAction("advance-turn", {
+      previousActivePlayerId: effectiveActivePlayerId,
+      nextActivePlayerId: nextPlayer.id,
+      previousTurnElapsedSeconds: turnElapsedSeconds,
+      nextTurnElapsedSeconds: 0,
+      previousTurnCount: turnCount,
+      nextTurnCount,
+    });
+
+    recordAction(
+      action,
+      `${nextPlayer.name} is active for turn ${nextTurnCount}.`,
+    );
   }
 
   function updatePlayer(id: string, patch: Partial<Player>) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === id ? { ...player, ...patch } : player,
-      ),
+    updateSetup(
+      (snapshot) => ({
+        ...snapshot,
+        players: snapshot.players.map((player) =>
+          player.id === id ? { ...player, ...patch } : player,
+        ),
+      }),
+      "Player setup updated.",
     );
   }
 
   function updatePlayerCount(value: string) {
     const nextPlayerCount = Number(value);
-    const nextVisibleIds = players
-      .slice(0, nextPlayerCount)
-      .map((player) => player.id);
 
-    setPlayerCount(nextPlayerCount);
+    updateSetup((snapshot) => {
+      const nextVisibleIds = snapshot.players
+        .slice(0, nextPlayerCount)
+        .map((player) => player.id);
 
-    if (!nextVisibleIds.includes(activePlayerId)) {
-      setActivePlayerId(nextVisibleIds[0] ?? "player-1");
-    }
-
-    if (monarchPlayerId && !nextVisibleIds.includes(monarchPlayerId)) {
-      setMonarchPlayerId(null);
-    }
-
-    if (initiativePlayerId && !nextVisibleIds.includes(initiativePlayerId)) {
-      setInitiativePlayerId(null);
-    }
-
-    setAnnouncement(`Player count changed to ${nextPlayerCount}.`);
+      return {
+        ...snapshot,
+        playerCount: nextPlayerCount,
+        activePlayerId: nextVisibleIds.includes(snapshot.activePlayerId)
+          ? snapshot.activePlayerId
+          : (nextVisibleIds[0] ?? "player-1"),
+        monarchPlayerId:
+          snapshot.monarchPlayerId &&
+          !nextVisibleIds.includes(snapshot.monarchPlayerId)
+            ? null
+            : snapshot.monarchPlayerId,
+        initiativePlayerId:
+          snapshot.initiativePlayerId &&
+          !nextVisibleIds.includes(snapshot.initiativePlayerId)
+            ? null
+            : snapshot.initiativePlayerId,
+      };
+    }, `Player count changed to ${nextPlayerCount}.`);
   }
 
   function updateCommander(
@@ -497,81 +567,103 @@ export function LifeCounter() {
     commanderId: string,
     patch: Partial<Commander>,
   ) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              commanders: player.commanders.map((commander) =>
-                commander.id === commanderId
-                  ? { ...commander, ...patch }
-                  : commander,
-              ),
-            }
-          : player,
-      ),
+    updateSetup(
+      (snapshot) => ({
+        ...snapshot,
+        players: snapshot.players.map((player) =>
+          player.id === playerId
+            ? {
+                ...player,
+                commanders: player.commanders.map((commander) =>
+                  commander.id === commanderId
+                    ? { ...commander, ...patch }
+                    : commander,
+                ),
+              }
+            : player,
+        ),
+      }),
+      "Commander setup updated.",
     );
   }
 
   function addCommander(playerId: string) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              commanders: [
-                ...player.commanders,
-                createCommander(player.id, nextCommanderNumber(player)),
-              ],
-            }
-          : player,
-      ),
+    updateSetup(
+      (snapshot) => ({
+        ...snapshot,
+        players: snapshot.players.map((player) =>
+          player.id === playerId
+            ? {
+                ...player,
+                commanders: [
+                  ...player.commanders,
+                  createCommander(player.id, nextCommanderNumber(player)),
+                ],
+              }
+            : player,
+        ),
+      }),
+      "Commander added.",
     );
   }
 
   function removeCommander(playerId: string, commanderId: string) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId && player.commanders.length > 1
-          ? {
-              ...player,
-              commanders: player.commanders.filter(
-                (commander) => commander.id !== commanderId,
-              ),
-            }
-          : player,
-      ),
+    updateSetup(
+      (snapshot) => ({
+        ...snapshot,
+        players: snapshot.players.map((player) =>
+          player.id === playerId && player.commanders.length > 1
+            ? {
+                ...player,
+                commanders: player.commanders.filter(
+                  (commander) => commander.id !== commanderId,
+                ),
+              }
+            : player,
+        ),
+      }),
+      "Commander removed.",
     );
   }
 
   function adjustLife(id: string, amount: number) {
     const targetPlayer = visiblePlayers.find((player) => player.id === id);
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === id ? { ...player, life: player.life + amount } : player,
-      ),
-    );
-    if (targetPlayer) {
-      setAnnouncement(
-        `${targetPlayer.name} ${amount > 0 ? "gained" : "lost"} ${Math.abs(amount)} life.`,
-      );
+
+    if (!targetPlayer) {
+      return;
     }
+
+    const action = createLifeCounterAction("adjust-life", {
+      playerId: id,
+      amount,
+      previousLife: targetPlayer.life,
+      nextLife: targetPlayer.life + amount,
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} ${amount > 0 ? "gained" : "lost"} ${Math.abs(amount)} life.`,
+    );
   }
 
   function adjustPoison(id: string, amount: number) {
     const targetPlayer = visiblePlayers.find((player) => player.id === id);
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === id
-          ? { ...player, poison: Math.max(0, player.poison + amount) }
-          : player,
-      ),
-    );
-    if (targetPlayer) {
-      setAnnouncement(
-        `${targetPlayer.name} poison changed by ${amount > 0 ? "+" : ""}${amount}.`,
-      );
+
+    if (!targetPlayer) {
+      return;
     }
+
+    const action = createLifeCounterAction("adjust-poison", {
+      playerId: id,
+      amount,
+      previousPoison: targetPlayer.poison,
+      nextPoison: clampAtZero(targetPlayer.poison + amount),
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} poison changed by ${amount > 0 ? "+" : ""}${amount}.`,
+    );
   }
 
   function adjustPlayerCounter(
@@ -585,19 +677,23 @@ export function LifeCounter() {
     const counterLabel =
       playerCounterOptions.find((counter) => counter.key === key)?.label ?? key;
 
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? { ...player, [key]: Math.max(0, player[key] + amount) }
-          : player,
-      ),
-    );
-
-    if (targetPlayer) {
-      setAnnouncement(
-        `${targetPlayer.name} ${counterLabel.toLowerCase()} changed by ${amount > 0 ? "+" : ""}${amount}.`,
-      );
+    if (!targetPlayer) {
+      return;
     }
+
+    const previousValue = targetPlayer[key];
+    const action = createLifeCounterAction("adjust-player-counter", {
+      playerId,
+      key,
+      amount,
+      previousValue,
+      nextValue: clampAtZero(previousValue + amount),
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} ${counterLabel.toLowerCase()} changed by ${amount > 0 ? "+" : ""}${amount}.`,
+    );
   }
 
   function adjustFloatingMana(
@@ -609,49 +705,50 @@ export function LifeCounter() {
       (player) => player.id === playerId,
     );
 
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              floatingMana: {
-                ...player.floatingMana,
-                [symbol]: Math.max(0, player.floatingMana[symbol] + amount),
-              },
-            }
-          : player,
-      ),
-    );
-
-    if (targetPlayer) {
-      setAnnouncement(
-        `${targetPlayer.name} ${symbol} floating mana changed by ${amount > 0 ? "+" : ""}${amount}.`,
-      );
+    if (!targetPlayer) {
+      return;
     }
+
+    const previousValue = targetPlayer.floatingMana[symbol];
+    const action = createLifeCounterAction("adjust-floating-mana", {
+      playerId,
+      symbol,
+      amount,
+      previousValue,
+      nextValue: clampAtZero(previousValue + amount),
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} ${symbol} floating mana changed by ${amount > 0 ? "+" : ""}${amount}.`,
+    );
   }
 
-  function setTableRole(role: "monarch" | "initiative", playerId: string) {
+  function setTableRole(role: TableRole, playerId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-    const currentHolderId =
+    const previousPlayerId =
       role === "monarch" ? monarchPlayerId : initiativePlayerId;
-    const nextHolderId = currentHolderId === playerId ? null : playerId;
+    const nextPlayerId = previousPlayerId === playerId ? null : playerId;
     const label = role === "monarch" ? "monarch" : "initiative";
 
-    if (role === "monarch") {
-      setMonarchPlayerId(nextHolderId);
-    } else {
-      setInitiativePlayerId(nextHolderId);
+    if (!targetPlayer) {
+      return;
     }
 
-    if (targetPlayer) {
-      setAnnouncement(
-        nextHolderId
-          ? `${targetPlayer.name} has the ${label}.`
-          : `${targetPlayer.name} no longer has the ${label}.`,
-      );
-    }
+    const action = createLifeCounterAction("set-table-role", {
+      role,
+      previousPlayerId,
+      nextPlayerId,
+    });
+
+    recordAction(
+      action,
+      nextPlayerId
+        ? `${targetPlayer.name} has the ${label}.`
+        : `${targetPlayer.name} no longer has the ${label}.`,
+    );
   }
 
   function toggleCityBlessing(playerId: string) {
@@ -659,21 +756,44 @@ export function LifeCounter() {
       (player) => player.id === playerId,
     );
 
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? { ...player, cityBlessing: !player.cityBlessing }
-          : player,
-      ),
-    );
-
-    if (targetPlayer) {
-      setAnnouncement(
-        targetPlayer.cityBlessing
-          ? `${targetPlayer.name} lost city's blessing.`
-          : `${targetPlayer.name} gained city's blessing.`,
-      );
+    if (!targetPlayer) {
+      return;
     }
+
+    const action = createLifeCounterAction("set-city-blessing", {
+      playerId,
+      previousValue: targetPlayer.cityBlessing,
+      nextValue: !targetPlayer.cityBlessing,
+    });
+
+    recordAction(
+      action,
+      targetPlayer.cityBlessing
+        ? `${targetPlayer.name} lost city's blessing.`
+        : `${targetPlayer.name} gained city's blessing.`,
+    );
+  }
+
+  function setDayNightState(nextValue: DayNightState) {
+    const action = createLifeCounterAction("set-day-night", {
+      previousValue: dayNight,
+      nextValue,
+    });
+
+    recordAction(
+      action,
+      nextValue === "unset" ? "Day/night cleared." : `It is now ${nextValue}.`,
+    );
+  }
+
+  function adjustStorm(amount: number) {
+    const action = createLifeCounterAction("adjust-storm", {
+      amount,
+      previousValue: stormCount,
+      nextValue: clampAtZero(stormCount + amount),
+    });
+
+    recordAction(action, `Storm changed by ${amount > 0 ? "+" : ""}${amount}.`);
   }
 
   function addCustomCounter(playerId: string) {
@@ -681,31 +801,21 @@ export function LifeCounter() {
       (player) => player.id === playerId,
     );
 
-    setPlayers((current) =>
-      current.map((player) => {
-        if (player.id !== playerId) {
-          return player;
-        }
-
-        const nextNumber = player.customCounters.length + 1;
-
-        return {
-          ...player,
-          customCounters: [
-            ...player.customCounters,
-            {
-              id: `${player.id}-custom-${Date.now()}-${nextNumber}`,
-              name: `Custom ${nextNumber}`,
-              value: 0,
-            },
-          ],
-        };
-      }),
-    );
-
-    if (targetPlayer) {
-      setAnnouncement(`Custom counter added for ${targetPlayer.name}.`);
+    if (!targetPlayer) {
+      return;
     }
+
+    const nextNumber = targetPlayer.customCounters.length + 1;
+    const counter = {
+      id: createUiId(`${playerId}-custom`),
+      name: `Custom ${nextNumber}`,
+      value: 0,
+    } satisfies CustomCounter;
+
+    recordAction(
+      createLifeCounterAction("add-custom-counter", { playerId, counter }),
+      `Custom counter added for ${targetPlayer.name}.`,
+    );
   }
 
   function updateCustomCounter(
@@ -713,17 +823,27 @@ export function LifeCounter() {
     counterId: string,
     patch: Partial<CustomCounter>,
   ) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              customCounters: player.customCounters.map((counter) =>
-                counter.id === counterId ? { ...counter, ...patch } : counter,
-              ),
-            }
-          : player,
-      ),
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    const previousCounter = targetPlayer?.customCounters.find(
+      (counter) => counter.id === counterId,
+    );
+
+    if (!targetPlayer || !previousCounter) {
+      return;
+    }
+
+    const nextCounter = { ...previousCounter, ...patch };
+
+    recordAction(
+      createLifeCounterAction("update-custom-counter", {
+        playerId,
+        counterId,
+        previousCounter,
+        nextCounter,
+      }),
+      `${targetPlayer.name} custom counter updated.`,
     );
   }
 
@@ -739,49 +859,43 @@ export function LifeCounter() {
       (counter) => counter.id === counterId,
     );
 
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              customCounters: player.customCounters.map((counter) =>
-                counter.id === counterId
-                  ? { ...counter, value: Math.max(0, counter.value + amount) }
-                  : counter,
-              ),
-            }
-          : player,
-      ),
-    );
-
-    if (targetPlayer && targetCounter) {
-      setAnnouncement(
-        `${targetPlayer.name} ${targetCounter.name} changed by ${amount > 0 ? "+" : ""}${amount}.`,
-      );
+    if (!targetPlayer || !targetCounter) {
+      return;
     }
+
+    const action = createLifeCounterAction("adjust-custom-counter", {
+      playerId,
+      counterId,
+      amount,
+      previousValue: targetCounter.value,
+      nextValue: clampAtZero(targetCounter.value + amount),
+    });
+
+    recordAction(
+      action,
+      `${targetPlayer.name} ${targetCounter.name} changed by ${amount > 0 ? "+" : ""}${amount}.`,
+    );
   }
 
   function removeCustomCounter(playerId: string, counterId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              customCounters: player.customCounters.filter(
-                (counter) => counter.id !== counterId,
-              ),
-            }
-          : player,
-      ),
+    const targetCounter = targetPlayer?.customCounters.find(
+      (counter) => counter.id === counterId,
     );
 
-    if (targetPlayer) {
-      setAnnouncement(`Custom counter removed from ${targetPlayer.name}.`);
+    if (!targetPlayer || !targetCounter) {
+      return;
     }
+
+    recordAction(
+      createLifeCounterAction("remove-custom-counter", {
+        playerId,
+        counter: targetCounter,
+      }),
+      `Custom counter removed from ${targetPlayer.name}.`,
+    );
   }
 
   function adjustCommanderCastCount(
@@ -789,22 +903,28 @@ export function LifeCounter() {
     commanderId: string,
     amount: number,
   ) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              commanders: player.commanders.map((commander) =>
-                commander.id === commanderId
-                  ? {
-                      ...commander,
-                      castCount: Math.max(0, commander.castCount + amount),
-                    }
-                  : commander,
-              ),
-            }
-          : player,
-      ),
+    const targetPlayer = visiblePlayers.find(
+      (player) => player.id === playerId,
+    );
+    const commander = targetPlayer?.commanders.find(
+      (entry) => entry.id === commanderId,
+    );
+
+    if (!targetPlayer || !commander) {
+      return;
+    }
+
+    const action = createLifeCounterAction("adjust-commander-cast", {
+      playerId,
+      commanderId,
+      amount,
+      previousValue: commander.castCount,
+      nextValue: clampAtZero(commander.castCount + amount),
+    });
+
+    recordAction(
+      action,
+      `${commander.name.trim() || "Commander"} casts updated.`,
     );
   }
 
@@ -813,225 +933,269 @@ export function LifeCounter() {
     defenderId: string,
     amount: number,
   ) {
-    setPlayers((current) =>
-      current.map((player) => ({
-        ...player,
-        commanders: player.commanders.map((commander) => {
-          if (commander.id !== sourceCommanderId) {
-            return commander;
-          }
+    const source = commanderSources.find(
+      (entry) => entry.commander.id === sourceCommanderId,
+    );
+    const defender = visiblePlayers.find((player) => player.id === defenderId);
 
-          const nextDamage = Math.max(
-            0,
-            (commander.damageByDefender[defenderId] ?? 0) + amount,
-          );
+    if (!source || !defender) {
+      return;
+    }
 
-          return {
-            ...commander,
-            damageByDefender: {
-              ...commander.damageByDefender,
-              [defenderId]: nextDamage,
-            },
-          };
-        }),
-      })),
+    const previousValue = source.commander.damageByDefender[defenderId] ?? 0;
+    const action = createLifeCounterAction("adjust-commander-damage", {
+      sourceCommanderId,
+      defenderId,
+      amount,
+      previousValue,
+      nextValue: clampAtZero(previousValue + amount),
+    });
+
+    recordAction(
+      action,
+      `${defender.name} commander damage from ${commanderDisplayName(source)} changed by ${amount > 0 ? "+" : ""}${amount}.`,
     );
   }
 
   function applyStartingLife(value: string) {
     const nextStartingLife = Number(value);
-    setStartingLife(nextStartingLife);
-    setGameResult("in-progress");
-    setMonarchPlayerId(null);
-    setInitiativePlayerId(null);
-    setDayNight("unset");
-    setStormCount(0);
-    resetTurnTracking();
-    setPlayers((current) =>
-      current.map((player) => resetPlayerCounters(player, nextStartingLife)),
+    const before = currentSnapshot();
+    const after = resetTurnTrackingSnapshot({
+      ...before,
+      startingLife: nextStartingLife,
+      gameResult: "in-progress",
+      monarchPlayerId: null,
+      initiativePlayerId: null,
+      dayNight: "unset",
+      stormCount: 0,
+      players: before.players.map((player) =>
+        resetPlayerCounters(player, nextStartingLife),
+      ),
+    });
+
+    recordAction(
+      createLifeCounterAction("apply-starting-life", { before, after }),
+      `Starting life changed to ${nextStartingLife}.`,
     );
-    setAnnouncement(`Starting life changed to ${nextStartingLife}.`);
   }
 
   function resetPlayer(playerId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-    setGameResult("in-progress");
-    if (monarchPlayerId === playerId) {
-      setMonarchPlayerId(null);
-    }
-    if (initiativePlayerId === playerId) {
-      setInitiativePlayerId(null);
-    }
-    setPlayers((current) =>
-      current.map((player) => ({
-        ...player,
-        life: player.id === playerId ? startingLife : player.life,
-        poison: player.id === playerId ? 0 : player.poison,
-        status: player.id === playerId ? "active" : player.status,
-        cityBlessing: player.id === playerId ? false : player.cityBlessing,
-        experience: player.id === playerId ? 0 : player.experience,
-        energy: player.id === playerId ? 0 : player.energy,
-        rad: player.id === playerId ? 0 : player.rad,
-        treasure: player.id === playerId ? 0 : player.treasure,
-        floatingMana:
-          player.id === playerId ? createFloatingMana() : player.floatingMana,
-        customCounters:
-          player.id === playerId
-            ? player.customCounters.map((counter) => ({
-                ...counter,
-                value: 0,
-              }))
-            : player.customCounters,
-        commanders: player.commanders.map((commander) => {
-          const nextDamageByDefender = { ...commander.damageByDefender };
-          delete nextDamageByDefender[playerId];
 
-          return {
-            ...commander,
-            castCount: player.id === playerId ? 0 : commander.castCount,
-            damageByDefender:
-              player.id === playerId ? {} : nextDamageByDefender,
-          };
-        }),
-      })),
-    );
-    if (targetPlayer) {
-      setAnnouncement(`${targetPlayer.name} reset.`);
+    if (!targetPlayer) {
+      return;
     }
+
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      gameResult: "in-progress" as GameResult,
+      monarchPlayerId:
+        before.monarchPlayerId === playerId ? null : before.monarchPlayerId,
+      initiativePlayerId:
+        before.initiativePlayerId === playerId
+          ? null
+          : before.initiativePlayerId,
+      players: before.players.map((player) => {
+        if (player.id === playerId) {
+          return resetPlayerCounters(player, before.startingLife);
+        }
+
+        return {
+          ...player,
+          commanders: player.commanders.map((commander) => {
+            const nextDamageByDefender = { ...commander.damageByDefender };
+            delete nextDamageByDefender[playerId];
+
+            return {
+              ...commander,
+              damageByDefender: nextDamageByDefender,
+            };
+          }),
+        };
+      }),
+    };
+
+    recordAction(
+      createLifeCounterAction("reset-player", { before, after, playerId }),
+      `${targetPlayer.name} reset.`,
+    );
   }
 
   function resetGame() {
-    setGameResult("in-progress");
-    setMonarchPlayerId(null);
-    setInitiativePlayerId(null);
-    setDayNight("unset");
-    setStormCount(0);
-    resetTurnTracking();
-    setPlayers((current) =>
-      current.map((player) => resetPlayerCounters(player, startingLife)),
+    const before = currentSnapshot();
+    const after = resetTurnTrackingSnapshot({
+      ...before,
+      gameResult: "in-progress",
+      monarchPlayerId: null,
+      initiativePlayerId: null,
+      dayNight: "unset",
+      stormCount: 0,
+      players: before.players.map((player) =>
+        resetPlayerCounters(player, before.startingLife),
+      ),
+    });
+
+    recordAction(
+      createLifeCounterAction("reset-game", { before, after }),
+      "Game reset. Player setup was kept.",
     );
-    setAnnouncement("Game reset. Player setup was kept.");
   }
 
   function rematch() {
-    const nextActivePlayerId = visiblePlayers[1]?.id ?? visiblePlayers[0]?.id;
+    const before = currentSnapshot();
+    const visible = before.players.slice(0, before.playerCount);
+    const hidden = before.players.slice(before.playerCount);
+    const nextActivePlayerId = visible[1]?.id ?? visible[0]?.id ?? "player-1";
+    const rotated = [...visible.slice(1), ...visible.slice(0, 1)].map(
+      (player, index) => ({
+        ...resetPlayerCounters(player, before.startingLife),
+        seat: seats[index] ?? player.seat,
+      }),
+    );
+    const after = {
+      ...before,
+      activePlayerId: nextActivePlayerId,
+      gameResult: "in-progress" as GameResult,
+      monarchPlayerId: null,
+      initiativePlayerId: null,
+      dayNight: "unset" as DayNightState,
+      stormCount: 0,
+      timersRunning: false,
+      gameElapsedSeconds: 0,
+      turnElapsedSeconds: 0,
+      turnCount: 1,
+      players: [...rotated, ...hidden],
+    };
 
-    setGameResult("in-progress");
-    setMonarchPlayerId(null);
-    setInitiativePlayerId(null);
-    setDayNight("unset");
-    setStormCount(0);
-    setTimersRunning(false);
-    setGameElapsedSeconds(0);
-    setTurnElapsedSeconds(0);
-    setTurnCount(1);
-    setPlayers((current) => {
-      const visible = current.slice(0, playerCount);
-      const hidden = current.slice(playerCount);
-      const rotated = [...visible.slice(1), ...visible.slice(0, 1)].map(
-        (player, index) => ({
-          ...resetPlayerCounters(player, startingLife),
-          seat: seats[index],
-        }),
-      );
-
-      return [...rotated, ...hidden];
-    });
-    if (nextActivePlayerId) {
-      setActivePlayerId(nextActivePlayerId);
-    }
-    setAnnouncement("Rematch ready. Players rotated one seat.");
+    recordAction(
+      createLifeCounterAction("rematch", { before, after }),
+      "Rematch ready. Players rotated one seat.",
+    );
   }
 
   function newGame() {
-    setStartingLife(40);
-    setPlayerCount(4);
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      ...getLifeCounterSnapshot(createInitialLifeCounterSession(now())),
+    };
+
     setTableMode(false);
-    setMonarchPlayerId(null);
-    setInitiativePlayerId(null);
-    setDayNight("unset");
-    setStormCount(0);
-    setTimersRunning(false);
-    setGameElapsedSeconds(0);
-    setTurnElapsedSeconds(0);
-    setTurnCount(1);
-    setGameResult("in-progress");
-    setPlayers(createPlayers(40));
-    setActivePlayerId("player-1");
-    setAnnouncement("New game ready.");
+    recordAction(
+      createLifeCounterAction("new-game", { before, after }),
+      "New game ready.",
+    );
   }
 
   function eliminatePlayer(playerId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-    setGameResult("in-progress");
-    setPlayers((current) =>
-      current.map((player) =>
+
+    if (!targetPlayer) {
+      return;
+    }
+
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      gameResult: "in-progress" as GameResult,
+      players: before.players.map((player) =>
         player.id === playerId
-          ? { ...player, status: "eliminated" }
+          ? { ...player, status: "eliminated" as PlayerStatus }
           : player.status === "winner"
-            ? { ...player, status: "active" }
+            ? { ...player, status: "active" as PlayerStatus }
             : player,
       ),
+    };
+
+    recordAction(
+      createLifeCounterAction("eliminate-player", { before, after, playerId }),
+      `${targetPlayer.name} eliminated.`,
     );
-    if (targetPlayer) {
-      setAnnouncement(`${targetPlayer.name} eliminated.`);
-    }
   }
 
   function restorePlayer(playerId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-    setGameResult("in-progress");
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId ? { ...player, status: "active" } : player,
-      ),
-    );
-    if (targetPlayer) {
-      setAnnouncement(`${targetPlayer.name} restored.`);
+
+    if (!targetPlayer) {
+      return;
     }
+
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      gameResult: "in-progress" as GameResult,
+      players: before.players.map((player) =>
+        player.id === playerId
+          ? { ...player, status: "active" as PlayerStatus }
+          : player,
+      ),
+    };
+
+    recordAction(
+      createLifeCounterAction("restore-player", { before, after, playerId }),
+      `${targetPlayer.name} restored.`,
+    );
   }
 
   function markWinner(playerId: string) {
     const targetPlayer = visiblePlayers.find(
       (player) => player.id === playerId,
     );
-    setGameResult("winner");
-    setTimersRunning(false);
-    setPlayers((current) =>
-      current.map((player) =>
+
+    if (!targetPlayer) {
+      return;
+    }
+
+    const visibleIds = new Set(visiblePlayers.map((player) => player.id));
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      gameResult: "winner" as GameResult,
+      timersRunning: false,
+      players: before.players.map((player) =>
         player.id === playerId
-          ? { ...player, status: "winner" }
-          : visiblePlayers.some(
-                (visiblePlayer) => visiblePlayer.id === player.id,
-              )
-            ? { ...player, status: "eliminated" }
+          ? { ...player, status: "winner" as PlayerStatus }
+          : visibleIds.has(player.id)
+            ? { ...player, status: "eliminated" as PlayerStatus }
             : player,
       ),
+    };
+
+    recordAction(
+      createLifeCounterAction("mark-winner", { before, after, playerId }),
+      `${targetPlayer.name} marked as winner.`,
     );
-    if (targetPlayer) {
-      setAnnouncement(`${targetPlayer.name} marked as winner.`);
-    }
   }
 
   function setSharedResult(
     nextResult: Extract<GameResult, "draw" | "no-contest">,
   ) {
-    setGameResult(nextResult);
-    setTimersRunning(false);
-    setPlayers((current) =>
-      current.map((player) =>
-        visiblePlayers.some((visiblePlayer) => visiblePlayer.id === player.id)
-          ? { ...player, status: "active" }
+    const visibleIds = new Set(visiblePlayers.map((player) => player.id));
+    const before = currentSnapshot();
+    const after = {
+      ...before,
+      gameResult: nextResult,
+      timersRunning: false,
+      players: before.players.map((player) =>
+        visibleIds.has(player.id)
+          ? { ...player, status: "active" as PlayerStatus }
           : player,
       ),
-    );
-    setAnnouncement(
+    };
+
+    recordAction(
+      createLifeCounterAction("set-shared-result", {
+        before,
+        after,
+        result: nextResult,
+      }),
       nextResult === "draw" ? "Game marked draw." : "Game marked no contest.",
     );
   }
@@ -1103,6 +1267,26 @@ export function LifeCounter() {
           </span>
         </div>
         <div className="flex flex-wrap gap-2 md:justify-end">
+          <Button
+            aria-label="Undo last life counter action"
+            disabled={!canUndo}
+            onClick={undoLastAction}
+            type="button"
+            variant="secondary"
+          >
+            <Undo2 className="size-4" aria-hidden="true" />
+            Undo
+          </Button>
+          <Button
+            aria-label="Redo life counter action"
+            disabled={!canRedo}
+            onClick={redoNextAction}
+            type="button"
+            variant="secondary"
+          >
+            <Redo2 className="size-4" aria-hidden="true" />
+            Redo
+          </Button>
           <Button onClick={resetGame} type="button" variant="secondary">
             <RotateCcw className="size-4" aria-hidden="true" />
             Reset
@@ -1260,7 +1444,7 @@ export function LifeCounter() {
               {dayNight === "unset" ? "Day/night unset" : dayNight}
             </span>
             <Button
-              onClick={() => setDayNight("day")}
+              onClick={() => setDayNightState("day")}
               size="sm"
               type="button"
               variant={dayNight === "day" ? "primary" : "secondary"}
@@ -1268,7 +1452,7 @@ export function LifeCounter() {
               Day
             </Button>
             <Button
-              onClick={() => setDayNight("night")}
+              onClick={() => setDayNightState("night")}
               size="sm"
               type="button"
               variant={dayNight === "night" ? "primary" : "secondary"}
@@ -1276,7 +1460,7 @@ export function LifeCounter() {
               Night
             </Button>
             <Button
-              onClick={() => setDayNight("unset")}
+              onClick={() => setDayNightState("unset")}
               size="sm"
               type="button"
               variant="secondary"
@@ -1293,9 +1477,7 @@ export function LifeCounter() {
             <IconButton
               className="size-8"
               label="Subtract storm"
-              onClick={() =>
-                setStormCount((current) => Math.max(0, current - 1))
-              }
+              onClick={() => adjustStorm(-1)}
               variant="secondary"
             >
               <Minus className="size-4" aria-hidden="true" />
@@ -1303,7 +1485,7 @@ export function LifeCounter() {
             <IconButton
               className="size-8"
               label="Add storm"
-              onClick={() => setStormCount((current) => current + 1)}
+              onClick={() => adjustStorm(1)}
               variant="secondary"
             >
               <Plus className="size-4" aria-hidden="true" />
@@ -1880,13 +2062,7 @@ export function LifeCounter() {
                 <div className="grid grid-cols-3 gap-2">
                   <Button
                     aria-label={`Set ${player.name} as active keyboard player`}
-                    onClick={() => {
-                      setActivePlayerId(player.id);
-                      setTurnElapsedSeconds(0);
-                      setAnnouncement(
-                        `${player.name} selected for keyboard controls.`,
-                      );
-                    }}
+                    onClick={() => selectActivePlayer(player.id)}
                     size="sm"
                     type="button"
                     variant="secondary"

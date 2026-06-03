@@ -89,6 +89,74 @@ test("standalone life counter updates local table state", async ({ page }) => {
   );
 });
 
+test("standalone life counter supports action-log undo and redo", async ({
+  page,
+}) => {
+  await page.goto("/life");
+
+  const firstPlayer = page.getByTestId("life-player-card").first();
+
+  await firstPlayer.getByLabel("Player name").fill("Stephen");
+  await firstPlayer
+    .getByRole("button", { name: "Subtract 5 life from Stephen" })
+    .click();
+  await expect(firstPlayer).toContainText("35");
+
+  await page
+    .getByRole("button", { name: "Undo last life counter action" })
+    .click();
+  await expect(firstPlayer).toContainText("40");
+
+  await page.getByRole("button", { name: "Redo life counter action" }).click();
+  await expect(firstPlayer).toContainText("35");
+
+  await page
+    .getByRole("button", { name: "Undo last life counter action" })
+    .click();
+  await page.getByRole("button", { name: "Add poison to Stephen" }).click();
+
+  await expect(firstPlayer).toContainText("40");
+  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+  await expect(
+    page.getByRole("button", { name: "Redo life counter action" }),
+  ).toBeDisabled();
+});
+
+test("standalone life counter restores local Dexie state after refresh", async ({
+  page,
+}) => {
+  await page.goto("/life");
+
+  const firstPlayer = page.getByTestId("life-player-card").first();
+  await firstPlayer.getByLabel("Player name").fill("Stephen");
+  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+
+  let blockedRequests = 0;
+  await page.route("**/*", async (route) => {
+    blockedRequests += 1;
+    await route.abort();
+  });
+
+  await firstPlayer
+    .getByRole("button", { name: "Subtract 10 life from Stephen" })
+    .click();
+  await page.getByRole("button", { name: "Add poison to Stephen" }).click();
+  await expect(firstPlayer).toContainText("30");
+  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+  expect(blockedRequests).toBe(0);
+
+  await page.unroute("**/*");
+  await page.reload();
+
+  const restoredFirstPlayer = page.getByTestId("life-player-card").first();
+  await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
+  await expect(
+    restoredFirstPlayer.getByLabel("Commander 1", { exact: true }),
+  ).toHaveValue("Atraxa");
+  await expect(restoredFirstPlayer).toContainText("30");
+  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+});
+
 test("standalone life counter tracks Commander counters and table roles", async ({
   page,
 }) => {

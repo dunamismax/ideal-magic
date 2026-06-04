@@ -2,6 +2,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { nextCookies } from "better-auth/next-js";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { createDatabase, type AppDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
@@ -68,6 +69,25 @@ export async function getServerSession() {
   return getAuth().api.getSession({
     headers: await headers(),
   });
+}
+
+export async function requireServerSession(nextPath: string) {
+  const session = await getServerSession();
+
+  if (!session) {
+    redirect(getLoginRedirectPath(nextPath));
+  }
+
+  return session;
+}
+
+export function getLoginRedirectPath(nextPath: string) {
+  const safeNextPath =
+    nextPath.startsWith("/") && !nextPath.startsWith("//")
+      ? nextPath
+      : "/account";
+
+  return `/login?next=${encodeURIComponent(safeNextPath)}`;
 }
 
 function getAuthBaseUrl() {

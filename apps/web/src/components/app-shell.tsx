@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="hidden items-center gap-2 lg:flex lg:justify-end">
             <Button asChild variant="secondary">
-              <Link href="/login">
+              <Link href="/account">
                 <UserCircle className="size-4" aria-hidden="true" />
                 Account
               </Link>

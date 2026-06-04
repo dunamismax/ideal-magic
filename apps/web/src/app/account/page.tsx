@@ -1,17 +1,11 @@
-import { redirect } from "next/navigation";
-
 import { PageFrame } from "@/components/page-frame";
-import { getServerSession } from "@/features/auth/server";
+import { requireServerSession } from "@/features/auth/server";
 import { LogoutButton } from "./logout-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const session = await getServerSession();
-
-  if (!session) {
-    redirect("/login?next=/account");
-  }
+  const session = await requireServerSession("/account");
 
   return (
     <PageFrame eyebrow="Account" title="Account">

@@ -863,6 +863,21 @@ test("login form posts Better Auth email credentials", async ({ page }) => {
   ).toBeVisible();
 });
 
+for (const protectedRoute of ["/game-night", "/groups", "/decks", "/history"]) {
+  test(`anonymous users are redirected from ${protectedRoute}`, async ({
+    page,
+  }) => {
+    await page.goto(protectedRoute);
+
+    await expect(page).toHaveURL(
+      `/login?next=${encodeURIComponent(protectedRoute)}`,
+    );
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Log In" }),
+    ).toBeVisible();
+  });
+}
+
 test("health and readiness probes return ok", async ({ request }) => {
   await expect((await request.get("/healthz")).ok()).toBeTruthy();
   await expect((await request.get("/readyz")).ok()).toBeTruthy();

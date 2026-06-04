@@ -359,11 +359,11 @@ Schema rules:
 
 ## Phase 3 - Auth And Authorization
 
-- [ ] Integrate Better Auth with Postgres.
+- [x] Integrate Better Auth with Postgres.
 - [ ] Implement signup, login, logout, password reset or equivalent
   account recovery, and session refresh.
 - [ ] Define playgroup roles and permissions in TypeScript.
-- [ ] Protect logged-in routes through server-side authorization.
+- [x] Protect logged-in routes through server-side authorization.
 - [ ] Add CSRF, secure cookie, and rate-limit behavior appropriate for
   the target deployment.
 - [ ] Add Valkey-backed rate limiting once Valkey is part of the running
@@ -375,15 +375,18 @@ Schema rules:
 Current Phase 3 foundation adds Better Auth dependencies, aligns the
 Drizzle identity tables with Better Auth's core user, account, session,
 and verification fields, mounts `/api/auth/*`, adds signup and login
-pages, and adds a protected `/account` route that redirects anonymous
-viewers through the server-side session check. PGlite integration tests
-exercise real Better Auth signup, cookie-backed session lookup, logout,
-login, and password hash persistence against migrated schema history.
-Playwright covers the signup and login form payloads with mocked auth
-endpoints so browser coverage does not require a local Postgres server.
-This does not yet complete account recovery, broad app-route protection,
-CSRF/rate-limit hardening, Valkey-backed limits, audit events, or
-authenticated group/event workflows.
+pages, and adds a protected `/account` route with logout. The current
+logged-in planning surfaces (`/game-night`, `/groups`, `/decks`, and
+`/history`) now use the same server-side session guard and redirect
+anonymous viewers to login with a scoped return path. PGlite integration
+tests exercise real Better Auth signup, cookie-backed session lookup,
+logout, login, and password hash persistence against migrated schema
+history. Playwright covers the signup and login form payloads with
+mocked auth endpoints plus anonymous redirect smoke tests for the
+protected planning routes. This does not yet complete account recovery,
+CSRF/rate-limit hardening, Valkey-backed limits, audit events,
+playgroup-role authorization, or authenticated group/event CRUD
+workflows.
 
 ## Phase 4 - Drizzle Schema And Core Persistence
 

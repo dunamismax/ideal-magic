@@ -10,6 +10,11 @@ export default defineConfig({
   },
   webServer: {
     command: "pnpm dev --hostname 127.0.0.1 --port 3100",
+    env: {
+      POD_TRACKER_DATABASE_URL:
+        process.env.POD_TRACKER_DATABASE_URL ??
+        "postgres://pod_tracker:pod_tracker@127.0.0.1:55432/pod_tracker",
+    },
     url: "http://127.0.0.1:3100",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -9,6 +9,9 @@ import {
 
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/ui/empty-state";
+import { requireServerSession } from "@/features/auth/server";
+
+export const dynamic = "force-dynamic";
 
 const rsvps = [
   ["Nora", "Yes", "Muldrotha", "7:00 PM"],
@@ -22,7 +25,9 @@ const pods = [
   ["Pod 2", "Theo, Rowan, Jules", "Needs RSVP"],
 ];
 
-export default function GameNightPage() {
+export default async function GameNightPage() {
+  await requireServerSession("/game-night");
+
   return (
     <PageFrame eyebrow="Host planning" title="Game Night">
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">

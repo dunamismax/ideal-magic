@@ -7,6 +7,7 @@ export type PlaygroupRole =
   | "viewer";
 
 export type EventVisibility = "members" | "invite_only" | "public_safe";
+export type EventStatus = "scheduled" | "cancelled" | "archived";
 export type AddressVisibility = "rsvps" | "members" | "public" | "hidden";
 
 const playgroupMemberDirectoryRoles = ["owner", "admin", "host", "member"];

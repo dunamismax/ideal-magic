@@ -1,8 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { validateCreateEventInput } from "./event-form";
+import {
+  validateCreateEventInput,
+  validateEventStatusInput,
+  validateUpdateEventInput,
+} from "./event-form";
 
 const playgroupId = "20000000-0000-4000-8000-000000000001";
+const eventId = "20000000-0000-4000-8000-000000000002";
 const now = new Date("2026-06-04T12:00:00.000Z");
 
 describe("event form validation", () => {
@@ -84,6 +89,77 @@ describe("event form validation", () => {
         title: "Use 100 characters or fewer.",
         startsAt: "Choose a future date and time.",
         description: "Use 1000 characters or fewer.",
+      },
+    });
+  });
+
+  test("normalizes valid event update input", () => {
+    const result = validateUpdateEventInput(
+      {
+        eventId: ` ${eventId} `,
+        title: "  Saturday   Pods  ",
+        startsAt: "2030-06-14T19:30",
+        description: "  New start time. ",
+        visibility: "invite_only",
+      },
+      { now },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      input: {
+        eventId,
+        title: "Saturday Pods",
+        description: "New start time.",
+        visibility: "invite_only",
+      },
+    });
+    expect(result.ok ? result.input.startsAt : null).toBeInstanceOf(Date);
+  });
+
+  test("rejects invalid event update and lifecycle action input", () => {
+    expect(
+      validateUpdateEventInput(
+        {
+          eventId: "not-an-event-id",
+          title: "",
+          startsAt: "bad-date",
+          description: "",
+          visibility: "private",
+        },
+        { now },
+      ),
+    ).toEqual({
+      ok: false,
+      fields: {
+        eventId: "not-an-event-id",
+        title: "",
+        startsAt: "bad-date",
+        description: "",
+        visibility: "private",
+      },
+      fieldErrors: {
+        eventId: "Choose an event.",
+        title: "Title is required.",
+        startsAt: "Choose a valid date and time.",
+        visibility: "Choose a visibility.",
+      },
+    });
+
+    expect(
+      validateEventStatusInput({
+        eventId: "not-an-event-id",
+        status: "scheduled",
+      }),
+    ).toEqual({
+      ok: false,
+      fields: {
+        eventId: "not-an-event-id",
+        status: "scheduled",
+      },
+      fieldErrors: {
+        eventId: "Choose an event.",
+        status: "Choose an event action.",
       },
     });
   });

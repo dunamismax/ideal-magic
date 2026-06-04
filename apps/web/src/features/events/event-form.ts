@@ -1,4 +1,4 @@
-import type { EventVisibility } from "@/db/scopes";
+import type { EventStatus, EventVisibility } from "@/db/scopes";
 
 export type CreateEventInput = {
   playgroupId: string;
@@ -6,6 +6,15 @@ export type CreateEventInput = {
   startsAt: string;
   description: string;
   visibility: EventVisibility;
+};
+
+export type UpdateEventInput = Omit<CreateEventInput, "playgroupId"> & {
+  eventId: string;
+};
+
+export type EventStatusInput = {
+  eventId: string;
+  status: Extract<EventStatus, "cancelled" | "archived">;
 };
 
 export type CreateEventValidationResult =
@@ -21,9 +30,34 @@ export type CreateEventValidationResult =
       fields: CreateEventInput;
     };
 
+export type UpdateEventValidationResult =
+  | {
+      ok: true;
+      input: Omit<UpdateEventInput, "startsAt"> & {
+        startsAt: Date;
+      };
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof UpdateEventInput, string>>;
+      fields: UpdateEventInput;
+    };
+
+export type EventStatusValidationResult =
+  | {
+      ok: true;
+      input: EventStatusInput;
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof EventStatusInput, string>>;
+      fields: EventStatusInput;
+    };
+
 const maxEventTitleLength = 100;
 const maxEventDescriptionLength = 1_000;
 const eventVisibilities = ["members", "invite_only", "public_safe"] as const;
+const manageableEventStatuses = ["cancelled", "archived"] as const;
 
 export function validateCreateEventInput(
   rawInput: Partial<
@@ -82,6 +116,117 @@ export function validateCreateEventInput(
       description: fields.description,
       visibility: fields.visibility,
     },
+  };
+}
+
+export function validateUpdateEventInput(
+  rawInput: Partial<
+    Record<keyof UpdateEventInput, FormDataEntryValue | string>
+  >,
+  options: { now?: Date } = {},
+): UpdateEventValidationResult {
+  const createValidation = validateCreateEventInput(
+    {
+      playgroupId: "00000000-0000-4000-8000-000000000000",
+      title: rawInput.title,
+      startsAt: rawInput.startsAt,
+      description: rawInput.description,
+      visibility: rawInput.visibility,
+    },
+    options,
+  );
+  const eventId = normalizeText(rawInput.eventId);
+
+  if (!createValidation.ok) {
+    const fields: UpdateEventInput = {
+      eventId,
+      title: createValidation.fields.title,
+      startsAt: createValidation.fields.startsAt,
+      description: createValidation.fields.description,
+      visibility: createValidation.fields.visibility,
+    };
+    const fieldErrors: Partial<Record<keyof UpdateEventInput, string>> = {};
+
+    for (const fieldName of [
+      "title",
+      "startsAt",
+      "description",
+      "visibility",
+    ] as const) {
+      if (createValidation.fieldErrors[fieldName]) {
+        fieldErrors[fieldName] = createValidation.fieldErrors[fieldName];
+      }
+    }
+
+    if (!isUuid(eventId)) {
+      fieldErrors.eventId = "Choose an event.";
+    }
+
+    return {
+      ok: false,
+      fieldErrors,
+      fields,
+    };
+  }
+
+  if (!isUuid(eventId)) {
+    return {
+      ok: false,
+      fieldErrors: {
+        eventId: "Choose an event.",
+      },
+      fields: {
+        eventId,
+        title: createValidation.input.title,
+        startsAt: String(rawInput.startsAt ?? "").trim(),
+        description: createValidation.input.description,
+        visibility: createValidation.input.visibility,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    input: {
+      eventId,
+      title: createValidation.input.title,
+      startsAt: createValidation.input.startsAt,
+      description: createValidation.input.description,
+      visibility: createValidation.input.visibility,
+    },
+  };
+}
+
+export function validateEventStatusInput(
+  rawInput: Partial<
+    Record<keyof EventStatusInput, FormDataEntryValue | string>
+  >,
+): EventStatusValidationResult {
+  const fields: EventStatusInput = {
+    eventId: normalizeText(rawInput.eventId),
+    status: String(rawInput.status ?? "") as EventStatusInput["status"],
+  };
+  const fieldErrors: Partial<Record<keyof EventStatusInput, string>> = {};
+
+  if (!isUuid(fields.eventId)) {
+    fieldErrors.eventId = "Choose an event.";
+  }
+
+  if (!includesString(manageableEventStatuses, fields.status)) {
+    fieldErrors.status = "Choose an event action.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      fieldErrors,
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
   };
 }
 

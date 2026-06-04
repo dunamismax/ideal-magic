@@ -59,6 +59,9 @@ export const events = core.table(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    status: text("status").notNull().default("scheduled"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     locationId: uuid("location_id").references(() => eventLocations.id, {
       onDelete: "set null",
     }),
@@ -78,6 +81,18 @@ export const events = core.table(
     check(
       "events_visibility_check",
       sql`${table.visibility} in ('members', 'invite_only', 'public_safe')`,
+    ),
+    check(
+      "events_status_check",
+      sql`${table.status} in ('scheduled', 'cancelled', 'archived')`,
+    ),
+    check(
+      "events_cancelled_at_matches_status",
+      sql`(${table.status} = 'cancelled' and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancelledAt} is null)`,
+    ),
+    check(
+      "events_archived_at_matches_status",
+      sql`(${table.status} = 'archived' and ${table.archivedAt} is not null) or (${table.status} <> 'archived' and ${table.archivedAt} is null)`,
     ),
     check(
       "events_ends_after_start",

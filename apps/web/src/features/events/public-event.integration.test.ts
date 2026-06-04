@@ -23,6 +23,7 @@ describe("public event invite service", () => {
     expect(view).toMatchObject({
       id: developmentSeedIds.events.wednesdayCommander,
       title: "Wednesday Commander Night",
+      status: "scheduled",
       playgroupName: "Example City Commander League",
       locationName: "Example Tabletop Room",
       rsvpCounts: {

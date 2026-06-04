@@ -29,6 +29,11 @@ export function PublicEventInvite({
         <h2 className="mt-1 text-2xl font-black leading-tight">
           {event.title}
         </h2>
+        {event.status === "cancelled" ? (
+          <p className="mt-3 w-fit rounded-control border border-danger/40 bg-danger/10 px-3 py-2 text-sm font-bold text-danger">
+            Cancelled
+          </p>
+        ) : null}
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">

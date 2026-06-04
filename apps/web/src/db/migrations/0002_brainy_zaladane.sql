@@ -1,0 +1,6 @@
+ALTER TABLE "core"."events" ADD COLUMN "status" text DEFAULT 'scheduled' NOT NULL;--> statement-breakpoint
+ALTER TABLE "core"."events" ADD COLUMN "cancelled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "core"."events" ADD COLUMN "archived_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "core"."events" ADD CONSTRAINT "events_status_check" CHECK ("core"."events"."status" in ('scheduled', 'cancelled', 'archived'));--> statement-breakpoint
+ALTER TABLE "core"."events" ADD CONSTRAINT "events_cancelled_at_matches_status" CHECK (("core"."events"."status" = 'cancelled' and "core"."events"."cancelled_at" is not null) or ("core"."events"."status" <> 'cancelled' and "core"."events"."cancelled_at" is null));--> statement-breakpoint
+ALTER TABLE "core"."events" ADD CONSTRAINT "events_archived_at_matches_status" CHECK (("core"."events"."status" = 'archived' and "core"."events"."archived_at" is not null) or ("core"."events"."status" <> 'archived' and "core"."events"."archived_at" is null));

@@ -621,6 +621,7 @@ test("tokenized public event invite shows public-safe planning details", async (
           event: {
             id: "event-1",
             title: "Wednesday Commander Night",
+            status: "scheduled",
             playgroupName: "Example City Commander League",
             dateLabel: "Wednesday, June 10, 2026",
             timeLabel: "11:00 PM UTC",
@@ -679,6 +680,7 @@ test("tokenized public event invite submits a guest RSVP and refreshes aggregate
           event: {
             id: "event-1",
             title: "Wednesday Commander Night",
+            status: "scheduled",
             playgroupName: "Example City Commander League",
             dateLabel: "Wednesday, June 10, 2026",
             timeLabel: "11:00 PM UTC",
@@ -713,6 +715,7 @@ test("tokenized public event invite submits a guest RSVP and refreshes aggregate
           event: {
             id: "event-1",
             title: "Wednesday Commander Night",
+            status: "scheduled",
             playgroupName: "Example City Commander League",
             dateLabel: "Wednesday, June 10, 2026",
             timeLabel: "11:00 PM UTC",
@@ -911,6 +914,7 @@ test("authenticated group owners can create an event and RSVP", async ({
   const email = `event-smoke-${suffix}@example.test`;
   const groupName = `Saturday Hosts ${suffix}`;
   const eventTitle = `Saturday Commander ${suffix}`;
+  const editedEventTitle = `Sunday Commander ${suffix}`;
 
   await page.goto("/signup?next=/groups");
   await page.getByLabel("Name").fill("Riley Chen");
@@ -941,7 +945,9 @@ test("authenticated group owners can create an event and RSVP", async ({
     eventCard.getByRole("heading", { name: eventTitle }),
   ).toBeVisible();
   await expect(eventCard.getByText(groupName)).toBeVisible();
-  await expect(eventCard.getByText("Members")).toBeVisible();
+  await expect(
+    eventCard.locator("span").filter({ hasText: "Members" }),
+  ).toBeVisible();
   await expect(eventCard.getByText("owner")).toBeVisible();
 
   await eventCard.getByLabel("RSVP Status").selectOption("maybe");
@@ -951,6 +957,30 @@ test("authenticated group owners can create an event and RSVP", async ({
 
   await expect(eventCard.getByText("RSVP saved.")).toBeVisible();
   await expect(eventCard.getByText("RSVP: Maybe")).toBeVisible();
+
+  await eventCard.getByLabel("Edit Event Title").fill(editedEventTitle);
+  await eventCard.getByLabel("Edit Start").fill("2030-06-15T18:30");
+  await eventCard.getByLabel("Edit Visibility").selectOption("invite_only");
+  await eventCard.getByLabel("Edit Description").fill("Shifted to Sunday.");
+  await eventCard.getByRole("button", { name: "Update Event" }).click();
+
+  const editedEventCard = page
+    .locator("article")
+    .filter({ hasText: editedEventTitle });
+
+  await expect(
+    editedEventCard.getByRole("heading", { name: editedEventTitle }),
+  ).toBeVisible();
+  await expect(
+    editedEventCard.locator("span").filter({ hasText: "Invite Only" }),
+  ).toBeVisible();
+  await expect(editedEventCard.getByText("Event updated.")).toBeVisible();
+
+  await editedEventCard.getByRole("button", { name: "Cancel Event" }).click();
+  await expect(editedEventCard.getByText("Cancelled").first()).toBeVisible();
+
+  await editedEventCard.getByRole("button", { name: "Archive Event" }).click();
+  await expect(editedEventCard).toHaveCount(0);
 });
 
 for (const protectedRoute of ["/game-night", "/groups", "/decks", "/history"]) {

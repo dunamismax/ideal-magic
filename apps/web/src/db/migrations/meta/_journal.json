@@ -15,6 +15,13 @@
       "when": 1780578070292,
       "tag": "0001_cooing_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780597555218,
+      "tag": "0002_brainy_zaladane",
+      "breakpoints": true
     }
   ]
 }

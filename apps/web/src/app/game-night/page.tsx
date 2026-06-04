@@ -18,6 +18,7 @@ import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
 import { canManageEvent } from "@/db/scopes";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateEventForm } from "./create-event-form";
+import { EventManagementForm } from "./event-management-form";
 import { MemberRsvpForm } from "./member-rsvp-form";
 
 export const dynamic = "force-dynamic";
@@ -104,7 +105,7 @@ export default async function GameNightPage() {
   );
 }
 
-function EventCard({ event }: { event: EventPlanningSummary }) {
+export function EventCard({ event }: { event: EventPlanningSummary }) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
       <div className="grid gap-4">
@@ -117,6 +118,7 @@ function EventCard({ event }: { event: EventPlanningSummary }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge value={formatVisibility(event.visibility)} />
+            <Badge value={formatEventStatus(event.status)} />
             {event.viewer.role ? <Badge value={event.viewer.role} /> : null}
             {event.viewer.rsvpStatus ? (
               <Badge
@@ -125,6 +127,13 @@ function EventCard({ event }: { event: EventPlanningSummary }) {
             ) : null}
           </div>
         </div>
+
+        {event.status === "cancelled" ? (
+          <div className="rounded-control border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
+            Cancelled
+            {event.cancelledAt ? ` ${formatEventDate(event.cancelledAt)}` : ""}
+          </div>
+        ) : null}
 
         <div className="grid gap-2 text-sm font-semibold text-muted sm:grid-cols-4">
           <RsvpCount label="Yes" value={event.counts.rsvps.yes} />
@@ -147,6 +156,10 @@ function EventCard({ event }: { event: EventPlanningSummary }) {
             </p>
           </div>
         )}
+
+        {event.viewer.canManageEvent ? (
+          <EventManagementForm event={event} />
+        ) : null}
       </div>
     </article>
   );
@@ -223,6 +236,17 @@ function formatRsvpStatus(
       return "Waitlist";
     default:
       return "None";
+  }
+}
+
+function formatEventStatus(status: EventPlanningSummary["status"]) {
+  switch (status) {
+    case "cancelled":
+      return "Cancelled";
+    case "archived":
+      return "Archived";
+    default:
+      return "Scheduled";
   }
 }
 

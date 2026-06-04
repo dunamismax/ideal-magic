@@ -17,6 +17,7 @@ import {
   canManageEvent,
   canRsvpToEvent,
   canSeeHostAddress,
+  type EventStatus,
   type EventVisibility,
   type PlaygroupRole,
 } from "../scopes";
@@ -32,6 +33,10 @@ type PlanningWriteDatabase = Pick<
 >;
 
 export type RsvpStatus = "yes" | "maybe" | "no" | "waitlist";
+export type ManageableEventStatus = Extract<
+  EventStatus,
+  "cancelled" | "archived"
+>;
 
 export type EventPlanningSummary = {
   id: string;
@@ -39,6 +44,9 @@ export type EventPlanningSummary = {
   description: string;
   startsAt: Date;
   endsAt: Date | null;
+  status: EventStatus;
+  cancelledAt: Date | null;
+  archivedAt: Date | null;
   visibility: EventVisibility;
   playgroup: {
     id: string;
@@ -79,6 +87,7 @@ export type UpcomingEventListItem = {
   id: string;
   title: string;
   startsAt: Date;
+  status: EventStatus;
   visibility: EventVisibility;
   playgroup: {
     id: string;
@@ -93,6 +102,7 @@ export type PublicSafeEventSummary = {
   title: string;
   startsAt: Date;
   endsAt: Date | null;
+  status: EventStatus;
   visibility: EventVisibility;
   playgroup: {
     id: string;
@@ -126,6 +136,7 @@ export type CreatedEvent = {
   description: string;
   startsAt: Date;
   endsAt: Date | null;
+  status: EventStatus;
   visibility: EventVisibility;
   playgroupId: string;
   createdByUserId: string | null;
@@ -145,7 +156,15 @@ export class EventRsvpAuthorizationError extends Error {
   }
 }
 
+export class EventManagementAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot manage this event.");
+    this.name = "EventManagementAuthorizationError";
+  }
+}
+
 const rsvpStatuses = ["yes", "maybe", "no", "waitlist"] as const;
+const eventStatuses = ["scheduled", "cancelled", "archived"] as const;
 const playgroupRoles = [
   "owner",
   "admin",
@@ -194,6 +213,7 @@ export async function createEventForPlaygroup(
         description: events.description,
         startsAt: events.startsAt,
         endsAt: events.endsAt,
+        status: events.status,
         visibility: events.visibility,
         playgroupId: events.playgroupId,
         createdByUserId: events.createdByUserId,
@@ -211,7 +231,104 @@ export async function createEventForPlaygroup(
 
     return {
       ...event,
+      status: asEventStatus(event.status),
       visibility: asEventVisibility(event.visibility),
+    };
+  });
+}
+
+export async function updateEventForViewer(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    title: string;
+    description: string;
+    startsAt: Date;
+    visibility: EventVisibility;
+  },
+) {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManageEvent(tx, {
+      eventId: input.eventId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    const [updated] = await tx
+      .update(events)
+      .set({
+        title: input.title,
+        description: input.description,
+        startsAt: input.startsAt,
+        visibility: input.visibility,
+        updatedAt: new Date(),
+      })
+      .where(eq(events.id, input.eventId))
+      .returning({
+        id: events.id,
+        title: events.title,
+        description: events.description,
+        startsAt: events.startsAt,
+        endsAt: events.endsAt,
+        status: events.status,
+        visibility: events.visibility,
+        playgroupId: events.playgroupId,
+        createdByUserId: events.createdByUserId,
+      });
+
+    if (!updated) {
+      throw new Error("Expected event update to return a row.");
+    }
+
+    return {
+      ...updated,
+      status: asEventStatus(updated.status),
+      visibility: asEventVisibility(updated.visibility),
+    };
+  });
+}
+
+export async function setEventStatusForViewer(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    status: ManageableEventStatus;
+    changedAt?: Date;
+  },
+) {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManageEvent(tx, {
+      eventId: input.eventId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    const changedAt = input.changedAt ?? new Date();
+    const [updated] = await tx
+      .update(events)
+      .set({
+        status: input.status,
+        cancelledAt: input.status === "cancelled" ? changedAt : null,
+        archivedAt: input.status === "archived" ? changedAt : null,
+        updatedAt: changedAt,
+      })
+      .where(eq(events.id, input.eventId))
+      .returning({
+        id: events.id,
+        status: events.status,
+        cancelledAt: events.cancelledAt,
+        archivedAt: events.archivedAt,
+      });
+
+    if (!updated) {
+      throw new Error("Expected event status update to return a row.");
+    }
+
+    return {
+      id: updated.id,
+      status: asEventStatus(updated.status),
+      cancelledAt: updated.cancelledAt,
+      archivedAt: updated.archivedAt,
     };
   });
 }
@@ -336,6 +453,9 @@ export async function getScopedEventPlanningSummary(
       description: events.description,
       startsAt: events.startsAt,
       endsAt: events.endsAt,
+      status: events.status,
+      cancelledAt: events.cancelledAt,
+      archivedAt: events.archivedAt,
       visibility: events.visibility,
       playgroupId: playgroups.id,
       playgroupName: playgroups.name,
@@ -399,6 +519,9 @@ export async function getScopedEventPlanningSummary(
     description: eventRow.description,
     startsAt: eventRow.startsAt,
     endsAt: eventRow.endsAt,
+    status: asEventStatus(eventRow.status),
+    cancelledAt: eventRow.cancelledAt,
+    archivedAt: eventRow.archivedAt,
     visibility,
     playgroup: {
       id: eventRow.playgroupId,
@@ -461,6 +584,7 @@ export async function listUpcomingEventsForViewer(
       id: events.id,
       title: events.title,
       startsAt: events.startsAt,
+      status: events.status,
       visibility: events.visibility,
       playgroupId: playgroups.id,
       playgroupName: playgroups.name,
@@ -477,7 +601,11 @@ export async function listUpcomingEventsForViewer(
       ),
     )
     .where(
-      and(gt(events.startsAt, input.now ?? new Date()), visibilityPredicate),
+      and(
+        gt(events.startsAt, input.now ?? new Date()),
+        visibilityPredicate,
+        sql`${events.status} <> 'archived'`,
+      ),
     )
     .orderBy(asc(events.startsAt), asc(events.id))
     .limit(page.limit)
@@ -487,6 +615,7 @@ export async function listUpcomingEventsForViewer(
     id: row.id,
     title: row.title,
     startsAt: row.startsAt,
+    status: asEventStatus(row.status),
     visibility: asEventVisibility(row.visibility),
     playgroup: {
       id: row.playgroupId,
@@ -523,6 +652,7 @@ export async function getPublicSafeEventSummaryByInviteToken(
     title: eventRow.title,
     startsAt: eventRow.startsAt,
     endsAt: eventRow.endsAt,
+    status: asEventStatus(eventRow.status),
     visibility: asEventVisibility(eventRow.visibility),
     playgroup: {
       id: eventRow.playgroupId,
@@ -589,6 +719,7 @@ async function getPublicSafeEventRowByInviteToken(
       title: events.title,
       startsAt: events.startsAt,
       endsAt: events.endsAt,
+      status: events.status,
       visibility: events.visibility,
       playgroupId: playgroups.id,
       playgroupName: playgroups.name,
@@ -599,10 +730,45 @@ async function getPublicSafeEventRowByInviteToken(
     .from(events)
     .innerJoin(playgroups, eq(events.playgroupId, playgroups.id))
     .leftJoin(eventLocations, eq(events.locationId, eventLocations.id))
-    .where(eq(events.inviteTokenHash, hashInviteToken(normalizedToken)))
+    .where(
+      and(
+        eq(events.inviteTokenHash, hashInviteToken(normalizedToken)),
+        sql`${events.status} <> 'archived'`,
+      ),
+    )
     .limit(1);
 
   return eventRow ?? null;
+}
+
+async function assertCanManageEvent(
+  db: PlanningDatabase,
+  input: {
+    eventId: string;
+    viewerUserId: string;
+  },
+) {
+  const [eventRow] = await db
+    .select({
+      playgroupId: events.playgroupId,
+      status: events.status,
+    })
+    .from(events)
+    .where(eq(events.id, input.eventId))
+    .limit(1);
+
+  if (!eventRow || asEventStatus(eventRow.status) === "archived") {
+    throw new EventManagementAuthorizationError();
+  }
+
+  const role = await getViewerRole(db, {
+    playgroupId: eventRow.playgroupId,
+    viewerUserId: input.viewerUserId,
+  });
+
+  if (!role || !canManageEvent(role)) {
+    throw new EventManagementAuthorizationError();
+  }
 }
 
 async function getViewerRole(
@@ -771,6 +937,10 @@ function asRsvpStatus(value: string | null): RsvpStatus | null {
 
 function asPlaygroupRole(value: string | null): PlaygroupRole | null {
   return includesString(playgroupRoles, value) ? value : null;
+}
+
+function asEventStatus(value: string): EventStatus {
+  return includesString(eventStatuses, value) ? value : "scheduled";
 }
 
 function asEventVisibility(value: string): EventVisibility {

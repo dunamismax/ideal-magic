@@ -8,6 +8,7 @@ type RsvpStatus = "yes" | "maybe" | "no" | "waitlist";
 export type PublicEventInviteView = {
   id: string;
   title: string;
+  status: "scheduled" | "cancelled";
   playgroupName: string;
   dateLabel: string;
   timeLabel: string;
@@ -50,6 +51,7 @@ export function toPublicEventInviteView(
   return {
     id: eventSummary.id,
     title: eventSummary.title,
+    status: eventSummary.status === "cancelled" ? "cancelled" : "scheduled",
     playgroupName: eventSummary.playgroup.name,
     dateLabel: dateFormatter.format(eventSummary.startsAt),
     timeLabel: formatTimeRange(eventSummary.startsAt, eventSummary.endsAt),

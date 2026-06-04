@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db/client";
 import {
+  events,
   eventHosts,
   eventRsvps,
   playgroupMemberships,
@@ -13,11 +14,14 @@ import { createPlaygroupForUser } from "./playgroups";
 import {
   createEventForPlaygroup,
   EventCreationAuthorizationError,
+  EventManagementAuthorizationError,
   EventRsvpAuthorizationError,
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
   listUpcomingEventsForViewer,
+  setEventStatusForViewer,
+  updateEventForViewer,
   upsertMemberRsvpForEvent,
 } from "./event-planning";
 import { developmentSeedIds, seedDevelopmentData } from "../seed";
@@ -133,6 +137,199 @@ describe("event planning data access", () => {
         visibility: "members",
       }),
     ).rejects.toBeInstanceOf(EventCreationAuthorizationError);
+  });
+
+  test("updates, cancels, and archives events only for owner, admin, and host roles", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000008",
+      email: "owner-eight@example.test",
+      name: "Owner Eight",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000009",
+      email: "admin-nine@example.test",
+      name: "Admin Nine",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000010",
+      email: "host-ten@example.test",
+      name: "Host Ten",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000011",
+      email: "member-eleven@example.test",
+      name: "Member Eleven",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000012",
+      email: "outsider-twelve@example.test",
+      name: "Outsider Twelve",
+    });
+
+    const group = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000008",
+      ownerDisplayName: "Owner Eight",
+      name: "Lifecycle Pods",
+      slugBase: "lifecycle-pods",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: group.id,
+        userId: "20000000-0000-4000-8000-000000000009",
+        role: "admin",
+        displayName: "Admin Nine",
+      },
+      {
+        playgroupId: group.id,
+        userId: "20000000-0000-4000-8000-000000000010",
+        role: "host",
+        displayName: "Host Ten",
+      },
+      {
+        playgroupId: group.id,
+        userId: "20000000-0000-4000-8000-000000000011",
+        role: "member",
+        displayName: "Member Eleven",
+      },
+    ]);
+
+    const event = await createEventForPlaygroup(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000008",
+      playgroupId: group.id,
+      title: "Lifecycle Commander",
+      description: "Original plan.",
+      startsAt: new Date("2030-07-01T23:00:00.000Z"),
+      visibility: "members",
+    });
+
+    await expect(
+      updateEventForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000011",
+        eventId: event.id,
+        title: "Member Edit",
+        description: "",
+        startsAt: new Date("2030-07-02T23:00:00.000Z"),
+        visibility: "members",
+      }),
+    ).rejects.toBeInstanceOf(EventManagementAuthorizationError);
+    await expect(
+      setEventStatusForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000012",
+        eventId: event.id,
+        status: "cancelled",
+      }),
+    ).rejects.toBeInstanceOf(EventManagementAuthorizationError);
+
+    await expect(
+      updateEventForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000008",
+        eventId: event.id,
+        title: "Updated Lifecycle Commander",
+        description: "Shifted to Saturday.",
+        startsAt: new Date("2030-07-02T23:30:00.000Z"),
+        visibility: "invite_only",
+      }),
+    ).resolves.toMatchObject({
+      id: event.id,
+      title: "Updated Lifecycle Commander",
+      description: "Shifted to Saturday.",
+      visibility: "invite_only",
+      status: "scheduled",
+    });
+
+    const cancelledAt = new Date("2030-06-30T12:00:00.000Z");
+    await expect(
+      setEventStatusForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000010",
+        eventId: event.id,
+        status: "cancelled",
+        changedAt: cancelledAt,
+      }),
+    ).resolves.toMatchObject({
+      id: event.id,
+      status: "cancelled",
+      cancelledAt,
+      archivedAt: null,
+    });
+
+    const cancelledSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: "20000000-0000-4000-8000-000000000009",
+    });
+
+    expect(cancelledSummary).toMatchObject({
+      id: event.id,
+      title: "Updated Lifecycle Commander",
+      status: "cancelled",
+      cancelledAt,
+      archivedAt: null,
+      viewer: {
+        role: "admin",
+        canManageEvent: true,
+      },
+    });
+    await expect(
+      listUpcomingEventsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000009",
+        now: new Date("2030-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: event.id,
+        status: "cancelled",
+      },
+    ]);
+
+    const archivedAt = new Date("2030-06-30T13:00:00.000Z");
+    await expect(
+      setEventStatusForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000009",
+        eventId: event.id,
+        status: "archived",
+        changedAt: archivedAt,
+      }),
+    ).resolves.toMatchObject({
+      id: event.id,
+      status: "archived",
+      cancelledAt: null,
+      archivedAt,
+    });
+
+    await expect(
+      listUpcomingEventsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000008",
+        now: new Date("2030-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      updateEventForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000008",
+        eventId: event.id,
+        title: "After Archive",
+        description: "",
+        startsAt: new Date("2030-07-03T23:00:00.000Z"),
+        visibility: "members",
+      }),
+    ).rejects.toBeInstanceOf(EventManagementAuthorizationError);
+
+    const [eventRow] = await db
+      .select({
+        title: events.title,
+        status: events.status,
+        cancelledAt: events.cancelledAt,
+        archivedAt: events.archivedAt,
+      })
+      .from(events)
+      .where(eq(events.id, event.id));
+
+    expect(eventRow).toEqual({
+      title: "Updated Lifecycle Commander",
+      status: "archived",
+      cancelledAt: null,
+      archivedAt,
+    });
   });
 
   test("upserts authenticated member RSVPs without exposing them to non-members", async () => {

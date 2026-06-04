@@ -17,6 +17,7 @@ describe("public event invite view model", () => {
         title: "Wednesday Commander Night",
         startsAt: new Date("2026-06-10T23:00:00.000Z"),
         endsAt: new Date("2026-06-11T03:00:00.000Z"),
+        status: "scheduled",
         visibility: "members",
         playgroup: {
           id: "group-1",
@@ -56,6 +57,7 @@ describe("public event invite view model", () => {
 
     expect(view).toMatchObject({
       title: "Wednesday Commander Night",
+      status: "scheduled",
       playgroupName: "Example City Commander League",
       dateLabel: "Wednesday, June 10, 2026",
       timeLabel: "11:00 PM UTC to 3:00 AM UTC",

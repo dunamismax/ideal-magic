@@ -10,6 +10,7 @@ describe("public event invite", () => {
         event={{
           id: "event-1",
           title: "Wednesday Commander Night",
+          status: "scheduled",
           playgroupName: "Example City Commander League",
           dateLabel: "Wednesday, June 10, 2026",
           timeLabel: "11:00 PM UTC",

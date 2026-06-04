@@ -483,7 +483,7 @@ been saved to the group.
 - [x] Build member list with scoped membership visibility.
 - [ ] Build group edit, invite, and role management.
 - [x] Build authenticated event creation for hostable groups.
-- [ ] Build event edit, cancel, and archive flows.
+- [x] Build event edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
 - [x] Build RSVP flows for authenticated members.
 - [x] Build tokenized guest RSVP pages.
@@ -524,10 +524,14 @@ admins, hosts, and members can now RSVP yes, maybe, no, or waitlist to
 scoped upcoming events from `/game-night`, with optional arrival/leaving
 times, server-action validation, PGlite tests for member upsert and
 non-member denial, and a Playwright signup-to-group-to-event-to-RSVP
-smoke test. This does not yet implement group editing, invites, role
-management changes, event editing/canceling/archiving, guest RSVP
-editing/deletion, RSVP notes, host address disclosure, or public
-calendar export.
+smoke test. Owners, admins, and hosts can now edit event title, start,
+visibility, and description, cancel events with a visible cancelled
+status, and archive events out of upcoming lists; PGlite tests prove
+plain members and non-members cannot edit, cancel, or archive, while
+Playwright covers signup, group creation, event creation, RSVP, edit,
+cancel, and archive. This does not yet implement group editing, invites,
+role management changes, guest RSVP editing/deletion, RSVP notes, host
+address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

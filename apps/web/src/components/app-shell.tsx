@@ -7,6 +7,7 @@ import {
   LibraryBig,
   MoreHorizontal,
   Plus,
+  UserCircle,
   Swords,
   Users,
 } from "lucide-react";
@@ -78,6 +79,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="hidden items-center gap-2 lg:flex lg:justify-end">
             <Button asChild variant="secondary">
+              <Link href="/login">
+                <UserCircle className="size-4" aria-hidden="true" />
+                Account
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
               <Link href="/game-night">
                 <Plus className="size-4" aria-hidden="true" />
                 New Event
@@ -102,6 +109,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </MenuItem>
                 <MenuItem asChild>
                   <Link href="/decks">Declare deck</Link>
+                </MenuItem>
+                <MenuItem asChild>
+                  <Link href="/signup">Create account</Link>
                 </MenuItem>
               </MenuContent>
             </Menu>

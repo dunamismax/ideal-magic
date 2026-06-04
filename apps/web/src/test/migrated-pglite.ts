@@ -1,22 +1,24 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 
 import * as schema from "@/db/schema";
 
-const migrationUrl = new URL(
-  "../db/migrations/0000_flaky_domino.sql",
-  import.meta.url,
-);
+const migrationsUrl = new URL("../db/migrations/", import.meta.url);
 
 export async function createMigratedPgliteDatabase() {
   const client = new PGlite();
-  const migration = (await readFile(migrationUrl, "utf8")).replaceAll(
-    "--> statement-breakpoint",
-    "",
-  );
+  const migrationFiles = (await readdir(migrationsUrl))
+    .filter((fileName) => /^\d{4}_.+\.sql$/.test(fileName))
+    .sort();
 
-  await client.exec(migration);
+  for (const fileName of migrationFiles) {
+    const migration = (
+      await readFile(new URL(fileName, migrationsUrl), "utf8")
+    ).replaceAll("--> statement-breakpoint", "");
+
+    await client.exec(migration);
+  }
 
   return {
     client,

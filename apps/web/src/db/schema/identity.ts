@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   text,
@@ -17,7 +18,7 @@ export const users = core.table(
     email: text("email").notNull(),
     name: text("name").notNull(),
     image: text("image"),
-    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    emailVerified: boolean("email_verified").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -41,7 +42,6 @@ export const accounts = core.table(
       .references(() => users.id, { onDelete: "cascade" }),
     providerId: text("provider_id").notNull(),
     accountId: text("account_id").notNull(),
-    passwordHash: text("password_hash"),
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
@@ -52,6 +52,7 @@ export const accounts = core.table(
       withTimezone: true,
     }),
     scope: text("scope"),
+    password: text("password"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -70,8 +71,8 @@ export const accounts = core.table(
       sql`length(btrim(${table.accountId})) > 0`,
     ),
     check(
-      "accounts_password_hash_not_blank",
-      sql`${table.passwordHash} is null or length(btrim(${table.passwordHash})) > 0`,
+      "accounts_password_not_blank",
+      sql`${table.password} is null or length(btrim(${table.password})) > 0`,
     ),
   ],
 );
@@ -83,7 +84,7 @@ export const sessions = core.table(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull(),
+    token: text("token").notNull(),
     userAgent: text("user_agent"),
     ipAddress: text("ip_address"),
     createdAt: createdAt(),
@@ -92,15 +93,12 @@ export const sessions = core.table(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("sessions_token_hash_key").on(table.tokenHash),
+    uniqueIndex("sessions_token_key").on(table.token),
     index("sessions_user_id_idx").on(table.userId),
     index("sessions_active_idx")
       .on(table.userId, table.expiresAt)
       .where(sql`${table.revokedAt} is null`),
-    check(
-      "sessions_token_hash_not_blank",
-      sql`length(btrim(${table.tokenHash})) > 0`,
-    ),
+    check("sessions_token_not_blank", sql`length(btrim(${table.token})) > 0`),
     check(
       "sessions_expire_after_create",
       sql`${table.expiresAt} > ${table.createdAt}`,
@@ -113,27 +111,22 @@ export const verifications = core.table(
   {
     id: uuidPrimaryKey(),
     identifier: text("identifier").notNull(),
-    tokenHash: text("token_hash").notNull(),
-    kind: text("kind").notNull(),
+    value: text("value").notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("verifications_token_hash_key").on(table.tokenHash),
+    uniqueIndex("verifications_value_key").on(table.value),
     index("verifications_identifier_idx").on(table.identifier),
-    check(
-      "verifications_kind_check",
-      sql`${table.kind} in ('email_verification', 'password_reset', 'magic_link')`,
-    ),
     check(
       "verifications_identifier_not_blank",
       sql`length(btrim(${table.identifier})) > 0`,
     ),
     check(
-      "verifications_token_hash_not_blank",
-      sql`length(btrim(${table.tokenHash})) > 0`,
+      "verifications_value_not_blank",
+      sql`length(btrim(${table.value})) > 0`,
     ),
     check(
       "verifications_expire_after_create",

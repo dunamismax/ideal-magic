@@ -372,6 +372,19 @@ Schema rules:
 - [ ] Verify auth with unit tests, integration tests, and Playwright
   signup/login/logout smoke tests.
 
+Current Phase 3 foundation adds Better Auth dependencies, aligns the
+Drizzle identity tables with Better Auth's core user, account, session,
+and verification fields, mounts `/api/auth/*`, adds signup and login
+pages, and adds a protected `/account` route that redirects anonymous
+viewers through the server-side session check. PGlite integration tests
+exercise real Better Auth signup, cookie-backed session lookup, logout,
+login, and password hash persistence against migrated schema history.
+Playwright covers the signup and login form payloads with mocked auth
+endpoints so browser coverage does not require a local Postgres server.
+This does not yet complete account recovery, broad app-route protection,
+CSRF/rate-limit hardening, Valkey-backed limits, audit events, or
+authenticated group/event workflows.
+
 ## Phase 4 - Drizzle Schema And Core Persistence
 
 - [x] Translate the preserved Rust-era schema concepts into Drizzle

@@ -781,6 +781,88 @@ test("tokenized public event invite fails closed for missing invites", async ({
   ).toBeVisible();
 });
 
+test("signup form posts Better Auth email credentials", async ({ page }) => {
+  let postedSignup: unknown = null;
+
+  await page.route("**/api/auth/sign-up/email", async (route) => {
+    postedSignup = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        "set-cookie": "pod-tracker.session_token=fake-session; Path=/",
+      },
+      body: JSON.stringify({
+        user: {
+          id: "user-1",
+          email: "riley@example.test",
+          name: "Riley Chen",
+        },
+        session: {
+          id: "session-1",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/signup?next=/life");
+  await page.getByLabel("Name").fill("Riley Chen");
+  await page.getByLabel("Email").fill("RILEY@EXAMPLE.TEST");
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  expect(postedSignup).toMatchObject({
+    email: "riley@example.test",
+    password: "correct-horse-battery",
+    name: "Riley Chen",
+    callbackURL: "/life",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Life Counter" }),
+  ).toBeVisible();
+});
+
+test("login form posts Better Auth email credentials", async ({ page }) => {
+  let postedLogin: unknown = null;
+
+  await page.route("**/api/auth/sign-in/email", async (route) => {
+    postedLogin = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        "set-cookie": "pod-tracker.session_token=fake-session; Path=/",
+      },
+      body: JSON.stringify({
+        user: {
+          id: "user-1",
+          email: "riley@example.test",
+          name: "Riley Chen",
+        },
+        session: {
+          id: "session-1",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/login?next=/life");
+  await page.getByLabel("Email").fill("riley@example.test");
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Log In" }).click();
+
+  expect(postedLogin).toMatchObject({
+    email: "riley@example.test",
+    password: "correct-horse-battery",
+    callbackURL: "/life",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Life Counter" }),
+  ).toBeVisible();
+});
+
 test("health and readiness probes return ok", async ({ request }) => {
   await expect((await request.get("/healthz")).ok()).toBeTruthy();
   await expect((await request.get("/readyz")).ok()).toBeTruthy();

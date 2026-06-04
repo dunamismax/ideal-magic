@@ -1,6 +1,6 @@
-CREATE SCHEMA "core";
+CREATE SCHEMA IF NOT EXISTS "core";
 --> statement-breakpoint
-CREATE SCHEMA "meta";
+CREATE SCHEMA IF NOT EXISTS "meta";
 --> statement-breakpoint
 CREATE TABLE "core"."accounts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

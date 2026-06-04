@@ -3,7 +3,7 @@ import { defineConfig } from "drizzle-kit";
 const databaseUrl =
   process.env.POD_TRACKER_MIGRATION_DATABASE_URL ??
   process.env.POD_TRACKER_DATABASE_URL ??
-  "postgres://pod_tracker:pod_tracker@localhost:5432/pod_tracker?sslmode=disable";
+  "postgres://pod_tracker:pod_tracker@localhost:55432/pod_tracker?sslmode=disable";
 
 export default defineConfig({
   dialect: "postgresql",
@@ -14,7 +14,7 @@ export default defineConfig({
   },
   migrations: {
     table: "__drizzle_migrations",
-    schema: "core",
+    schema: "drizzle",
   },
   strict: true,
   verbose: true,

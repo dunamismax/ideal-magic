@@ -27,6 +27,10 @@ docker compose --profile errors up -d glitchtip
 Use `docker-compose` with the same arguments if this machine has the
 standalone Compose binary instead of Docker Compose v2.
 
+The Compose PostgreSQL service is published on `localhost:55432` to avoid
+colliding with host PostgreSQL installs or SSH tunnels on the default
+`5432` port. The local migration defaults use that port.
+
 Drizzle schema and migrations live under `src/db`. Generate and check the
 TypeScript rewrite schema from the repo root:
 

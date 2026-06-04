@@ -1,8 +1,9 @@
 import { createDatabaseConnection } from "./client";
+import { getMigrationDatabaseUrl } from "./migrate";
 import { seedDevelopmentData } from "./seed";
 
 async function main() {
-  const connection = createDatabaseConnection();
+  const connection = createDatabaseConnection(getMigrationDatabaseUrl());
 
   try {
     await seedDevelopmentData(connection.db);

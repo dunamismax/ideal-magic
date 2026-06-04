@@ -287,6 +287,10 @@ import before committing unless the Next.js config intentionally changes.
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow.
 
+The TypeScript rewrite's Docker Compose PostgreSQL service publishes to
+`localhost:55432` by default. This avoids silently hitting a host
+PostgreSQL install or SSH tunnel on `5432` during migration smoke tests.
+
 Expected coverage:
 
 - TypeScript unit and integration tests for new app code.

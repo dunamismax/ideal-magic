@@ -642,6 +642,10 @@ pnpm db:migrate
 pnpm db:test
 ```
 
+The Docker Compose PostgreSQL service publishes to `localhost:55432` so
+local host databases or SSH tunnels on `5432` do not intercept migration
+commands.
+
 Future browser smoke coverage:
 
 - Signup, login, logout.

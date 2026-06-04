@@ -11,9 +11,9 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
-      - pod_tracker_postgres:/var/lib/postgresql/data
+      - pod_tracker_postgres:/var/lib/postgresql
 
   valkey:
     image: valkey/valkey:9-alpine
@@ -44,7 +44,7 @@ services:
       POSTGRES_USER: umami
       POSTGRES_PASSWORD: umami
     volumes:
-      - pod_tracker_umami_postgres:/var/lib/postgresql/data
+      - pod_tracker_umami_postgres:/var/lib/postgresql
 
   umami:
     image: ghcr.io/umami-software/umami:postgresql-latest
@@ -66,7 +66,7 @@ services:
       POSTGRES_USER: glitchtip
       POSTGRES_PASSWORD: glitchtip
     volumes:
-      - pod_tracker_glitchtip_postgres:/var/lib/postgresql/data
+      - pod_tracker_glitchtip_postgres:/var/lib/postgresql
 
   glitchtip:
     image: glitchtip/glitchtip:v4.0

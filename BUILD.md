@@ -468,13 +468,25 @@ been saved to the group.
 - [ ] Build host location management with address visibility controls.
 - [ ] Build RSVP flows for authenticated members.
 - [ ] Build tokenized guest RSVP pages.
-- [ ] Build public-safe event pages for tokenized links.
+- [x] Build public-safe event pages for tokenized links.
 - [ ] Add calendar export only after address visibility rules are
   verified.
 - [ ] Add reminder jobs only after the job runner shape is chosen for the
   TypeScript app.
 - [ ] Verify signup, group creation, event creation, RSVP, guest RSVP,
   and address visibility with Playwright.
+
+Current Phase 7 public invite work adds a read-only
+`/invites/events/[inviteToken]` route backed by
+`/api/public-events/[inviteToken]`, which uses the token-scoped
+public-safe Drizzle query paths. The page shows event title, playgroup
+name, date/time, public location name, aggregate RSVP counts, guest
+counts, deck declaration counts, pod counts, and logged-game counts.
+Unit, PGlite integration, and Playwright tests verify that the rendered
+view and service payload omit host addresses, location notes, RSVP notes,
+emails, raw invite tokens, token hashes, and guest names. This does not
+implement guest RSVP writes, authenticated RSVP flows, group/event CRUD,
+host address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

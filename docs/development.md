@@ -80,9 +80,13 @@ Drizzle migration history lives in `apps/web/src/db/migrations`.
 Development seed data lives in `apps/web/src/db/seed.ts` and uses only
 fake `example.test` identities, synthetic locations, and hashed fake
 event-token values. Database helpers now include scoped event-planning
-reads plus token-scoped public-safe event and guest RSVP aggregate reads;
-they are intentionally not wired into app routes until auth,
-authorization, guest RSVP forms, and server persistence flows exist.
+reads plus token-scoped public-safe event and guest RSVP aggregate reads.
+The read-only public invite route at
+`/invites/events/[inviteToken]` now calls the public-safe event API and
+does not expose host addresses, location notes, RSVP notes, emails, raw
+tokens, token hashes, or guest names. Authenticated RSVP flows, guest RSVP
+writes, address disclosure, and event mutations are still intentionally
+unimplemented.
 
 When Drizzle exists, test migrations against real PostgreSQL through the
 documented Docker Compose workflow:

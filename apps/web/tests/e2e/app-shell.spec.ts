@@ -608,6 +608,83 @@ test("pod-linked life counter restores keyed local state after refresh", async (
   );
 });
 
+test("tokenized public event invite shows public-safe planning details", async ({
+  page,
+}) => {
+  await page.route(
+    "**/api/public-events/fixture-wednesday-event-access",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          event: {
+            id: "event-1",
+            title: "Wednesday Commander Night",
+            playgroupName: "Example City Commander League",
+            dateLabel: "Wednesday, June 10, 2026",
+            timeLabel: "11:00 PM UTC",
+            locationName: "Example Tabletop Room",
+            rsvpCounts: {
+              yes: 3,
+              maybe: 1,
+              no: 1,
+              waitlist: 1,
+            },
+            guestRsvps: 1,
+            namedGuests: 1,
+            totalResponses: 6,
+            expectedPlayers: 5,
+            deckDeclarations: 5,
+            pods: 1,
+            loggedGames: 1,
+          },
+        }),
+      });
+    },
+  );
+
+  await page.goto("/invites/events/fixture-wednesday-event-access");
+
+  await expect(
+    page.getByRole("heading", { name: "Wednesday Commander Night" }),
+  ).toBeVisible();
+  await expect(page.getByText("Example City Commander League")).toBeVisible();
+  await expect(page.getByText("Example Tabletop Room")).toBeVisible();
+  await expect(page.getByText("5 players")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Yes" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Waitlist" })).toBeVisible();
+
+  const publicText = await page.locator("body").innerText();
+
+  expect(publicText).not.toContain("101 Example Tabletop Way");
+  expect(publicText).not.toContain("Private fixture RSVP note");
+  expect(publicText).not.toContain("nora@example.test");
+  expect(publicText).not.toContain("fixture-wednesday-event-access");
+  expect(publicText).not.toContain("Example Guest");
+});
+
+test("tokenized public event invite fails closed for missing invites", async ({
+  page,
+}) => {
+  await page.route("**/api/public-events/wrong-token", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Event invite not found" }),
+    });
+  });
+
+  await page.goto("/invites/events/wrong-token");
+
+  await expect(
+    page.getByRole("heading", { name: "Event invite unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("The invite may be expired, mistyped, or not public-safe."),
+  ).toBeVisible();
+});
+
 test("health and readiness probes return ok", async ({ request }) => {
   await expect((await request.get("/healthz")).ok()).toBeTruthy();
   await expect((await request.get("/readyz")).ok()).toBeTruthy();

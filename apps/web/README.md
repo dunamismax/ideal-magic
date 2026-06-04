@@ -46,9 +46,13 @@ synthetic playgroup planning data, hashed fake event-token values, and a
 clearly fake location.
 
 The database query layer includes scoped event-planning reads and
-token-scoped public-safe event and guest RSVP aggregate reads. Those
-public-safe reads are data-access foundations only; runtime public event
-routes and guest RSVP forms are not implemented yet.
+token-scoped public-safe event and guest RSVP aggregate reads. The
+read-only public invite route at `/invites/events/[inviteToken]` uses the
+public-safe event API at `/api/public-events/[inviteToken]` for aggregate
+event timing, location name, RSVP counts, guest counts, deck declaration
+counts, pod counts, and logged-game counts. It does not implement guest
+RSVP writes, authenticated RSVP flows, address disclosure, or Postgres
+event mutations yet.
 
 This app is intentionally side-by-side with the Rust V1 workspace until
 the TypeScript core flows are implemented, verified, and approved for

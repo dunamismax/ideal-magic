@@ -5,9 +5,13 @@ import { redirect } from "next/navigation";
 
 import { createDatabase } from "@/db/client";
 import {
+  changePlaygroupMemberRoleForViewer,
   createPlaygroupForUser,
   createPlaygroupInviteForViewer,
+  PlaygroupLastOwnerError,
+  PlaygroupMemberManagementAuthorizationError,
   PlaygroupInviteAuthorizationError,
+  removePlaygroupMemberForViewer,
   revokePlaygroupInviteForViewer,
 } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
@@ -21,6 +25,12 @@ import {
   validateCreateGroupInviteInput,
   validateRevokeGroupInviteInput,
 } from "@/features/groups/group-invite";
+import {
+  type ChangeGroupMemberRoleInput,
+  type RemoveGroupMemberInput,
+  validateChangeGroupMemberRoleInput,
+  validateRemoveGroupMemberInput,
+} from "@/features/groups/group-member-management";
 
 export type CreateGroupActionState = {
   message: string | null;
@@ -44,6 +54,20 @@ export type RevokeGroupInviteActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof RevokeGroupInviteInput, string>>;
   fields: RevokeGroupInviteInput;
+};
+
+export type ChangeGroupMemberRoleActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof ChangeGroupMemberRoleInput, string>>;
+  fields: ChangeGroupMemberRoleInput;
+};
+
+export type RemoveGroupMemberActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof RemoveGroupMemberInput, string>>;
+  fields: RemoveGroupMemberInput;
 };
 
 export async function createGroupAction(
@@ -198,6 +222,143 @@ export async function revokeGroupInviteAction(
 
   return {
     message: "Invite revoked.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
+  };
+}
+
+export async function changeGroupMemberRoleAction(
+  _previousState: ChangeGroupMemberRoleActionState,
+  formData: FormData,
+): Promise<ChangeGroupMemberRoleActionState> {
+  const session = await requireServerSession("/groups");
+  const validation = validateChangeGroupMemberRoleInput({
+    membershipId: formData.get("membershipId") ?? "",
+    role: formData.get("role") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid member role.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: {
+        membershipId: validation.fields.membershipId,
+        role: "member",
+      },
+    };
+  }
+
+  try {
+    await changePlaygroupMemberRoleForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      membershipId: validation.input.membershipId,
+      role: validation.input.role,
+    });
+  } catch (error) {
+    if (error instanceof PlaygroupLastOwnerError) {
+      return {
+        message: "A group must keep at least one owner.",
+        saved: false,
+        fieldErrors: {
+          membershipId: "Keep one owner before changing this role.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    if (error instanceof PlaygroupMemberManagementAuthorizationError) {
+      return {
+        message: "You cannot change that member role.",
+        saved: false,
+        fieldErrors: {
+          membershipId: "Choose one of your manageable group members.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Playgroup member role change failed", error);
+
+    return {
+      message: "Could not update the member role. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/groups");
+
+  return {
+    message: "Member role updated.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
+  };
+}
+
+export async function removeGroupMemberAction(
+  _previousState: RemoveGroupMemberActionState,
+  formData: FormData,
+): Promise<RemoveGroupMemberActionState> {
+  const session = await requireServerSession("/groups");
+  const validation = validateRemoveGroupMemberInput({
+    membershipId: formData.get("membershipId") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid member.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await removePlaygroupMemberForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      membershipId: validation.input.membershipId,
+    });
+  } catch (error) {
+    if (error instanceof PlaygroupLastOwnerError) {
+      return {
+        message: "A group must keep at least one owner.",
+        saved: false,
+        fieldErrors: {
+          membershipId: "Keep one owner before removing this member.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    if (error instanceof PlaygroupMemberManagementAuthorizationError) {
+      return {
+        message: "You cannot remove that member.",
+        saved: false,
+        fieldErrors: {
+          membershipId: "Choose one of your manageable group members.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Playgroup member removal failed", error);
+
+    return {
+      message: "Could not remove the member. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/groups");
+
+  return {
+    message: "Member removed from group.",
     saved: true,
     fieldErrors: {},
     fields: validation.input,

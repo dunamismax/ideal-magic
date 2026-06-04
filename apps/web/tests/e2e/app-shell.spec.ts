@@ -953,6 +953,69 @@ test("group owners can create, list, and revoke invite links", async ({
   await expect(groupCard.getByText("Revoked member invite")).toBeVisible();
 });
 
+test("group owners can update member roles and remove memberships", async ({
+  browser,
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const ownerEmail = `group-owner-manage-${suffix}@example.test`;
+  const memberEmail = `group-member-manage-${suffix}@example.test`;
+  const groupName = `Managed Pods ${suffix}`;
+
+  await page.goto("/signup?next=/groups");
+  await page.getByLabel("Name").fill("Riley Owner");
+  await page.getByLabel("Email").fill(ownerEmail);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page).toHaveURL("/groups");
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Role management smoke.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+
+  let groupCard = page.locator("article").filter({ hasText: groupName });
+
+  await groupCard.getByRole("button", { name: "Create Invite" }).click();
+  const invitePath = await groupCard
+    .getByRole("link", { name: /\/invites\/groups\// })
+    .innerText();
+  const inviteContext = await browser.newContext();
+  const invitePage = await inviteContext.newPage();
+
+  await invitePage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
+  await invitePage.getByLabel("Name").fill("Mina Rules");
+  await invitePage.getByLabel("Email").fill(memberEmail);
+  await invitePage.getByLabel("Password").fill("correct-horse-battery");
+  await invitePage.getByRole("button", { name: "Create Account" }).click();
+  await expect(invitePage).toHaveURL(invitePath);
+  await invitePage.getByRole("button", { name: "Join Group" }).click();
+  await expect(invitePage).toHaveURL("/groups");
+  await inviteContext.close();
+
+  await page.reload();
+  groupCard = page.locator("article").filter({ hasText: groupName });
+  const memberItem = groupCard.locator("li").filter({ hasText: "Mina Rules" });
+
+  await expect(memberItem).toBeVisible();
+  await expect(
+    memberItem.locator("span").filter({ hasText: "member" }),
+  ).toBeVisible();
+  await memberItem.getByLabel("Role").selectOption("host");
+  await memberItem.getByRole("button", { name: "Save Role" }).click();
+  await expect(memberItem.getByText("Member role updated.")).toBeVisible();
+  await expect(
+    memberItem.locator("span").filter({ hasText: "host" }),
+  ).toBeVisible();
+
+  await memberItem.getByRole("button", { name: "Remove Mina Rules" }).click();
+  await expect(memberItem).toHaveCount(0);
+  await page.reload();
+  groupCard = page.locator("article").filter({ hasText: groupName });
+  await expect(
+    groupCard.locator("li").filter({ hasText: "Mina Rules" }),
+  ).toHaveCount(0);
+});
+
 test("authenticated group owners can create an event and RSVP", async ({
   page,
 }, testInfo) => {

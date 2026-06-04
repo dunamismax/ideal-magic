@@ -23,12 +23,16 @@ describe("group card", () => {
               displayName: "Riley Chen",
               role: "owner",
               joinedAt: new Date("2026-06-04T00:00:00.000Z"),
+              canChangeRole: false,
+              canRemove: false,
             },
             {
               id: "membership-2",
               displayName: "Mina Rules",
               role: "admin",
               joinedAt: new Date("2026-06-05T00:00:00.000Z"),
+              canChangeRole: false,
+              canRemove: false,
             },
           ],
           createdAt: new Date("2026-06-04T00:00:00.000Z"),
@@ -104,5 +108,55 @@ describe("group card", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/tokenHash/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/invites\/groups\//i)).not.toBeInTheDocument();
+  });
+
+  it("renders role and removal controls for manageable members", () => {
+    render(
+      <GroupCard
+        group={{
+          id: "group-3",
+          name: "Managed Crew",
+          slug: "managed-crew",
+          description: "",
+          role: "owner",
+          canManagePlaygroup: true,
+          memberCount: 2,
+          upcomingEventCount: 0,
+          invites: [],
+          members: [
+            {
+              id: "membership-3",
+              displayName: "Riley Chen",
+              role: "owner",
+              joinedAt: new Date("2026-06-04T00:00:00.000Z"),
+              canChangeRole: true,
+              canRemove: true,
+            },
+            {
+              id: "membership-4",
+              displayName: "Mina Rules",
+              role: "member",
+              joinedAt: new Date("2026-06-05T00:00:00.000Z"),
+              canChangeRole: true,
+              canRemove: true,
+            },
+          ],
+          createdAt: new Date("2026-06-04T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-04T00:00:00.000Z"),
+        }}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("Role")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Save Role" })).toHaveLength(
+      2,
+    );
+    expect(
+      screen.getByRole("button", { name: "Remove Riley Chen" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove Mina Rules" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
   });
 });

@@ -483,8 +483,8 @@ been saved to the group.
 - [x] Build member list with scoped membership visibility.
 - [x] Build scoped group invite creation, listing, revocation, and
   authenticated token join.
-- [ ] Build group edit, role management, member removal, and group
-  archive/delete flows.
+- [x] Build scoped group role management and member removal.
+- [ ] Build group edit and group archive/delete flows.
 - [x] Build authenticated event creation for hostable groups.
 - [x] Build event edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
@@ -526,7 +526,14 @@ returned raw only in the create action's transient client state, and
 omitted from normal invite metadata projections. PGlite tests prove
 hosts, members, guests, viewers, and non-members cannot create, list, or
 revoke group invites, and Playwright covers signup to group invite
-create, list, and revoke.
+create, list, and revoke. Owners can now change owner/admin/host/member
+roles and remove memberships from `/groups`; admins can manage only
+host/member roles. Member removal deletes only the membership, never the
+user account, and last-owner protection blocks demoting or removing the
+final owner. PGlite tests cover authorized changes, admin limits,
+host/member/non-member denial, last-owner protection, and membership-only
+removal. Playwright covers signup, group creation, invite join, role
+change, and member removal through the UI.
 Logged-in owners, admins, and hosts can now create events for their
 hostable groups from `/game-night`, with server-action validation,
 scoped Postgres writes, hidden-address host rows, member-scoped upcoming
@@ -541,10 +548,9 @@ visibility, and description, cancel events with a visible cancelled
 status, and archive events out of upcoming lists; PGlite tests prove
 plain members and non-members cannot edit, cancel, or archive, while
 Playwright covers signup, group creation, event creation, RSVP, edit,
-cancel, and archive. This does not yet implement group editing, role
-management changes, member removal, group archive/delete flows, guest
-RSVP editing/deletion, RSVP notes, host address disclosure, or public
-calendar export.
+cancel, and archive. This does not yet implement group editing, group
+archive/delete flows, guest RSVP editing/deletion, RSVP notes, host
+address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

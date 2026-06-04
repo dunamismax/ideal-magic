@@ -16,6 +16,19 @@ export function canManagePlaygroup(role: PlaygroupRole) {
   return role === "owner" || role === "admin";
 }
 
+export function canManagePlaygroupMemberRole(
+  viewerRole: PlaygroupRole,
+  targetRole: PlaygroupRole,
+) {
+  if (viewerRole === "owner") {
+    return isPlaygroupMemberDirectoryRole(targetRole);
+  }
+
+  return (
+    viewerRole === "admin" && (targetRole === "host" || targetRole === "member")
+  );
+}
+
 export function canManageEvent(role: PlaygroupRole) {
   return role === "owner" || role === "admin" || role === "host";
 }

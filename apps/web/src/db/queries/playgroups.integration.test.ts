@@ -7,6 +7,7 @@ import { hashInviteToken } from "@/db/tokens";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import {
   acceptPlaygroupInviteForViewer,
+  changePlaygroupMemberRoleForViewer,
   createPlaygroupForUser,
   createPlaygroupInviteForViewer,
   getPlaygroupInviteSummaryByToken,
@@ -15,6 +16,9 @@ import {
   listVisiblePlaygroupMembersForViewer,
   PlaygroupInviteAcceptanceError,
   PlaygroupInviteAuthorizationError,
+  PlaygroupLastOwnerError,
+  PlaygroupMemberManagementAuthorizationError,
+  removePlaygroupMemberForViewer,
   revokePlaygroupInviteForViewer,
 } from "./playgroups";
 
@@ -541,6 +545,292 @@ describe("playgroup data access", () => {
         inviteToken: invite.inviteToken,
       }),
     ).rejects.toBeInstanceOf(PlaygroupInviteAcceptanceError);
+  });
+
+  test("lets owners and admins change allowed member roles and remove memberships only", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await Promise.all([
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000021",
+        email: "manage-owner@example.test",
+        name: "Manage Owner",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000022",
+        email: "manage-admin@example.test",
+        name: "Manage Admin",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000023",
+        email: "manage-member@example.test",
+        name: "Manage Member",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000024",
+        email: "remove-member@example.test",
+        name: "Remove Member",
+      }),
+    ]);
+
+    const created = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000021",
+      ownerDisplayName: "Manage Owner",
+      name: "Member Managers",
+      slugBase: "member-managers",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000022",
+        role: "admin",
+        displayName: "Manage Admin",
+      },
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000023",
+        role: "member",
+        displayName: "Manage Member",
+      },
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000024",
+        role: "member",
+        displayName: "Remove Member",
+      },
+    ]);
+
+    const memberships = await db
+      .select({
+        id: playgroupMemberships.id,
+        userId: playgroupMemberships.userId,
+      })
+      .from(playgroupMemberships)
+      .where(eq(playgroupMemberships.playgroupId, created.id));
+    const memberMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000023",
+    );
+    const removedMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000024",
+    );
+
+    expect(memberMembership).toBeDefined();
+    expect(removedMembership).toBeDefined();
+
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000021",
+        membershipId: memberMembership!.id,
+        role: "host",
+      }),
+    ).resolves.toMatchObject({
+      id: memberMembership!.id,
+      displayName: "Manage Member",
+      role: "host",
+      canChangeRole: true,
+      canRemove: true,
+    });
+
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000022",
+        membershipId: memberMembership!.id,
+        role: "member",
+      }),
+    ).resolves.toMatchObject({
+      id: memberMembership!.id,
+      role: "member",
+      canChangeRole: true,
+      canRemove: true,
+    });
+
+    await expect(
+      removePlaygroupMemberForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000022",
+        membershipId: removedMembership!.id,
+      }),
+    ).resolves.toEqual({
+      playgroupId: created.id,
+      membershipId: removedMembership!.id,
+    });
+
+    const remainingRemovedMemberships = await db
+      .select({
+        id: playgroupMemberships.id,
+      })
+      .from(playgroupMemberships)
+      .where(eq(playgroupMemberships.id, removedMembership!.id));
+    const [removedUser] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.id, "20000000-0000-4000-8000-000000000024"));
+
+    expect(remainingRemovedMemberships).toEqual([]);
+    expect(removedUser).toEqual({
+      id: "20000000-0000-4000-8000-000000000024",
+      email: "remove-member@example.test",
+    });
+  });
+
+  test("protects owner roles, last owner, and member management authorization", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await Promise.all([
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000025",
+        email: "rules-owner@example.test",
+        name: "Rules Owner",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000026",
+        email: "rules-admin@example.test",
+        name: "Rules Admin",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000027",
+        email: "rules-host@example.test",
+        name: "Rules Host",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000028",
+        email: "rules-member@example.test",
+        name: "Rules Member",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000029",
+        email: "rules-stranger@example.test",
+        name: "Rules Stranger",
+      }),
+    ]);
+
+    const created = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000025",
+      ownerDisplayName: "Rules Owner",
+      name: "Member Rules",
+      slugBase: "member-rules",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000026",
+        role: "admin",
+      },
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000027",
+        role: "host",
+      },
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000028",
+        role: "member",
+      },
+    ]);
+
+    const memberships = await db
+      .select({
+        id: playgroupMemberships.id,
+        userId: playgroupMemberships.userId,
+      })
+      .from(playgroupMemberships)
+      .where(eq(playgroupMemberships.playgroupId, created.id));
+    const ownerMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000025",
+    );
+    const adminMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000026",
+    );
+    const hostMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000027",
+    );
+    const memberMembership = memberships.find(
+      (membership) =>
+        membership.userId === "20000000-0000-4000-8000-000000000028",
+    );
+
+    expect(ownerMembership).toBeDefined();
+    expect(adminMembership).toBeDefined();
+    expect(hostMembership).toBeDefined();
+    expect(memberMembership).toBeDefined();
+
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000026",
+        membershipId: ownerMembership!.id,
+        role: "member",
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupMemberManagementAuthorizationError);
+    await expect(
+      removePlaygroupMemberForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000026",
+        membershipId: ownerMembership!.id,
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupMemberManagementAuthorizationError);
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000026",
+        membershipId: memberMembership!.id,
+        role: "admin",
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupMemberManagementAuthorizationError);
+
+    for (const viewerUserId of [
+      "20000000-0000-4000-8000-000000000027",
+      "20000000-0000-4000-8000-000000000028",
+      "20000000-0000-4000-8000-000000000029",
+    ]) {
+      await expect(
+        changePlaygroupMemberRoleForViewer(db, {
+          viewerUserId,
+          membershipId: hostMembership!.id,
+          role: "member",
+        }),
+      ).rejects.toBeInstanceOf(PlaygroupMemberManagementAuthorizationError);
+      await expect(
+        removePlaygroupMemberForViewer(db, {
+          viewerUserId,
+          membershipId: hostMembership!.id,
+        }),
+      ).rejects.toBeInstanceOf(PlaygroupMemberManagementAuthorizationError);
+    }
+
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000025",
+        membershipId: ownerMembership!.id,
+        role: "member",
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupLastOwnerError);
+    await expect(
+      removePlaygroupMemberForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000025",
+        membershipId: ownerMembership!.id,
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupLastOwnerError);
+
+    await changePlaygroupMemberRoleForViewer(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000025",
+      membershipId: adminMembership!.id,
+      role: "owner",
+    });
+    await expect(
+      changePlaygroupMemberRoleForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000025",
+        membershipId: ownerMembership!.id,
+        role: "member",
+      }),
+    ).resolves.toMatchObject({
+      id: ownerMembership!.id,
+      role: "member",
+    });
   });
 });
 

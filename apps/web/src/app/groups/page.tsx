@@ -10,6 +10,7 @@ import {
 import { requireServerSession } from "@/features/auth/server";
 import { CreateGroupForm } from "./create-group-form";
 import { GroupInvitePanel } from "./group-invite-panel";
+import { GroupMemberManagementPanel } from "./group-member-management-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -85,20 +86,28 @@ export function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {group.members.map((member) => (
               <li
-                className="flex min-w-0 items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2"
+                className="min-w-0 rounded-control border border-border bg-surface px-3 py-2"
                 key={member.id}
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold">
-                    {member.displayName}
-                  </p>
-                  <p className="text-xs font-semibold text-muted">
-                    Joined {formatJoinedDate(member.joinedAt)}
-                  </p>
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">
+                      {member.displayName}
+                    </p>
+                    <p className="text-xs font-semibold text-muted">
+                      Joined {formatJoinedDate(member.joinedAt)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-control border border-border bg-background px-2 py-1 text-xs font-bold uppercase text-muted">
+                    {member.role}
+                  </span>
                 </div>
-                <span className="shrink-0 rounded-control border border-border bg-background px-2 py-1 text-xs font-bold uppercase text-muted">
-                  {member.role}
-                </span>
+                {group.canManagePlaygroup ? (
+                  <GroupMemberManagementPanel
+                    member={member}
+                    viewerRole={group.role}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

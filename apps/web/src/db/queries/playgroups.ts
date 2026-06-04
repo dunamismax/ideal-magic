@@ -11,6 +11,7 @@ import {
 } from "../schema";
 import {
   canManagePlaygroup,
+  canManagePlaygroupMemberRole,
   canViewPlaygroupMembers,
   isPlaygroupMemberDirectoryRole,
   type PlaygroupRole,
@@ -23,7 +24,7 @@ import {
 
 type PlaygroupDatabase = Pick<
   AppDatabase,
-  "select" | "insert" | "update" | "transaction"
+  "select" | "insert" | "update" | "delete" | "transaction"
 >;
 type PlaygroupReadDatabase = Pick<AppDatabase, "select">;
 
@@ -49,6 +50,8 @@ export type ViewerPlaygroupMember = {
   displayName: string;
   role: "owner" | "admin" | "host" | "member";
   joinedAt: Date;
+  canChangeRole: boolean;
+  canRemove: boolean;
 };
 
 export type ViewerPlaygroupInvite = {
@@ -98,6 +101,20 @@ export class PlaygroupInviteAcceptanceError extends Error {
   constructor() {
     super("Invite cannot be accepted.");
     this.name = "PlaygroupInviteAcceptanceError";
+  }
+}
+
+export class PlaygroupMemberManagementAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot manage this playgroup member.");
+    this.name = "PlaygroupMemberManagementAuthorizationError";
+  }
+}
+
+export class PlaygroupLastOwnerError extends Error {
+  constructor() {
+    super("Playgroup must keep at least one owner.");
+    this.name = "PlaygroupLastOwnerError";
   }
 }
 
@@ -199,6 +216,8 @@ export async function listVisiblePlaygroupMembersForViewer(
         displayName: row.displayName ?? row.userName,
         role,
         joinedAt: row.joinedAt,
+        canChangeRole: canManagePlaygroupMemberRole(viewerRole, role),
+        canRemove: canManagePlaygroupMemberRole(viewerRole, role),
       };
     })
     .filter((member): member is ViewerPlaygroupMember => member !== null)
@@ -508,6 +527,108 @@ export async function acceptPlaygroupInviteForViewer(
   });
 }
 
+export async function changePlaygroupMemberRoleForViewer(
+  db: PlaygroupDatabase,
+  input: {
+    viewerUserId: string;
+    membershipId: string;
+    role: "owner" | "admin" | "host" | "member";
+  },
+): Promise<ViewerPlaygroupMember> {
+  return runInTransaction(db, async (tx) => {
+    const target = await getManageableMembershipById(tx, input.membershipId);
+
+    if (!target) {
+      throw new PlaygroupMemberManagementAuthorizationError();
+    }
+
+    const viewerRole = await getViewerPlaygroupRole(tx, {
+      viewerUserId: input.viewerUserId,
+      playgroupId: target.playgroupId,
+    });
+
+    if (
+      !viewerRole ||
+      !canManagePlaygroupMemberRole(viewerRole, target.role) ||
+      !canManagePlaygroupMemberRole(viewerRole, input.role)
+    ) {
+      throw new PlaygroupMemberManagementAuthorizationError();
+    }
+
+    if (target.role === "owner" && input.role !== "owner") {
+      await assertPlaygroupHasAnotherOwner(tx, {
+        playgroupId: target.playgroupId,
+        membershipId: target.id,
+      });
+    }
+
+    const [updated] = await tx
+      .update(playgroupMemberships)
+      .set({
+        role: input.role,
+        updatedAt: new Date(),
+      })
+      .where(eq(playgroupMemberships.id, input.membershipId))
+      .returning({
+        id: playgroupMemberships.id,
+      });
+
+    if (!updated) {
+      throw new Error("Expected membership role update to return a row.");
+    }
+
+    return {
+      id: updated.id,
+      displayName: target.displayName,
+      role: input.role,
+      joinedAt: target.joinedAt,
+      canChangeRole: canManagePlaygroupMemberRole(viewerRole, input.role),
+      canRemove: canManagePlaygroupMemberRole(viewerRole, input.role),
+    };
+  });
+}
+
+export async function removePlaygroupMemberForViewer(
+  db: PlaygroupDatabase,
+  input: {
+    viewerUserId: string;
+    membershipId: string;
+  },
+): Promise<{ playgroupId: string; membershipId: string }> {
+  return runInTransaction(db, async (tx) => {
+    const target = await getManageableMembershipById(tx, input.membershipId);
+
+    if (!target) {
+      throw new PlaygroupMemberManagementAuthorizationError();
+    }
+
+    const viewerRole = await getViewerPlaygroupRole(tx, {
+      viewerUserId: input.viewerUserId,
+      playgroupId: target.playgroupId,
+    });
+
+    if (!viewerRole || !canManagePlaygroupMemberRole(viewerRole, target.role)) {
+      throw new PlaygroupMemberManagementAuthorizationError();
+    }
+
+    if (target.role === "owner") {
+      await assertPlaygroupHasAnotherOwner(tx, {
+        playgroupId: target.playgroupId,
+        membershipId: target.id,
+      });
+    }
+
+    await tx
+      .delete(playgroupMemberships)
+      .where(eq(playgroupMemberships.id, input.membershipId));
+
+    return {
+      playgroupId: target.playgroupId,
+      membershipId: target.id,
+    };
+  });
+}
+
 async function createUniquePlaygroupSlug(
   db: PlaygroupReadDatabase,
   slugBase: string,
@@ -533,6 +654,66 @@ async function createUniquePlaygroupSlug(
   }
 
   throw new Error("Unable to create a unique playgroup slug.");
+}
+
+async function getManageableMembershipById(
+  db: PlaygroupReadDatabase,
+  membershipId: string,
+) {
+  const [membership] = await db
+    .select({
+      id: playgroupMemberships.id,
+      playgroupId: playgroupMemberships.playgroupId,
+      displayName: playgroupMemberships.displayName,
+      role: playgroupMemberships.role,
+      joinedAt: playgroupMemberships.joinedAt,
+      userName: users.name,
+    })
+    .from(playgroupMemberships)
+    .innerJoin(users, eq(playgroupMemberships.userId, users.id))
+    .where(eq(playgroupMemberships.id, membershipId))
+    .limit(1);
+
+  if (!membership) {
+    return null;
+  }
+
+  const role = asPlaygroupRole(membership.role);
+
+  if (!isPlaygroupMemberDirectoryRole(role)) {
+    return null;
+  }
+
+  return {
+    id: membership.id,
+    playgroupId: membership.playgroupId,
+    displayName: membership.displayName ?? membership.userName,
+    role,
+    joinedAt: membership.joinedAt,
+  };
+}
+
+async function assertPlaygroupHasAnotherOwner(
+  db: PlaygroupReadDatabase,
+  input: {
+    playgroupId: string;
+    membershipId: string;
+  },
+) {
+  const [row] = await db
+    .select({ total: count() })
+    .from(playgroupMemberships)
+    .where(
+      and(
+        eq(playgroupMemberships.playgroupId, input.playgroupId),
+        eq(playgroupMemberships.role, "owner"),
+        sql`${playgroupMemberships.id} <> ${input.membershipId}`,
+      ),
+    );
+
+  if ((row?.total ?? 0) < 1) {
+    throw new PlaygroupLastOwnerError();
+  }
 }
 
 async function countMembersForPlaygroup(

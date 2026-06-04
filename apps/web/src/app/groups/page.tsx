@@ -1,4 +1,4 @@
-import { CalendarDays, ShieldCheck, UsersRound } from "lucide-react";
+import { CalendarDays, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -35,7 +35,7 @@ export default async function GroupsPage() {
   );
 }
 
-function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
+export function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -68,6 +68,41 @@ function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
           value={String(group.upcomingEventCount)}
         />
       </dl>
+
+      {group.members.length > 0 ? (
+        <section
+          aria-labelledby={`group-${group.id}-members`}
+          className="mt-4 rounded-control border border-border bg-background p-3"
+        >
+          <h3
+            className="flex items-center gap-2 text-xs font-bold uppercase text-muted"
+            id={`group-${group.id}-members`}
+          >
+            <UserRound className="size-4 text-accent" aria-hidden="true" />
+            Member Directory
+          </h3>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {group.members.map((member) => (
+              <li
+                className="flex min-w-0 items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2"
+                key={member.id}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">
+                    {member.displayName}
+                  </p>
+                  <p className="text-xs font-semibold text-muted">
+                    Joined {formatJoinedDate(member.joinedAt)}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-control border border-border bg-background px-2 py-1 text-xs font-bold uppercase text-muted">
+                  {member.role}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </article>
   );
 }
@@ -90,4 +125,13 @@ function Metric({
       <dd className="mt-1 text-xl font-black">{value}</dd>
     </div>
   );
+}
+
+function formatJoinedDate(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }

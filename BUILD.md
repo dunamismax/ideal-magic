@@ -480,7 +480,8 @@ been saved to the group.
 ## Phase 7 - Groups And Events
 
 - [x] Build authenticated group creation and scoped group list.
-- [ ] Build group edit, member list, invite, and role management.
+- [x] Build member list with scoped membership visibility.
+- [ ] Build group edit, invite, and role management.
 - [x] Build authenticated event creation for hostable groups.
 - [ ] Build event edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
@@ -509,19 +510,24 @@ token hashes, existing guest names, and newly submitted guest names.
 Authenticated users can now create a playgroup from `/groups` and see a
 Postgres-backed list scoped by their membership, with owner membership
 creation, unique slug generation, validation, PGlite integration tests,
-and a Playwright signup-to-group-create smoke test. Logged-in owners,
-admins, and hosts can now create events for their hostable groups from
-`/game-night`, with server-action validation, scoped Postgres writes,
-hidden-address host rows, member-scoped upcoming event lists, PGlite
-authorization coverage, and a Playwright signup-to-group-to-event smoke
-test. Authenticated playgroup owners, admins, hosts, and members can now
-RSVP yes, maybe, no, or waitlist to scoped upcoming events from
-`/game-night`, with optional arrival/leaving times, server-action
-validation, PGlite tests for member upsert and non-member denial, and a
-Playwright signup-to-group-to-event-to-RSVP smoke test. This does not yet
-implement group editing, member management, invites, role management,
-event editing/canceling/archiving, guest RSVP editing/deletion, RSVP
-notes, host address disclosure, or public calendar export.
+and a Playwright signup-to-group-create smoke test. Group cards now show
+a safe member directory for owner, admin, host, and member roles only,
+backed by role-aware helpers and PGlite tests proving non-members,
+guests, and viewers cannot read member-directory details; the projection
+omits emails, invite data, host addresses, notes, and guest details.
+Logged-in owners, admins, and hosts can now create events for their
+hostable groups from `/game-night`, with server-action validation,
+scoped Postgres writes, hidden-address host rows, member-scoped upcoming
+event lists, PGlite authorization coverage, and a Playwright
+signup-to-group-to-event smoke test. Authenticated playgroup owners,
+admins, hosts, and members can now RSVP yes, maybe, no, or waitlist to
+scoped upcoming events from `/game-night`, with optional arrival/leaving
+times, server-action validation, PGlite tests for member upsert and
+non-member denial, and a Playwright signup-to-group-to-event-to-RSVP
+smoke test. This does not yet implement group editing, invites, role
+management changes, event editing/canceling/archiving, guest RSVP
+editing/deletion, RSVP notes, host address disclosure, or public
+calendar export.
 
 ## Phase 8 - Deck Declarations
 

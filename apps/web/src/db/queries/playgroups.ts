@@ -1,12 +1,18 @@
-import { and, asc, count, eq, gt, like } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, like } from "drizzle-orm";
 
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
-import { events, playgroupMemberships, playgroups } from "../schema";
-import type { PlaygroupRole } from "../scopes";
+import { events, playgroupMemberships, playgroups, users } from "../schema";
+import {
+  canViewPlaygroupMembers,
+  isPlaygroupMemberDirectoryRole,
+  type PlaygroupRole,
+} from "../scopes";
 
 type PlaygroupDatabase = Pick<AppDatabase, "select" | "insert" | "transaction">;
 type PlaygroupReadDatabase = Pick<AppDatabase, "select">;
+
+const memberDirectoryRoles = ["owner", "admin", "host", "member"] as const;
 
 export type ViewerPlaygroupListItem = {
   id: string;
@@ -15,9 +21,17 @@ export type ViewerPlaygroupListItem = {
   description: string;
   role: PlaygroupRole;
   memberCount: number;
+  members: ViewerPlaygroupMember[];
   upcomingEventCount: number;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type ViewerPlaygroupMember = {
+  id: string;
+  displayName: string;
+  role: "owner" | "admin" | "host" | "member";
+  joinedAt: Date;
 };
 
 export type CreatedPlaygroup = {
@@ -57,6 +71,10 @@ export async function listPlaygroupsForViewer(
       description: row.description,
       role: asPlaygroupRole(row.role),
       memberCount: await countMembersForPlaygroup(db, row.id),
+      members: await listVisiblePlaygroupMembersForViewer(db, {
+        viewerUserId: input.viewerUserId,
+        playgroupId: row.id,
+      }),
       upcomingEventCount: await countUpcomingEventsForPlaygroup(db, {
         playgroupId: row.id,
         now: input.now ?? new Date(),
@@ -65,6 +83,56 @@ export async function listPlaygroupsForViewer(
       updatedAt: row.updatedAt,
     })),
   );
+}
+
+export async function listVisiblePlaygroupMembersForViewer(
+  db: PlaygroupReadDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+  },
+): Promise<ViewerPlaygroupMember[]> {
+  const viewerRole = await getViewerPlaygroupRole(db, input);
+
+  if (!viewerRole || !canViewPlaygroupMembers(viewerRole)) {
+    return [];
+  }
+
+  const rows = await db
+    .select({
+      id: playgroupMemberships.id,
+      displayName: playgroupMemberships.displayName,
+      role: playgroupMemberships.role,
+      joinedAt: playgroupMemberships.joinedAt,
+      userName: users.name,
+    })
+    .from(playgroupMemberships)
+    .innerJoin(users, eq(playgroupMemberships.userId, users.id))
+    .where(
+      and(
+        eq(playgroupMemberships.playgroupId, input.playgroupId),
+        inArray(playgroupMemberships.role, memberDirectoryRoles),
+      ),
+    )
+    .orderBy(asc(playgroupMemberships.joinedAt), asc(playgroupMemberships.id));
+
+  return rows
+    .map((row) => {
+      const role = asPlaygroupRole(row.role);
+
+      if (!isPlaygroupMemberDirectoryRole(role)) {
+        return null;
+      }
+
+      return {
+        id: row.id,
+        displayName: row.displayName ?? row.userName,
+        role,
+        joinedAt: row.joinedAt,
+      };
+    })
+    .filter((member): member is ViewerPlaygroupMember => member !== null)
+    .sort(comparePlaygroupMembers);
 }
 
 export async function createPlaygroupForUser(
@@ -143,9 +211,36 @@ async function countMembersForPlaygroup(
   const [row] = await db
     .select({ total: count() })
     .from(playgroupMemberships)
-    .where(eq(playgroupMemberships.playgroupId, playgroupId));
+    .where(
+      and(
+        eq(playgroupMemberships.playgroupId, playgroupId),
+        inArray(playgroupMemberships.role, memberDirectoryRoles),
+      ),
+    );
 
   return row?.total ?? 0;
+}
+
+async function getViewerPlaygroupRole(
+  db: PlaygroupReadDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+  },
+): Promise<PlaygroupRole | null> {
+  const [membership] = await db
+    .select({
+      role: playgroupMemberships.role,
+    })
+    .from(playgroupMemberships)
+    .where(
+      and(
+        eq(playgroupMemberships.userId, input.viewerUserId),
+        eq(playgroupMemberships.playgroupId, input.playgroupId),
+      ),
+    );
+
+  return membership ? asPlaygroupRole(membership.role) : null;
 }
 
 async function countUpcomingEventsForPlaygroup(
@@ -172,6 +267,30 @@ function normalizeOptionalDisplayName(value: string | null | undefined) {
   const displayName = value?.trim();
 
   return displayName ? displayName : null;
+}
+
+function comparePlaygroupMembers(
+  left: ViewerPlaygroupMember,
+  right: ViewerPlaygroupMember,
+) {
+  return (
+    roleDirectorySortValue(left.role) - roleDirectorySortValue(right.role) ||
+    left.displayName.localeCompare(right.displayName) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function roleDirectorySortValue(role: ViewerPlaygroupMember["role"]) {
+  switch (role) {
+    case "owner":
+      return 0;
+    case "admin":
+      return 1;
+    case "host":
+      return 2;
+    case "member":
+      return 3;
+  }
 }
 
 function asPlaygroupRole(value: string): PlaygroupRole {

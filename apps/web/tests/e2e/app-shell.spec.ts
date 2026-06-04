@@ -887,14 +887,20 @@ test("authenticated users can create and list a playgroup", async ({
     .fill("Bracket-aware pods and rotating hosts.");
   await page.getByRole("button", { name: "Create Group" }).click();
 
-  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+  const groupCard = page.locator("article").filter({ hasText: groupName });
+
   await expect(
-    page.getByText("Bracket-aware pods and rotating hosts."),
+    groupCard.getByRole("heading", { name: groupName }),
   ).toBeVisible();
-  await expect(page.getByText("owner")).toBeVisible();
-  await expect(page.getByText("Members", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Upcoming Events", { exact: true }),
+    groupCard.getByText("Bracket-aware pods and rotating hosts."),
+  ).toBeVisible();
+  await expect(groupCard.getByText("owner").first()).toBeVisible();
+  await expect(groupCard.getByText("Members", { exact: true })).toBeVisible();
+  await expect(groupCard.getByText("Member Directory")).toBeVisible();
+  await expect(groupCard.getByText("Riley Chen")).toBeVisible();
+  await expect(
+    groupCard.getByText("Upcoming Events", { exact: true }),
   ).toBeVisible();
 });
 

@@ -9,6 +9,8 @@ export type PlaygroupRole =
 export type EventVisibility = "members" | "invite_only" | "public_safe";
 export type AddressVisibility = "rsvps" | "members" | "public" | "hidden";
 
+const playgroupMemberDirectoryRoles = ["owner", "admin", "host", "member"];
+
 export function canManagePlaygroup(role: PlaygroupRole) {
   return role === "owner" || role === "admin";
 }
@@ -21,6 +23,16 @@ export function canRsvpToEvent(role: PlaygroupRole) {
   return (
     role === "owner" || role === "admin" || role === "host" || role === "member"
   );
+}
+
+export function canViewPlaygroupMembers(role: PlaygroupRole) {
+  return isPlaygroupMemberDirectoryRole(role);
+}
+
+export function isPlaygroupMemberDirectoryRole(
+  role: PlaygroupRole,
+): role is "owner" | "admin" | "host" | "member" {
+  return playgroupMemberDirectoryRoles.includes(role);
 }
 
 export function canSeeHostAddress(

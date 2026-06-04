@@ -3,7 +3,9 @@ import { describe, expect, test } from "vitest";
 import {
   canManageEvent,
   canManagePlaygroup,
+  canViewPlaygroupMembers,
   canSeeHostAddress,
+  isPlaygroupMemberDirectoryRole,
 } from "./scopes";
 
 describe("database scope helpers", () => {
@@ -26,5 +28,17 @@ describe("database scope helpers", () => {
     expect(canSeeHostAddress("member", "rsvps", "maybe")).toBe(true);
     expect(canSeeHostAddress("viewer", "public")).toBe(true);
     expect(canSeeHostAddress("owner", "hidden", "yes")).toBe(false);
+  });
+
+  test("limits member directory visibility to real playgroup members", () => {
+    expect(canViewPlaygroupMembers("owner")).toBe(true);
+    expect(canViewPlaygroupMembers("admin")).toBe(true);
+    expect(canViewPlaygroupMembers("host")).toBe(true);
+    expect(canViewPlaygroupMembers("member")).toBe(true);
+    expect(canViewPlaygroupMembers("guest")).toBe(false);
+    expect(canViewPlaygroupMembers("viewer")).toBe(false);
+
+    expect(isPlaygroupMemberDirectoryRole("member")).toBe(true);
+    expect(isPlaygroupMemberDirectoryRole("guest")).toBe(false);
   });
 });

@@ -484,7 +484,7 @@ been saved to the group.
 - [x] Build authenticated event creation for hostable groups.
 - [ ] Build event edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
-- [ ] Build RSVP flows for authenticated members.
+- [x] Build RSVP flows for authenticated members.
 - [x] Build tokenized guest RSVP pages.
 - [x] Build public-safe event pages for tokenized links.
 - [ ] Add calendar export only after address visibility rules are
@@ -514,10 +514,14 @@ admins, and hosts can now create events for their hostable groups from
 `/game-night`, with server-action validation, scoped Postgres writes,
 hidden-address host rows, member-scoped upcoming event lists, PGlite
 authorization coverage, and a Playwright signup-to-group-to-event smoke
-test. This does not yet implement group editing, member management,
-invites, role management, event editing/canceling/archiving, guest RSVP
-editing/deletion, RSVP notes, authenticated RSVP flows, host address
-disclosure, or public calendar export.
+test. Authenticated playgroup owners, admins, hosts, and members can now
+RSVP yes, maybe, no, or waitlist to scoped upcoming events from
+`/game-night`, with optional arrival/leaving times, server-action
+validation, PGlite tests for member upsert and non-member denial, and a
+Playwright signup-to-group-to-event-to-RSVP smoke test. This does not yet
+implement group editing, member management, invites, role management,
+event editing/canceling/archiving, guest RSVP editing/deletion, RSVP
+notes, host address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

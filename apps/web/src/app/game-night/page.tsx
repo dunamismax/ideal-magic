@@ -9,15 +9,16 @@ import {
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/ui/empty-state";
 import { createDatabase } from "@/db/client";
-import { listUpcomingEventsForViewer } from "@/db/queries/event-planning";
-import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
 import {
-  canManageEvent,
-  type EventVisibility,
-  type PlaygroupRole,
-} from "@/db/scopes";
+  type EventPlanningSummary,
+  getScopedEventPlanningSummary,
+  listUpcomingEventsForViewer,
+} from "@/db/queries/event-planning";
+import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
+import { canManageEvent } from "@/db/scopes";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateEventForm } from "./create-event-form";
+import { MemberRsvpForm } from "./member-rsvp-form";
 
 export const dynamic = "force-dynamic";
 
@@ -35,13 +36,27 @@ export default async function GameNightPage() {
       },
     }),
   ]);
+  const eventSummaries = (
+    await Promise.all(
+      upcomingEvents.map((event) =>
+        getScopedEventPlanningSummary(db, {
+          eventId: event.id,
+          viewerUserId: session.user.id,
+        }),
+      ),
+    )
+  ).filter((event) => event !== null);
   const eventCreatableGroups = groups
     .filter((group) => canManageEvent(group.role))
     .map((group) => ({
       id: group.id,
       name: group.name,
     }));
-  const nextEvent = upcomingEvents[0] ?? null;
+  const nextEvent = eventSummaries[0] ?? null;
+  const rsvpTotal = eventSummaries.reduce(
+    (total, event) => total + countRsvps(event.counts.rsvps),
+    0,
+  );
 
   return (
     <PageFrame eyebrow="Host planning" title="Game Night">
@@ -58,21 +73,25 @@ export default async function GameNightPage() {
             <Panel
               icon={CalendarDays}
               title="Upcoming Events"
-              value={String(upcomingEvents.length)}
+              value={String(eventSummaries.length)}
             />
             <Panel
               icon={UsersRound}
               title="Hostable Groups"
               value={String(eventCreatableGroups.length)}
             />
-            <Panel icon={Clock3} title="RSVPs" value="Pending" />
+            <Panel
+              icon={Clock3}
+              title="Member RSVPs"
+              value={String(rsvpTotal)}
+            />
           </div>
         </section>
 
         <section className="grid gap-4">
-          {upcomingEvents.length > 0 ? (
+          {eventSummaries.length > 0 ? (
             <div className="grid gap-3">
-              {upcomingEvents.map((event) => (
+              {eventSummaries.map((event) => (
                 <EventCard event={event} key={event.id} />
               ))}
             </div>
@@ -85,36 +104,62 @@ export default async function GameNightPage() {
   );
 }
 
-function EventCard({
-  event,
-}: {
-  event: {
-    id: string;
-    title: string;
-    startsAt: Date;
-    visibility: EventVisibility;
-    playgroup: {
-      name: string;
-      slug: string;
-    };
-    viewerRole: PlaygroupRole | null;
-  };
-}) {
+function EventCard({ event }: { event: EventPlanningSummary }) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-base font-bold">{event.title}</h2>
-          <p className="mt-1 text-sm font-semibold text-muted">
-            {event.playgroup.name} - {formatEventDate(event.startsAt)}
-          </p>
+      <div className="grid gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold">{event.title}</h2>
+            <p className="mt-1 text-sm font-semibold text-muted">
+              {event.playgroup.name} - {formatEventDate(event.startsAt)}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge value={formatVisibility(event.visibility)} />
+            {event.viewer.role ? <Badge value={event.viewer.role} /> : null}
+            {event.viewer.rsvpStatus ? (
+              <Badge
+                value={`RSVP: ${formatRsvpStatus(event.viewer.rsvpStatus)}`}
+              />
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge value={formatVisibility(event.visibility)} />
-          {event.viewerRole ? <Badge value={event.viewerRole} /> : null}
+
+        <div className="grid gap-2 text-sm font-semibold text-muted sm:grid-cols-4">
+          <RsvpCount label="Yes" value={event.counts.rsvps.yes} />
+          <RsvpCount label="Maybe" value={event.counts.rsvps.maybe} />
+          <RsvpCount label="No" value={event.counts.rsvps.no} />
+          <RsvpCount label="Waitlist" value={event.counts.rsvps.waitlist} />
         </div>
+
+        {event.viewer.canRsvp ? (
+          <MemberRsvpForm
+            eventId={event.id}
+            initialArrivalTime={event.viewer.rsvpArrivalTime}
+            initialLeavingTime={event.viewer.rsvpLeavingTime}
+            initialStatus={event.viewer.rsvpStatus}
+          />
+        ) : (
+          <div className="border-t border-border pt-4">
+            <p className="text-sm font-semibold text-muted">
+              Member RSVP is unavailable for your group role.
+            </p>
+          </div>
+        )}
       </div>
     </article>
+  );
+}
+
+function RsvpCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-control bg-background px-3 py-2">
+      <span className="block text-xs font-bold uppercase text-muted">
+        {label}
+      </span>
+      <span className="text-lg font-black text-foreground">{value}</span>
+    </div>
   );
 }
 
@@ -153,7 +198,7 @@ function formatEventDate(date: Date) {
   }).format(date);
 }
 
-function formatVisibility(visibility: EventVisibility) {
+function formatVisibility(visibility: EventPlanningSummary["visibility"]) {
   switch (visibility) {
     case "invite_only":
       return "Invite Only";
@@ -162,4 +207,25 @@ function formatVisibility(visibility: EventVisibility) {
     default:
       return "Members";
   }
+}
+
+function formatRsvpStatus(
+  status: EventPlanningSummary["viewer"]["rsvpStatus"],
+) {
+  switch (status) {
+    case "yes":
+      return "Yes";
+    case "maybe":
+      return "Maybe";
+    case "no":
+      return "No";
+    case "waitlist":
+      return "Waitlist";
+    default:
+      return "None";
+  }
+}
+
+function countRsvps(rsvps: EventPlanningSummary["counts"]["rsvps"]) {
+  return rsvps.yes + rsvps.maybe + rsvps.no + rsvps.waitlist;
 }

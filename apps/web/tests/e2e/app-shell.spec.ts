@@ -898,7 +898,7 @@ test("authenticated users can create and list a playgroup", async ({
   ).toBeVisible();
 });
 
-test("authenticated group owners can create an event", async ({
+test("authenticated group owners can create an event and RSVP", async ({
   page,
 }, testInfo) => {
   const suffix = `${Date.now()}-${testInfo.workerIndex}`;
@@ -937,6 +937,14 @@ test("authenticated group owners can create an event", async ({
   await expect(eventCard.getByText(groupName)).toBeVisible();
   await expect(eventCard.getByText("Members")).toBeVisible();
   await expect(eventCard.getByText("owner")).toBeVisible();
+
+  await eventCard.getByLabel("RSVP Status").selectOption("maybe");
+  await eventCard.getByLabel("Arrival").fill("2030-06-14T19:30");
+  await eventCard.getByLabel("Leaving").fill("2030-06-14T23:00");
+  await eventCard.getByRole("button", { name: "Save RSVP" }).click();
+
+  await expect(eventCard.getByText("RSVP saved.")).toBeVisible();
+  await expect(eventCard.getByText("RSVP: Maybe")).toBeVisible();
 });
 
 for (const protectedRoute of ["/game-night", "/groups", "/decks", "/history"]) {

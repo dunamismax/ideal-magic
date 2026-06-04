@@ -15,6 +15,7 @@ import {
 import {
   type AddressVisibility,
   canManageEvent,
+  canRsvpToEvent,
   canSeeHostAddress,
   type EventVisibility,
   type PlaygroupRole,
@@ -27,10 +28,10 @@ import { hashInviteToken, normalizeInviteToken } from "../tokens";
 type PlanningDatabase = Pick<AppDatabase, "select">;
 type PlanningWriteDatabase = Pick<
   AppDatabase,
-  "select" | "insert" | "transaction"
+  "select" | "insert" | "update" | "transaction"
 >;
 
-type RsvpStatus = "yes" | "maybe" | "no" | "waitlist";
+export type RsvpStatus = "yes" | "maybe" | "no" | "waitlist";
 
 export type EventPlanningSummary = {
   id: string;
@@ -47,6 +48,9 @@ export type EventPlanningSummary = {
   viewer: {
     role: PlaygroupRole | null;
     rsvpStatus: RsvpStatus | null;
+    rsvpArrivalTime: Date | null;
+    rsvpLeavingTime: Date | null;
+    canRsvp: boolean;
     canManageEvent: boolean;
     canSeeHostAddress: boolean;
   };
@@ -134,6 +138,13 @@ export class EventCreationAuthorizationError extends Error {
   }
 }
 
+export class EventRsvpAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot RSVP to this event.");
+    this.name = "EventRsvpAuthorizationError";
+  }
+}
+
 const rsvpStatuses = ["yes", "maybe", "no", "waitlist"] as const;
 const playgroupRoles = [
   "owner",
@@ -205,6 +216,112 @@ export async function createEventForPlaygroup(
   });
 }
 
+export async function upsertMemberRsvpForEvent(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    status: RsvpStatus;
+    arrivalTime: Date | null;
+    leavingTime: Date | null;
+  },
+) {
+  return runInTransaction(db, async (tx) => {
+    const [eventRow] = await tx
+      .select({
+        id: events.id,
+        playgroupId: events.playgroupId,
+      })
+      .from(events)
+      .where(eq(events.id, input.eventId))
+      .limit(1);
+
+    if (!eventRow) {
+      throw new EventRsvpAuthorizationError();
+    }
+
+    const role = await getViewerRole(tx, {
+      playgroupId: eventRow.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!role || !canRsvpToEvent(role)) {
+      throw new EventRsvpAuthorizationError();
+    }
+
+    const [existingRsvp] = await tx
+      .select({
+        id: eventRsvps.id,
+      })
+      .from(eventRsvps)
+      .where(
+        and(
+          eq(eventRsvps.eventId, input.eventId),
+          eq(eventRsvps.userId, input.viewerUserId),
+        ),
+      )
+      .limit(1);
+
+    if (existingRsvp) {
+      const [updated] = await tx
+        .update(eventRsvps)
+        .set({
+          status: input.status,
+          arrivalTime: input.arrivalTime,
+          leavingTime: input.leavingTime,
+          updatedAt: new Date(),
+        })
+        .where(eq(eventRsvps.id, existingRsvp.id))
+        .returning({
+          id: eventRsvps.id,
+          eventId: eventRsvps.eventId,
+          userId: eventRsvps.userId,
+          status: eventRsvps.status,
+          arrivalTime: eventRsvps.arrivalTime,
+          leavingTime: eventRsvps.leavingTime,
+        });
+
+      if (!updated) {
+        throw new Error("Expected member RSVP update to return a row.");
+      }
+
+      return {
+        ...updated,
+        status: asRsvpStatus(updated.status) ?? input.status,
+      };
+    }
+
+    const [created] = await tx
+      .insert(eventRsvps)
+      .values({
+        eventId: input.eventId,
+        userId: input.viewerUserId,
+        status: input.status,
+        arrivalTime: input.arrivalTime,
+        leavingTime: input.leavingTime,
+        guestCount: 0,
+        notes: "",
+      })
+      .returning({
+        id: eventRsvps.id,
+        eventId: eventRsvps.eventId,
+        userId: eventRsvps.userId,
+        status: eventRsvps.status,
+        arrivalTime: eventRsvps.arrivalTime,
+        leavingTime: eventRsvps.leavingTime,
+      });
+
+    if (!created) {
+      throw new Error("Expected member RSVP insert to return a row.");
+    }
+
+    return {
+      ...created,
+      status: asRsvpStatus(created.status) ?? input.status,
+    };
+  });
+}
+
 export async function getScopedEventPlanningSummary(
   db: PlanningDatabase,
   input: {
@@ -253,7 +370,7 @@ export async function getScopedEventPlanningSummary(
     return null;
   }
 
-  const viewerRsvpStatus = await getViewerRsvpStatus(db, {
+  const viewerRsvp = await getViewerRsvp(db, {
     eventId: eventRow.id,
     viewerUserId: input.viewerUserId,
   });
@@ -264,7 +381,7 @@ export async function getScopedEventPlanningSummary(
       canSeeHostAddress(
         viewerRole,
         hostVisibility,
-        viewerRsvpStatus ?? undefined,
+        viewerRsvp?.status ?? undefined,
       ),
     );
 
@@ -290,7 +407,10 @@ export async function getScopedEventPlanningSummary(
     },
     viewer: {
       role: viewerRole,
-      rsvpStatus: viewerRsvpStatus,
+      rsvpStatus: viewerRsvp?.status ?? null,
+      rsvpArrivalTime: viewerRsvp?.arrivalTime ?? null,
+      rsvpLeavingTime: viewerRsvp?.leavingTime ?? null,
+      canRsvp: viewerRole ? canRsvpToEvent(viewerRole) : false,
       canManageEvent: viewerRole ? canManageEvent(viewerRole) : false,
       canSeeHostAddress: addressVisible,
     },
@@ -512,7 +632,7 @@ async function getViewerRole(
   return asPlaygroupRole(membership?.role ?? null);
 }
 
-async function getViewerRsvpStatus(
+async function getViewerRsvp(
   db: PlanningDatabase,
   input: {
     eventId: string;
@@ -526,6 +646,8 @@ async function getViewerRsvpStatus(
   const [rsvp] = await db
     .select({
       status: eventRsvps.status,
+      arrivalTime: eventRsvps.arrivalTime,
+      leavingTime: eventRsvps.leavingTime,
     })
     .from(eventRsvps)
     .where(
@@ -536,7 +658,15 @@ async function getViewerRsvpStatus(
     )
     .limit(1);
 
-  return asRsvpStatus(rsvp?.status ?? null);
+  const status = asRsvpStatus(rsvp?.status ?? null);
+
+  return status
+    ? {
+        status,
+        arrivalTime: rsvp?.arrivalTime ?? null,
+        leavingTime: rsvp?.leavingTime ?? null,
+      }
+    : null;
 }
 
 async function getHostAddressVisibilities(

@@ -17,6 +17,12 @@ export function canManageEvent(role: PlaygroupRole) {
   return role === "owner" || role === "admin" || role === "host";
 }
 
+export function canRsvpToEvent(role: PlaygroupRole) {
+  return (
+    role === "owner" || role === "admin" || role === "host" || role === "member"
+  );
+}
+
 export function canSeeHostAddress(
   role: PlaygroupRole | null,
   visibility: AddressVisibility,

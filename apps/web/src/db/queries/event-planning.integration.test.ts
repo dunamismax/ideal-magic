@@ -2,16 +2,23 @@ import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db/client";
-import { eventHosts, users } from "@/db/schema";
+import {
+  eventHosts,
+  eventRsvps,
+  playgroupMemberships,
+  users,
+} from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import { createPlaygroupForUser } from "./playgroups";
 import {
   createEventForPlaygroup,
   EventCreationAuthorizationError,
+  EventRsvpAuthorizationError,
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
   listUpcomingEventsForViewer,
+  upsertMemberRsvpForEvent,
 } from "./event-planning";
 import { developmentSeedIds, seedDevelopmentData } from "../seed";
 import { hashInviteToken } from "../tokens";
@@ -126,6 +133,127 @@ describe("event planning data access", () => {
         visibility: "members",
       }),
     ).rejects.toBeInstanceOf(EventCreationAuthorizationError);
+  });
+
+  test("upserts authenticated member RSVPs without exposing them to non-members", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000005",
+      email: "owner@example.test",
+      name: "Owner One",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000006",
+      email: "member@example.test",
+      name: "Member Two",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000007",
+      email: "outsider@example.test",
+      name: "Outsider Three",
+    });
+    const group = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000005",
+      ownerDisplayName: "Owner One",
+      name: "Member RSVP Pods",
+      slugBase: "member-rsvp-pods",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values({
+      playgroupId: group.id,
+      userId: "20000000-0000-4000-8000-000000000006",
+      role: "member",
+      displayName: "Member Two",
+    });
+    const event = await createEventForPlaygroup(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000005",
+      playgroupId: group.id,
+      title: "Member RSVP Night",
+      description: "",
+      startsAt: new Date("2030-06-14T23:00:00.000Z"),
+      visibility: "members",
+    });
+
+    await expect(
+      upsertMemberRsvpForEvent(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000006",
+        eventId: event.id,
+        status: "yes",
+        arrivalTime: new Date("2030-06-14T23:30:00.000Z"),
+        leavingTime: new Date("2030-06-15T03:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject({
+      eventId: event.id,
+      userId: "20000000-0000-4000-8000-000000000006",
+      status: "yes",
+    });
+    await upsertMemberRsvpForEvent(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000006",
+      eventId: event.id,
+      status: "maybe",
+      arrivalTime: null,
+      leavingTime: null,
+    });
+
+    const summary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: "20000000-0000-4000-8000-000000000006",
+    });
+
+    expect(summary).toMatchObject({
+      id: event.id,
+      viewer: {
+        role: "member",
+        rsvpStatus: "maybe",
+        rsvpArrivalTime: null,
+        rsvpLeavingTime: null,
+        canRsvp: true,
+      },
+      counts: {
+        rsvps: {
+          yes: 0,
+          maybe: 1,
+          no: 0,
+          waitlist: 0,
+        },
+      },
+    });
+
+    const rsvpRows = await db
+      .select({
+        eventId: eventRsvps.eventId,
+        userId: eventRsvps.userId,
+        guestName: eventRsvps.guestName,
+        status: eventRsvps.status,
+        notes: eventRsvps.notes,
+      })
+      .from(eventRsvps)
+      .where(eq(eventRsvps.eventId, event.id));
+
+    expect(rsvpRows).toEqual([
+      {
+        eventId: event.id,
+        userId: "20000000-0000-4000-8000-000000000006",
+        guestName: null,
+        status: "maybe",
+        notes: "",
+      },
+    ]);
+    await expect(
+      getScopedEventPlanningSummary(db, {
+        eventId: event.id,
+        viewerUserId: "20000000-0000-4000-8000-000000000007",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      upsertMemberRsvpForEvent(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000007",
+        eventId: event.id,
+        status: "yes",
+        arrivalTime: null,
+        leavingTime: null,
+      }),
+    ).rejects.toBeInstanceOf(EventRsvpAuthorizationError);
   });
 
   test("seeds fake planning rows idempotently and returns scoped event counts", async () => {

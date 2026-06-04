@@ -664,6 +664,102 @@ test("tokenized public event invite shows public-safe planning details", async (
   expect(publicText).not.toContain("Example Guest");
 });
 
+test("tokenized public event invite submits a guest RSVP and refreshes aggregates", async ({
+  page,
+}) => {
+  let postedRsvp: unknown = null;
+
+  await page.route(
+    "**/api/public-events/fixture-wednesday-event-access",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          event: {
+            id: "event-1",
+            title: "Wednesday Commander Night",
+            playgroupName: "Example City Commander League",
+            dateLabel: "Wednesday, June 10, 2026",
+            timeLabel: "11:00 PM UTC",
+            locationName: "Example Tabletop Room",
+            rsvpCounts: {
+              yes: 3,
+              maybe: 1,
+              no: 1,
+              waitlist: 1,
+            },
+            guestRsvps: 1,
+            namedGuests: 1,
+            totalResponses: 6,
+            expectedPlayers: 5,
+            deckDeclarations: 5,
+            pods: 1,
+            loggedGames: 1,
+          },
+        }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/public-events/fixture-wednesday-event-access/guest-rsvp",
+    async (route) => {
+      postedRsvp = route.request().postDataJSON();
+
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          event: {
+            id: "event-1",
+            title: "Wednesday Commander Night",
+            playgroupName: "Example City Commander League",
+            dateLabel: "Wednesday, June 10, 2026",
+            timeLabel: "11:00 PM UTC",
+            locationName: "Example Tabletop Room",
+            rsvpCounts: {
+              yes: 4,
+              maybe: 1,
+              no: 1,
+              waitlist: 1,
+            },
+            guestRsvps: 2,
+            namedGuests: 1,
+            totalResponses: 7,
+            expectedPlayers: 6,
+            deckDeclarations: 5,
+            pods: 1,
+            loggedGames: 1,
+          },
+        }),
+      });
+    },
+  );
+
+  await page.goto("/invites/events/fixture-wednesday-event-access");
+  await page.getByLabel("Name").fill("Robin Vale");
+  await page.getByLabel("Status").selectOption("yes");
+  await page.getByRole("button", { name: "RSVP" }).click();
+
+  expect(postedRsvp).toEqual({
+    guestName: "Robin Vale",
+    status: "yes",
+  });
+  await expect(page.getByRole("row", { name: "Yes 4" })).toBeVisible();
+  await expect(page.getByText("6 players")).toBeVisible();
+  await expect(page.getByText("Saved")).toBeVisible();
+  await expect(page.getByLabel("Name")).toHaveValue("");
+
+  const publicText = await page.locator("body").innerText();
+
+  expect(publicText).not.toContain("101 Example Tabletop Way");
+  expect(publicText).not.toContain("Private guest RSVP note");
+  expect(publicText).not.toContain("nora@example.test");
+  expect(publicText).not.toContain("fixture-wednesday-event-access");
+  expect(publicText).not.toContain("Example Guest");
+  expect(publicText).not.toContain("Robin Vale");
+});
+
 test("tokenized public event invite fails closed for missing invites", async ({
   page,
 }) => {

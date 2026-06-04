@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import {
   getPublicRsvpRows,
+  normalizePublicGuestRsvpInput,
+  PublicGuestRsvpValidationError,
   toPublicEventInviteView,
 } from "@/features/events/public-event";
 
@@ -68,5 +70,33 @@ describe("public event invite view model", () => {
       { status: "no", label: "No", count: 1 },
       { status: "waitlist", label: "Waitlist", count: 1 },
     ]);
+  });
+
+  test("normalizes guest RSVP form input", () => {
+    expect(
+      normalizePublicGuestRsvpInput({
+        guestName: "  Robin   Vale  ",
+        status: "maybe",
+      }),
+    ).toEqual({
+      guestName: "Robin Vale",
+      status: "maybe",
+    });
+  });
+
+  test("rejects invalid guest RSVP input", () => {
+    expect(() =>
+      normalizePublicGuestRsvpInput({
+        guestName: " ",
+        status: "yes",
+      }),
+    ).toThrow(PublicGuestRsvpValidationError);
+
+    expect(() =>
+      normalizePublicGuestRsvpInput({
+        guestName: "Robin",
+        status: "attending",
+      }),
+    ).toThrow(PublicGuestRsvpValidationError);
   });
 });

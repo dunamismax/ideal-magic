@@ -6,11 +6,18 @@ import {
   Swords,
   UsersRound,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { PublicEventInviteView } from "@/features/events/public-event";
 import { getPublicRsvpRows } from "@/features/events/public-event";
 
-export function PublicEventInvite({ event }: { event: PublicEventInviteView }) {
+export function PublicEventInvite({
+  event,
+  guestRsvpForm,
+}: {
+  event: PublicEventInviteView;
+  guestRsvpForm?: ReactNode;
+}) {
   return (
     <div className="grid gap-4">
       <section className="rounded-panel border border-border bg-surface p-4 shadow-sm">
@@ -84,6 +91,8 @@ export function PublicEventInvite({ event }: { event: PublicEventInviteView }) {
               aggregate planning counts.
             </p>
           </div>
+
+          {guestRsvpForm}
         </section>
       </div>
     </div>

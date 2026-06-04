@@ -3,7 +3,7 @@
 Future build plan for Pod Tracker. `README.md` describes the current
 product and `AGENTS.md` holds durable repo operating rules.
 
-Last reviewed: 2026-06-03.
+Last reviewed: 2026-06-04.
 
 ---
 
@@ -467,7 +467,7 @@ been saved to the group.
 - [ ] Build event create, edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
 - [ ] Build RSVP flows for authenticated members.
-- [ ] Build tokenized guest RSVP pages.
+- [x] Build tokenized guest RSVP pages.
 - [x] Build public-safe event pages for tokenized links.
 - [ ] Add calendar export only after address visibility rules are
   verified.
@@ -476,17 +476,21 @@ been saved to the group.
 - [ ] Verify signup, group creation, event creation, RSVP, guest RSVP,
   and address visibility with Playwright.
 
-Current Phase 7 public invite work adds a read-only
+Current Phase 7 public invite work adds a
 `/invites/events/[inviteToken]` route backed by
 `/api/public-events/[inviteToken]`, which uses the token-scoped
 public-safe Drizzle query paths. The page shows event title, playgroup
 name, date/time, public location name, aggregate RSVP counts, guest
 counts, deck declaration counts, pod counts, and logged-game counts.
-Unit, PGlite integration, and Playwright tests verify that the rendered
-view and service payload omit host addresses, location notes, RSVP notes,
-emails, raw invite tokens, token hashes, and guest names. This does not
-implement guest RSVP writes, authenticated RSVP flows, group/event CRUD,
-host address disclosure, or public calendar export.
+Tokenized guests can now submit a name and RSVP status through a
+public-safe form that writes a guest RSVP row and refreshes only aggregate
+public counts. Unit, PGlite integration, and Playwright tests verify that
+the rendered view, service payload, and post-submit refreshed page omit
+host addresses, location notes, RSVP notes, emails, raw invite tokens,
+token hashes, existing guest names, and newly submitted guest names. This
+does not implement guest RSVP editing/deletion, RSVP notes, authenticated
+RSVP flows, group/event CRUD, host address disclosure, or public calendar
+export.
 
 ## Phase 8 - Deck Declarations
 

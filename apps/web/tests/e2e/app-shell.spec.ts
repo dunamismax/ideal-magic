@@ -863,6 +863,41 @@ test("login form posts Better Auth email credentials", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("authenticated users can create and list a playgroup", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `group-smoke-${suffix}@example.test`;
+  const groupName = `Friday Pods ${suffix}`;
+
+  await page.goto("/signup?next=/groups");
+  await page.getByLabel("Name").fill("Riley Chen");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page).toHaveURL("/groups");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Groups" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Group Name").fill(groupName);
+  await page
+    .getByLabel("Description")
+    .fill("Bracket-aware pods and rotating hosts.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+
+  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+  await expect(
+    page.getByText("Bracket-aware pods and rotating hosts."),
+  ).toBeVisible();
+  await expect(page.getByText("owner")).toBeVisible();
+  await expect(page.getByText("Members", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Upcoming Events", { exact: true }),
+  ).toBeVisible();
+});
+
 for (const protectedRoute of ["/game-night", "/groups", "/decks", "/history"]) {
   test(`anonymous users are redirected from ${protectedRoute}`, async ({
     page,

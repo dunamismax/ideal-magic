@@ -1,16 +1,93 @@
+import { CalendarDays, ShieldCheck, UsersRound } from "lucide-react";
+
 import { PageFrame } from "@/components/page-frame";
+import { EmptyState } from "@/components/ui/empty-state";
+import { createDatabase } from "@/db/client";
+import {
+  listPlaygroupsForViewer,
+  type ViewerPlaygroupListItem,
+} from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
+import { CreateGroupForm } from "./create-group-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function GroupsPage() {
-  await requireServerSession("/groups");
+  const session = await requireServerSession("/groups");
+  const groups = await listPlaygroupsForViewer(createDatabase(), {
+    viewerUserId: session.user.id,
+  });
 
   return (
-    <PageFrame title="Groups">
-      <div className="rounded-control border border-border bg-background p-4 text-sm font-semibold">
-        Home group
+    <PageFrame eyebrow="Playgroups" title="Groups">
+      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <CreateGroupForm />
+
+        <section className="grid gap-3">
+          {groups.length > 0 ? (
+            groups.map((group) => <GroupCard group={group} key={group.id} />)
+          ) : (
+            <EmptyState icon={UsersRound} title="No groups yet" />
+          )}
+        </section>
       </div>
     </PageFrame>
+  );
+}
+
+function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
+  return (
+    <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-bold">{group.name}</h2>
+          <p className="mt-1 text-sm font-semibold text-muted">
+            /groups/{group.slug}
+          </p>
+          {group.description ? (
+            <p className="mt-3 text-sm font-medium text-muted">
+              {group.description}
+            </p>
+          ) : null}
+        </div>
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-control border border-border bg-background px-2 py-1 text-xs font-bold uppercase text-muted">
+          <ShieldCheck className="size-3.5 text-accent" aria-hidden="true" />
+          {group.role}
+        </span>
+      </div>
+
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+        <Metric
+          icon={UsersRound}
+          label="Members"
+          value={String(group.memberCount)}
+        />
+        <Metric
+          icon={CalendarDays}
+          label="Upcoming Events"
+          value={String(group.upcomingEventCount)}
+        />
+      </dl>
+    </article>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof UsersRound;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-control border border-border bg-background p-3">
+      <dt className="flex items-center gap-2 text-xs font-bold uppercase text-muted">
+        <Icon className="size-4 text-accent" aria-hidden="true" />
+        {label}
+      </dt>
+      <dd className="mt-1 text-xl font-black">{value}</dd>
+    </div>
   );
 }

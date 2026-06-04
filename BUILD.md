@@ -479,7 +479,8 @@ been saved to the group.
 
 ## Phase 7 - Groups And Events
 
-- [ ] Build group create, edit, member list, invite, and role management.
+- [x] Build authenticated group creation and scoped group list.
+- [ ] Build group edit, member list, invite, and role management.
 - [ ] Build event create, edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
 - [ ] Build RSVP flows for authenticated members.
@@ -503,10 +504,14 @@ public-safe form that writes a guest RSVP row and refreshes only aggregate
 public counts. Unit, PGlite integration, and Playwright tests verify that
 the rendered view, service payload, and post-submit refreshed page omit
 host addresses, location notes, RSVP notes, emails, raw invite tokens,
-token hashes, existing guest names, and newly submitted guest names. This
-does not implement guest RSVP editing/deletion, RSVP notes, authenticated
-RSVP flows, group/event CRUD, host address disclosure, or public calendar
-export.
+token hashes, existing guest names, and newly submitted guest names.
+Authenticated users can now create a playgroup from `/groups` and see a
+Postgres-backed list scoped by their membership, with owner membership
+creation, unique slug generation, validation, PGlite integration tests,
+and a Playwright signup-to-group-create smoke test. This does not yet
+implement group editing, member management, invites, role management,
+event CRUD, guest RSVP editing/deletion, RSVP notes, authenticated RSVP
+flows, host address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

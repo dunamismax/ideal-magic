@@ -21,9 +21,14 @@ import {
 } from "../scopes";
 import { normalizePageRequest, type PageRequest } from "../pagination";
 import type { AppDatabase } from "../client";
+import { runInTransaction } from "../client";
 import { hashInviteToken, normalizeInviteToken } from "../tokens";
 
 type PlanningDatabase = Pick<AppDatabase, "select">;
+type PlanningWriteDatabase = Pick<
+  AppDatabase,
+  "select" | "insert" | "transaction"
+>;
 
 type RsvpStatus = "yes" | "maybe" | "no" | "waitlist";
 
@@ -111,6 +116,24 @@ export type PublicSafeGuestRsvpSummary = {
   namedGuests: number;
 };
 
+export type CreatedEvent = {
+  id: string;
+  title: string;
+  description: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  visibility: EventVisibility;
+  playgroupId: string;
+  createdByUserId: string | null;
+};
+
+export class EventCreationAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot create events for this playgroup.");
+    this.name = "EventCreationAuthorizationError";
+  }
+}
+
 const rsvpStatuses = ["yes", "maybe", "no", "waitlist"] as const;
 const playgroupRoles = [
   "owner",
@@ -122,6 +145,65 @@ const playgroupRoles = [
 ] as const;
 const eventVisibilities = ["members", "invite_only", "public_safe"] as const;
 const addressVisibilities = ["rsvps", "members", "public", "hidden"] as const;
+
+export async function createEventForPlaygroup(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+    title: string;
+    description: string;
+    startsAt: Date;
+    visibility: EventVisibility;
+  },
+): Promise<CreatedEvent> {
+  return runInTransaction(db, async (tx) => {
+    const role = await getViewerRole(tx, {
+      playgroupId: input.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!role || !canManageEvent(role)) {
+      throw new EventCreationAuthorizationError();
+    }
+
+    const [event] = await tx
+      .insert(events)
+      .values({
+        playgroupId: input.playgroupId,
+        title: input.title,
+        description: input.description,
+        startsAt: input.startsAt,
+        visibility: input.visibility,
+        createdByUserId: input.viewerUserId,
+      })
+      .returning({
+        id: events.id,
+        title: events.title,
+        description: events.description,
+        startsAt: events.startsAt,
+        endsAt: events.endsAt,
+        visibility: events.visibility,
+        playgroupId: events.playgroupId,
+        createdByUserId: events.createdByUserId,
+      });
+
+    if (!event) {
+      throw new Error("Expected event insert to return a row.");
+    }
+
+    await tx.insert(eventHosts).values({
+      eventId: event.id,
+      userId: input.viewerUserId,
+      addressVisibility: "hidden",
+    });
+
+    return {
+      ...event,
+      visibility: asEventVisibility(event.visibility),
+    };
+  });
+}
 
 export async function getScopedEventPlanningSummary(
   db: PlanningDatabase,

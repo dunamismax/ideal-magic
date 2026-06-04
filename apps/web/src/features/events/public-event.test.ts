@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  getPublicRsvpRows,
   normalizePublicGuestRsvpInput,
   PublicGuestRsvpValidationError,
-  toPublicEventInviteView,
 } from "@/features/events/public-event";
+import {
+  getPublicRsvpRows,
+  toPublicEventInviteView,
+} from "@/features/events/public-event-view";
 
 describe("public event invite view model", () => {
   test("builds aggregate-only public event copy", () => {

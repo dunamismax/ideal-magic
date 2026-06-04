@@ -5,9 +5,11 @@ import { eventRsvps } from "@/db/schema";
 import {
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
-  type PublicSafeEventSummary,
-  type PublicSafeGuestRsvpSummary,
 } from "@/db/queries/event-planning";
+import {
+  toPublicEventInviteView,
+  type PublicEventInviteView,
+} from "./public-event-view";
 
 type PublicEventDatabase = Pick<AppDatabase, "select">;
 type PublicEventWriteDatabase = Pick<
@@ -27,44 +29,8 @@ export type PublicGuestRsvpForm = {
   status: RsvpStatus;
 };
 
-export type PublicEventInviteView = {
-  id: string;
-  title: string;
-  playgroupName: string;
-  dateLabel: string;
-  timeLabel: string;
-  locationName: string | null;
-  rsvpCounts: Record<RsvpStatus, number>;
-  guestRsvps: number;
-  namedGuests: number;
-  totalResponses: number;
-  expectedPlayers: number;
-  deckDeclarations: number;
-  pods: number;
-  loggedGames: number;
-};
-
-const rsvpLabels: Record<RsvpStatus, string> = {
-  yes: "Yes",
-  maybe: "Maybe",
-  no: "No",
-  waitlist: "Waitlist",
-};
-
 const publicGuestRsvpStatuses = ["yes", "maybe", "no", "waitlist"] as const;
 const guestNameMaxLength = 80;
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "full",
-  timeZone: "UTC",
-});
-
-const timeFormatter = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: "UTC",
-  timeZoneName: "short",
-});
 
 export async function getPublicEventInviteView(
   db: PublicEventDatabase,
@@ -151,33 +117,6 @@ export function normalizePublicGuestRsvpInput(
   };
 }
 
-export function toPublicEventInviteView(
-  eventSummary: PublicSafeEventSummary,
-  guestSummary: PublicSafeGuestRsvpSummary,
-): PublicEventInviteView {
-  const totalResponses = countResponses(guestSummary.rsvps);
-
-  return {
-    id: eventSummary.id,
-    title: eventSummary.title,
-    playgroupName: eventSummary.playgroup.name,
-    dateLabel: dateFormatter.format(eventSummary.startsAt),
-    timeLabel: formatTimeRange(eventSummary.startsAt, eventSummary.endsAt),
-    locationName: eventSummary.location?.name ?? null,
-    rsvpCounts: guestSummary.rsvps,
-    guestRsvps: guestSummary.guestRsvps,
-    namedGuests: guestSummary.namedGuests,
-    totalResponses,
-    expectedPlayers:
-      guestSummary.rsvps.yes +
-      guestSummary.rsvps.maybe +
-      guestSummary.namedGuests,
-    deckDeclarations: eventSummary.counts.deckDeclarations,
-    pods: eventSummary.counts.pods,
-    loggedGames: eventSummary.counts.loggedGames,
-  };
-}
-
 export class PublicGuestRsvpValidationError extends Error {
   fieldErrors: Partial<Record<keyof PublicGuestRsvpForm, string>>;
 
@@ -186,28 +125,6 @@ export class PublicGuestRsvpValidationError extends Error {
     this.name = "PublicGuestRsvpValidationError";
     this.fieldErrors = fieldErrors;
   }
-}
-
-export function getPublicRsvpRows(view: PublicEventInviteView) {
-  return (Object.keys(rsvpLabels) as RsvpStatus[]).map((status) => ({
-    status,
-    label: rsvpLabels[status],
-    count: view.rsvpCounts[status],
-  }));
-}
-
-function formatTimeRange(startsAt: Date, endsAt: Date | null) {
-  const startLabel = timeFormatter.format(startsAt);
-
-  if (!endsAt) {
-    return startLabel;
-  }
-
-  return `${startLabel} to ${timeFormatter.format(endsAt)}`;
-}
-
-function countResponses(counts: Record<RsvpStatus, number>) {
-  return counts.yes + counts.maybe + counts.no + counts.waitlist;
 }
 
 function includesString<const T extends string>(

@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vitest";
+import { eq } from "drizzle-orm";
 
+import type { AppDatabase } from "@/db/client";
+import { eventHosts, users } from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
+import { createPlaygroupForUser } from "./playgroups";
 import {
+  createEventForPlaygroup,
+  EventCreationAuthorizationError,
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
@@ -11,6 +17,117 @@ import { developmentSeedIds, seedDevelopmentData } from "../seed";
 import { hashInviteToken } from "../tokens";
 
 describe("event planning data access", () => {
+  test("creates events for authorized group hosts and lists them by viewer scope", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000001",
+      email: "riley@example.test",
+      name: "Riley Chen",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000002",
+      email: "sam@example.test",
+      name: "Sam Vale",
+    });
+
+    const group = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000001",
+      ownerDisplayName: "Riley Chen",
+      name: "Friday Pods",
+      slugBase: "friday-pods",
+      description: "",
+    });
+
+    const created = await createEventForPlaygroup(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000001",
+      playgroupId: group.id,
+      title: "Friday Commander",
+      description: "Bracket-aware pods.",
+      startsAt: new Date("2030-06-14T23:00:00.000Z"),
+      visibility: "members",
+    });
+
+    expect(created).toMatchObject({
+      title: "Friday Commander",
+      description: "Bracket-aware pods.",
+      playgroupId: group.id,
+      visibility: "members",
+      createdByUserId: "20000000-0000-4000-8000-000000000001",
+    });
+
+    await expect(
+      db
+        .select({
+          eventId: eventHosts.eventId,
+          userId: eventHosts.userId,
+          addressVisibility: eventHosts.addressVisibility,
+        })
+        .from(eventHosts)
+        .where(eq(eventHosts.eventId, created.id)),
+    ).resolves.toEqual([
+      {
+        eventId: created.id,
+        userId: "20000000-0000-4000-8000-000000000001",
+        addressVisibility: "hidden",
+      },
+    ]);
+
+    await expect(
+      listUpcomingEventsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000001",
+        now: new Date("2030-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: created.id,
+        title: "Friday Commander",
+        viewerRole: "owner",
+        playgroup: {
+          id: group.id,
+          slug: "friday-pods",
+        },
+      },
+    ]);
+    await expect(
+      listUpcomingEventsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000002",
+        now: new Date("2030-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  test("rejects event creation for non-members", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000003",
+      email: "jules@example.test",
+      name: "Jules Stone",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000004",
+      email: "mara@example.test",
+      name: "Mara Imani",
+    });
+    const group = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000003",
+      ownerDisplayName: "Jules Stone",
+      name: "Sunday Pods",
+      slugBase: "sunday-pods",
+      description: "",
+    });
+
+    await expect(
+      createEventForPlaygroup(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000004",
+        playgroupId: group.id,
+        title: "Sunday Commander",
+        description: "",
+        startsAt: new Date("2030-06-16T19:00:00.000Z"),
+        visibility: "members",
+      }),
+    ).rejects.toBeInstanceOf(EventCreationAuthorizationError);
+  });
+
   test("seeds fake planning rows idempotently and returns scoped event counts", async () => {
     const { db } = await createMigratedPgliteDatabase();
 
@@ -223,3 +340,14 @@ describe("event planning data access", () => {
     ).resolves.toBeNull();
   });
 });
+
+async function insertUser(
+  db: Pick<AppDatabase, "insert">,
+  input: {
+    id: string;
+    email: string;
+    name: string;
+  },
+) {
+  await db.insert(users).values(input);
+}

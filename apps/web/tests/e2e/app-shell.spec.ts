@@ -898,6 +898,47 @@ test("authenticated users can create and list a playgroup", async ({
   ).toBeVisible();
 });
 
+test("authenticated group owners can create an event", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `event-smoke-${suffix}@example.test`;
+  const groupName = `Saturday Hosts ${suffix}`;
+  const eventTitle = `Saturday Commander ${suffix}`;
+
+  await page.goto("/signup?next=/groups");
+  await page.getByLabel("Name").fill("Riley Chen");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page).toHaveURL("/groups");
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Planning event creation.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+
+  await page.goto("/game-night");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Game Night" }),
+  ).toBeVisible();
+  await page.getByLabel("Playgroup").selectOption({ label: groupName });
+  await page.getByLabel("Event Title").fill(eventTitle);
+  await page.getByLabel("Start").fill("2030-06-14T19:00");
+  await page.getByLabel("Visibility").selectOption("members");
+  await page.getByLabel("Description").fill("Bring bracket 2-3 decks.");
+  await page.getByRole("button", { name: "Create Event" }).click();
+
+  const eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(
+    eventCard.getByRole("heading", { name: eventTitle }),
+  ).toBeVisible();
+  await expect(eventCard.getByText(groupName)).toBeVisible();
+  await expect(eventCard.getByText("Members")).toBeVisible();
+  await expect(eventCard.getByText("owner")).toBeVisible();
+});
+
 for (const protectedRoute of ["/game-night", "/groups", "/decks", "/history"]) {
   test(`anonymous users are redirected from ${protectedRoute}`, async ({
     page,

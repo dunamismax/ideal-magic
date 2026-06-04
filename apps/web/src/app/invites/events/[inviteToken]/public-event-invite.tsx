@@ -8,8 +8,10 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { PublicEventInviteView } from "@/features/events/public-event";
-import { getPublicRsvpRows } from "@/features/events/public-event";
+import {
+  getPublicRsvpRows,
+  type PublicEventInviteView,
+} from "@/features/events/public-event-view";
 
 export function PublicEventInvite({
   event,

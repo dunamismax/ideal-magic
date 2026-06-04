@@ -481,7 +481,8 @@ been saved to the group.
 
 - [x] Build authenticated group creation and scoped group list.
 - [ ] Build group edit, member list, invite, and role management.
-- [ ] Build event create, edit, cancel, and archive flows.
+- [x] Build authenticated event creation for hostable groups.
+- [ ] Build event edit, cancel, and archive flows.
 - [ ] Build host location management with address visibility controls.
 - [ ] Build RSVP flows for authenticated members.
 - [x] Build tokenized guest RSVP pages.
@@ -508,10 +509,15 @@ token hashes, existing guest names, and newly submitted guest names.
 Authenticated users can now create a playgroup from `/groups` and see a
 Postgres-backed list scoped by their membership, with owner membership
 creation, unique slug generation, validation, PGlite integration tests,
-and a Playwright signup-to-group-create smoke test. This does not yet
-implement group editing, member management, invites, role management,
-event CRUD, guest RSVP editing/deletion, RSVP notes, authenticated RSVP
-flows, host address disclosure, or public calendar export.
+and a Playwright signup-to-group-create smoke test. Logged-in owners,
+admins, and hosts can now create events for their hostable groups from
+`/game-night`, with server-action validation, scoped Postgres writes,
+hidden-address host rows, member-scoped upcoming event lists, PGlite
+authorization coverage, and a Playwright signup-to-group-to-event smoke
+test. This does not yet implement group editing, member management,
+invites, role management, event editing/canceling/archiving, guest RSVP
+editing/deletion, RSVP notes, authenticated RSVP flows, host address
+disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 

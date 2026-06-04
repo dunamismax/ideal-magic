@@ -6,7 +6,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { FormField, fieldControlClassName } from "@/components/ui/form-field";
-import type { PublicEventInviteView } from "@/features/events/public-event";
+import type { PublicEventInviteView } from "@/features/events/public-event-view";
 import { PublicEventInvite } from "./public-event-invite";
 
 type PublicEventInviteResponse = {

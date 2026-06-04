@@ -1,4 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+
+export function generateInviteToken() {
+  return randomBytes(32).toString("base64url");
+}
 
 export function normalizeInviteToken(token: string) {
   const normalized = token.trim();

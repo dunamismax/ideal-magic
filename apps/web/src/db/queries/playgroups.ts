@@ -1,15 +1,30 @@
-import { and, asc, count, eq, gt, inArray, like } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, like, sql } from "drizzle-orm";
 
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
-import { events, playgroupMemberships, playgroups, users } from "../schema";
 import {
+  events,
+  playgroupInvites,
+  playgroupMemberships,
+  playgroups,
+  users,
+} from "../schema";
+import {
+  canManagePlaygroup,
   canViewPlaygroupMembers,
   isPlaygroupMemberDirectoryRole,
   type PlaygroupRole,
 } from "../scopes";
+import {
+  generateInviteToken,
+  hashInviteToken,
+  normalizeInviteToken,
+} from "../tokens";
 
-type PlaygroupDatabase = Pick<AppDatabase, "select" | "insert" | "transaction">;
+type PlaygroupDatabase = Pick<
+  AppDatabase,
+  "select" | "insert" | "update" | "transaction"
+>;
 type PlaygroupReadDatabase = Pick<AppDatabase, "select">;
 
 const memberDirectoryRoles = ["owner", "admin", "host", "member"] as const;
@@ -20,8 +35,10 @@ export type ViewerPlaygroupListItem = {
   slug: string;
   description: string;
   role: PlaygroupRole;
+  canManagePlaygroup: boolean;
   memberCount: number;
   members: ViewerPlaygroupMember[];
+  invites: ViewerPlaygroupInvite[];
   upcomingEventCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -34,12 +51,55 @@ export type ViewerPlaygroupMember = {
   joinedAt: Date;
 };
 
+export type ViewerPlaygroupInvite = {
+  id: string;
+  role: PlaygroupRole;
+  usedCount: number;
+  maxUses: number | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+  isActive: boolean;
+};
+
 export type CreatedPlaygroup = {
   id: string;
   name: string;
   slug: string;
   description: string;
 };
+
+export type CreatedPlaygroupInvite = ViewerPlaygroupInvite & {
+  playgroupId: string;
+  inviteToken: string;
+};
+
+export type PlaygroupInviteSummary = ViewerPlaygroupInvite & {
+  playgroup: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+export type AcceptedPlaygroupInvite = {
+  playgroupId: string;
+  alreadyMember: boolean;
+};
+
+export class PlaygroupInviteAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot manage invites for this playgroup.");
+    this.name = "PlaygroupInviteAuthorizationError";
+  }
+}
+
+export class PlaygroupInviteAcceptanceError extends Error {
+  constructor() {
+    super("Invite cannot be accepted.");
+    this.name = "PlaygroupInviteAcceptanceError";
+  }
+}
 
 export async function listPlaygroupsForViewer(
   db: PlaygroupReadDatabase,
@@ -64,24 +124,34 @@ export async function listPlaygroupsForViewer(
     .orderBy(asc(playgroups.name), asc(playgroups.id));
 
   return Promise.all(
-    rows.map(async (row) => ({
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      description: row.description,
-      role: asPlaygroupRole(row.role),
-      memberCount: await countMembersForPlaygroup(db, row.id),
-      members: await listVisiblePlaygroupMembersForViewer(db, {
-        viewerUserId: input.viewerUserId,
-        playgroupId: row.id,
-      }),
-      upcomingEventCount: await countUpcomingEventsForPlaygroup(db, {
-        playgroupId: row.id,
-        now: input.now ?? new Date(),
-      }),
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    })),
+    rows.map(async (row) => {
+      const role = asPlaygroupRole(row.role);
+
+      return {
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        description: row.description,
+        role,
+        canManagePlaygroup: canManagePlaygroup(role),
+        memberCount: await countMembersForPlaygroup(db, row.id),
+        members: await listVisiblePlaygroupMembersForViewer(db, {
+          viewerUserId: input.viewerUserId,
+          playgroupId: row.id,
+        }),
+        invites: await listPlaygroupInvitesForViewer(db, {
+          viewerUserId: input.viewerUserId,
+          playgroupId: row.id,
+          now: input.now,
+        }),
+        upcomingEventCount: await countUpcomingEventsForPlaygroup(db, {
+          playgroupId: row.id,
+          now: input.now ?? new Date(),
+        }),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    }),
   );
 }
 
@@ -177,6 +247,267 @@ export async function createPlaygroupForUser(
   });
 }
 
+export async function createPlaygroupInviteForViewer(
+  db: PlaygroupDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+    now?: Date;
+  },
+): Promise<CreatedPlaygroupInvite> {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManagePlaygroupInvites(tx, input);
+
+    const inviteToken = generateInviteToken();
+    const [invite] = await tx
+      .insert(playgroupInvites)
+      .values({
+        playgroupId: input.playgroupId,
+        tokenHash: hashInviteToken(inviteToken),
+        role: "member",
+        createdByUserId: input.viewerUserId,
+      })
+      .returning({
+        id: playgroupInvites.id,
+        role: playgroupInvites.role,
+        usedCount: playgroupInvites.usedCount,
+        maxUses: playgroupInvites.maxUses,
+        expiresAt: playgroupInvites.expiresAt,
+        revokedAt: playgroupInvites.revokedAt,
+        createdAt: playgroupInvites.createdAt,
+      });
+
+    if (!invite) {
+      throw new Error("Expected playgroup invite insert to return a row.");
+    }
+
+    return {
+      ...toViewerPlaygroupInvite(invite, input.now ?? new Date()),
+      playgroupId: input.playgroupId,
+      inviteToken,
+    };
+  });
+}
+
+export async function listPlaygroupInvitesForViewer(
+  db: PlaygroupReadDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+    now?: Date;
+  },
+): Promise<ViewerPlaygroupInvite[]> {
+  const role = await getViewerPlaygroupRole(db, input);
+
+  if (!role || !canManagePlaygroup(role)) {
+    return [];
+  }
+
+  const rows = await db
+    .select({
+      id: playgroupInvites.id,
+      role: playgroupInvites.role,
+      usedCount: playgroupInvites.usedCount,
+      maxUses: playgroupInvites.maxUses,
+      expiresAt: playgroupInvites.expiresAt,
+      revokedAt: playgroupInvites.revokedAt,
+      createdAt: playgroupInvites.createdAt,
+    })
+    .from(playgroupInvites)
+    .where(eq(playgroupInvites.playgroupId, input.playgroupId))
+    .orderBy(desc(playgroupInvites.createdAt), desc(playgroupInvites.id));
+
+  return rows.map((row) =>
+    toViewerPlaygroupInvite(row, input.now ?? new Date()),
+  );
+}
+
+export async function revokePlaygroupInviteForViewer(
+  db: PlaygroupDatabase,
+  input: {
+    viewerUserId: string;
+    inviteId: string;
+    now?: Date;
+  },
+): Promise<ViewerPlaygroupInvite> {
+  return runInTransaction(db, async (tx) => {
+    const [inviteRow] = await tx
+      .select({
+        playgroupId: playgroupInvites.playgroupId,
+        revokedAt: playgroupInvites.revokedAt,
+      })
+      .from(playgroupInvites)
+      .where(eq(playgroupInvites.id, input.inviteId))
+      .limit(1);
+
+    if (!inviteRow) {
+      throw new PlaygroupInviteAuthorizationError();
+    }
+
+    await assertCanManagePlaygroupInvites(tx, {
+      viewerUserId: input.viewerUserId,
+      playgroupId: inviteRow.playgroupId,
+    });
+
+    const revokedAt = inviteRow.revokedAt ?? input.now ?? new Date();
+    const [invite] = await tx
+      .update(playgroupInvites)
+      .set({
+        revokedAt,
+      })
+      .where(eq(playgroupInvites.id, input.inviteId))
+      .returning({
+        id: playgroupInvites.id,
+        role: playgroupInvites.role,
+        usedCount: playgroupInvites.usedCount,
+        maxUses: playgroupInvites.maxUses,
+        expiresAt: playgroupInvites.expiresAt,
+        revokedAt: playgroupInvites.revokedAt,
+        createdAt: playgroupInvites.createdAt,
+      });
+
+    if (!invite) {
+      throw new Error("Expected playgroup invite update to return a row.");
+    }
+
+    return toViewerPlaygroupInvite(invite, input.now ?? new Date());
+  });
+}
+
+export async function getPlaygroupInviteSummaryByToken(
+  db: PlaygroupReadDatabase,
+  input: {
+    inviteToken: string;
+    now?: Date;
+  },
+): Promise<PlaygroupInviteSummary | null> {
+  const normalizedToken = normalizeInviteToken(input.inviteToken);
+
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const [row] = await db
+    .select({
+      id: playgroupInvites.id,
+      role: playgroupInvites.role,
+      usedCount: playgroupInvites.usedCount,
+      maxUses: playgroupInvites.maxUses,
+      expiresAt: playgroupInvites.expiresAt,
+      revokedAt: playgroupInvites.revokedAt,
+      createdAt: playgroupInvites.createdAt,
+      playgroupId: playgroups.id,
+      playgroupName: playgroups.name,
+      playgroupSlug: playgroups.slug,
+    })
+    .from(playgroupInvites)
+    .innerJoin(playgroups, eq(playgroupInvites.playgroupId, playgroups.id))
+    .where(eq(playgroupInvites.tokenHash, hashInviteToken(normalizedToken)))
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...toViewerPlaygroupInvite(row, input.now ?? new Date()),
+    playgroup: {
+      id: row.playgroupId,
+      name: row.playgroupName,
+      slug: row.playgroupSlug,
+    },
+  };
+}
+
+export async function acceptPlaygroupInviteForViewer(
+  db: PlaygroupDatabase,
+  input: {
+    viewerUserId: string;
+    inviteToken: string;
+    displayName?: string | null;
+    now?: Date;
+  },
+): Promise<AcceptedPlaygroupInvite> {
+  return runInTransaction(db, async (tx) => {
+    const normalizedToken = normalizeInviteToken(input.inviteToken);
+
+    if (!normalizedToken) {
+      throw new PlaygroupInviteAcceptanceError();
+    }
+
+    const [invite] = await tx
+      .select({
+        id: playgroupInvites.id,
+        playgroupId: playgroupInvites.playgroupId,
+        role: playgroupInvites.role,
+        usedCount: playgroupInvites.usedCount,
+        maxUses: playgroupInvites.maxUses,
+        expiresAt: playgroupInvites.expiresAt,
+        revokedAt: playgroupInvites.revokedAt,
+        createdAt: playgroupInvites.createdAt,
+      })
+      .from(playgroupInvites)
+      .where(eq(playgroupInvites.tokenHash, hashInviteToken(normalizedToken)))
+      .limit(1);
+
+    if (!invite) {
+      throw new PlaygroupInviteAcceptanceError();
+    }
+
+    const inviteProjection = toViewerPlaygroupInvite(
+      invite,
+      input.now ?? new Date(),
+    );
+    const inviteRole = inviteProjection.role;
+
+    if (
+      !inviteProjection.isActive ||
+      inviteRole === "owner" ||
+      inviteRole === "admin"
+    ) {
+      throw new PlaygroupInviteAcceptanceError();
+    }
+
+    const [existingMembership] = await tx
+      .select({
+        id: playgroupMemberships.id,
+      })
+      .from(playgroupMemberships)
+      .where(
+        and(
+          eq(playgroupMemberships.playgroupId, invite.playgroupId),
+          eq(playgroupMemberships.userId, input.viewerUserId),
+        ),
+      )
+      .limit(1);
+
+    if (existingMembership) {
+      return {
+        playgroupId: invite.playgroupId,
+        alreadyMember: true,
+      };
+    }
+
+    await tx.insert(playgroupMemberships).values({
+      playgroupId: invite.playgroupId,
+      userId: input.viewerUserId,
+      role: inviteRole,
+      displayName: normalizeOptionalDisplayName(input.displayName),
+    });
+    await tx
+      .update(playgroupInvites)
+      .set({
+        usedCount: sql`${playgroupInvites.usedCount} + 1`,
+      })
+      .where(eq(playgroupInvites.id, invite.id));
+
+    return {
+      playgroupId: invite.playgroupId,
+      alreadyMember: false,
+    };
+  });
+}
+
 async function createUniquePlaygroupSlug(
   db: PlaygroupReadDatabase,
   slugBase: string,
@@ -243,6 +574,20 @@ async function getViewerPlaygroupRole(
   return membership ? asPlaygroupRole(membership.role) : null;
 }
 
+async function assertCanManagePlaygroupInvites(
+  db: PlaygroupReadDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+  },
+) {
+  const role = await getViewerPlaygroupRole(db, input);
+
+  if (!role || !canManagePlaygroup(role)) {
+    throw new PlaygroupInviteAuthorizationError();
+  }
+}
+
 async function countUpcomingEventsForPlaygroup(
   db: PlaygroupReadDatabase,
   input: {
@@ -261,6 +606,33 @@ async function countUpcomingEventsForPlaygroup(
     );
 
   return row?.total ?? 0;
+}
+
+function toViewerPlaygroupInvite(
+  invite: {
+    id: string;
+    role: string;
+    usedCount: number;
+    maxUses: number | null;
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+    createdAt: Date;
+  },
+  now: Date,
+): ViewerPlaygroupInvite {
+  return {
+    id: invite.id,
+    role: asPlaygroupRole(invite.role),
+    usedCount: invite.usedCount,
+    maxUses: invite.maxUses,
+    expiresAt: invite.expiresAt,
+    revokedAt: invite.revokedAt,
+    createdAt: invite.createdAt,
+    isActive:
+      invite.revokedAt === null &&
+      (invite.expiresAt === null || invite.expiresAt > now) &&
+      (invite.maxUses === null || invite.usedCount < invite.maxUses),
+  };
 }
 
 function normalizeOptionalDisplayName(value: string | null | undefined) {

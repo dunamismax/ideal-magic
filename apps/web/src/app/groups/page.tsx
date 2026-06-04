@@ -9,6 +9,7 @@ import {
 } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateGroupForm } from "./create-group-form";
+import { GroupInvitePanel } from "./group-invite-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,14 @@ export function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
             ))}
           </ul>
         </section>
+      ) : null}
+
+      {group.canManagePlaygroup ? (
+        <GroupInvitePanel
+          groupId={group.id}
+          groupName={group.name}
+          invites={group.invites}
+        />
       ) : null}
     </article>
   );

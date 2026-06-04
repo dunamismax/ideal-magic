@@ -907,6 +907,52 @@ test("authenticated users can create and list a playgroup", async ({
   ).toBeVisible();
 });
 
+test("group owners can create, list, and revoke invite links", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `group-invite-smoke-${suffix}@example.test`;
+  const groupName = `Invite Pods ${suffix}`;
+
+  await page.goto("/signup?next=/groups");
+  await page.getByLabel("Name").fill("Riley Chen");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page).toHaveURL("/groups");
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Invite management smoke.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+
+  let groupCard = page.locator("article").filter({ hasText: groupName });
+
+  await expect(groupCard.getByText("Invite Links")).toBeVisible();
+  await expect(groupCard.getByText("No invites created.")).toBeVisible();
+  await groupCard.getByRole("button", { name: "Create Invite" }).click();
+  await expect(groupCard.getByText("Invite created.")).toBeVisible();
+  await expect(
+    groupCard.getByRole("link", { name: /\/invites\/groups\// }),
+  ).toBeVisible();
+
+  await page.reload();
+  groupCard = page.locator("article").filter({ hasText: groupName });
+
+  await expect(groupCard.getByText("Active member invite")).toBeVisible();
+  await expect(groupCard.getByText("0 uses")).toBeVisible();
+  await expect(
+    groupCard.getByRole("button", { name: "Revoke Invite" }),
+  ).toBeVisible();
+
+  await groupCard.getByRole("button", { name: "Revoke Invite" }).click();
+  await expect(groupCard.getByText("Revoked member invite")).toBeVisible();
+
+  await page.reload();
+  groupCard = page.locator("article").filter({ hasText: groupName });
+
+  await expect(groupCard.getByText("Revoked member invite")).toBeVisible();
+});
+
 test("authenticated group owners can create an event and RSVP", async ({
   page,
 }, testInfo) => {

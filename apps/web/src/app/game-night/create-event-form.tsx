@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, CalendarPlus } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,12 @@ import { createEventAction, type CreateEventActionState } from "./actions";
 
 export type EventFormPlaygroup = {
   id: string;
+  name: string;
+};
+
+export type EventFormLocation = {
+  id: string;
+  playgroupId: string;
   name: string;
 };
 
@@ -25,20 +31,34 @@ function createInitialState(
       startsAt: "",
       description: "",
       visibility: "members",
+      locationId: "",
+      addressVisibility: "hidden",
     },
   };
 }
 
 export function CreateEventForm({
+  locations,
   playgroups,
 }: {
+  locations: EventFormLocation[];
   playgroups: EventFormPlaygroup[];
 }) {
   const [state, formAction] = useActionState(
     createEventAction,
     createInitialState(playgroups),
   );
+  const [selectedPlaygroupId, setSelectedPlaygroupId] = useState(
+    state.fields.playgroupId,
+  );
   const disabled = playgroups.length === 0;
+  const selectableLocations = useMemo(
+    () =>
+      locations.filter(
+        (location) => location.playgroupId === selectedPlaygroupId,
+      ),
+    [locations, selectedPlaygroupId],
+  );
 
   return (
     <form
@@ -65,6 +85,7 @@ export function CreateEventForm({
           defaultValue={state.fields.playgroupId}
           disabled={disabled}
           name="playgroupId"
+          onChange={(event) => setSelectedPlaygroupId(event.target.value)}
           required
         >
           {playgroups.length > 0 ? (
@@ -114,6 +135,42 @@ export function CreateEventForm({
           <option value="public_safe">Public Safe</option>
         </select>
       </FormField>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormField label="Host Location" error={state.fieldErrors.locationId}>
+          <select
+            className={fieldControlClassName}
+            defaultValue={state.fields.locationId}
+            disabled={disabled}
+            name="locationId"
+          >
+            <option value="">No saved location</option>
+            {selectableLocations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+
+        <FormField
+          label="Address Visibility"
+          error={state.fieldErrors.addressVisibility}
+        >
+          <select
+            className={fieldControlClassName}
+            defaultValue={state.fields.addressVisibility}
+            disabled={disabled}
+            name="addressVisibility"
+            required
+          >
+            <option value="hidden">Hidden</option>
+            <option value="rsvps">Yes/Maybe RSVPs</option>
+            <option value="members">Members</option>
+            <option value="public">Public</option>
+          </select>
+        </FormField>
+      </div>
 
       <FormField label="Description" error={state.fieldErrors.description}>
         <textarea

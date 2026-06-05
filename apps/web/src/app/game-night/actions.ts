@@ -11,18 +11,27 @@ import {
   undeclareDeckForEvent,
 } from "@/db/queries/decks";
 import {
+  archiveHostLocationForViewer,
+  createHostLocationForViewer,
   createEventForPlaygroup,
   EventCreationAuthorizationError,
   EventManagementAuthorizationError,
   EventRsvpAuthorizationError,
+  HostLocationManagementAuthorizationError,
+  HostLocationSelectionError,
   setEventStatusForViewer,
+  updateHostLocationForViewer,
   updateEventForViewer,
   upsertMemberRsvpForEvent,
 } from "@/db/queries/event-planning";
 import { requireServerSession } from "@/features/auth/server";
 import {
+  type HostLocationInput,
+  type ArchiveHostLocationInput,
+  validateArchiveHostLocationInput,
   type CreateEventInput,
   type EventStatusInput,
+  validateHostLocationInput,
   type UpdateEventInput,
   validateCreateEventInput,
   validateEventStatusInput,
@@ -80,6 +89,20 @@ export type CreateEventActionState = {
   message: string | null;
   fieldErrors: Partial<Record<keyof CreateEventInput, string>>;
   fields: CreateEventInput;
+};
+
+export type HostLocationActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof HostLocationInput, string>>;
+  fields: HostLocationInput;
+};
+
+export type ArchiveHostLocationActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof ArchiveHostLocationInput, string>>;
+  fields: ArchiveHostLocationInput;
 };
 
 export type UpdateMemberRsvpActionState = {
@@ -168,6 +191,8 @@ export async function createEventAction(
     startsAt: formData.get("startsAt") ?? "",
     description: formData.get("description") ?? "",
     visibility: formData.get("visibility") ?? "",
+    locationId: formData.get("locationId") ?? "",
+    addressVisibility: formData.get("addressVisibility") ?? "",
   });
 
   if (!validation.ok) {
@@ -182,6 +207,7 @@ export async function createEventAction(
     await createEventForPlaygroup(createDatabase(), {
       viewerUserId: session.user.id,
       ...validation.input,
+      locationId: validation.input.locationId || null,
     });
   } catch (error) {
     if (error instanceof EventCreationAuthorizationError) {
@@ -189,6 +215,19 @@ export async function createEventAction(
         message: "You cannot create events for that group.",
         fieldErrors: {
           playgroupId: "Choose one of your hostable groups.",
+        },
+        fields: {
+          ...validation.input,
+          startsAt: formData.get("startsAt")?.toString() ?? "",
+        },
+      };
+    }
+
+    if (error instanceof HostLocationSelectionError) {
+      return {
+        message: "Choose a location from that playgroup.",
+        fieldErrors: {
+          locationId: "Choose a saved location for the selected playgroup.",
         },
         fields: {
           ...validation.input,
@@ -293,6 +332,8 @@ export async function updateEventAction(
     startsAt: formData.get("startsAt") ?? "",
     description: formData.get("description") ?? "",
     visibility: formData.get("visibility") ?? "",
+    locationId: formData.get("locationId") ?? "",
+    addressVisibility: formData.get("addressVisibility") ?? "",
   });
 
   if (!validation.ok) {
@@ -308,6 +349,7 @@ export async function updateEventAction(
     await updateEventForViewer(createDatabase(), {
       viewerUserId: session.user.id,
       ...validation.input,
+      locationId: validation.input.locationId || null,
     });
   } catch (error) {
     if (error instanceof EventManagementAuthorizationError) {
@@ -316,6 +358,20 @@ export async function updateEventAction(
         saved: false,
         fieldErrors: {
           eventId: "Choose one of your hostable group events.",
+        },
+        fields: {
+          ...validation.input,
+          startsAt: formData.get("startsAt")?.toString() ?? "",
+        },
+      };
+    }
+
+    if (error instanceof HostLocationSelectionError) {
+      return {
+        message: "Choose a location from this event's playgroup.",
+        saved: false,
+        fieldErrors: {
+          locationId: "Choose a saved location for this event.",
         },
         fields: {
           ...validation.input,
@@ -347,6 +403,217 @@ export async function updateEventAction(
       ...validation.input,
       startsAt: formData.get("startsAt")?.toString() ?? "",
     },
+  };
+}
+
+export async function createHostLocationAction(
+  _previousState: HostLocationActionState,
+  formData: FormData,
+): Promise<HostLocationActionState> {
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "locations", "create"],
+  });
+
+  const session = await requireServerSession("/game-night");
+  const validation = validateHostLocationInput({
+    playgroupId: formData.get("playgroupId") ?? "",
+    name: formData.get("name") ?? "",
+    addressLine1: formData.get("addressLine1") ?? "",
+    addressLine2: formData.get("addressLine2") ?? "",
+    city: formData.get("city") ?? "",
+    stateProvince: formData.get("stateProvince") ?? "",
+    postalCode: formData.get("postalCode") ?? "",
+    country: formData.get("country") ?? "",
+    notes: formData.get("notes") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Fix the highlighted location fields.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await createHostLocationForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      ...validation.input,
+    });
+  } catch (error) {
+    if (error instanceof HostLocationManagementAuthorizationError) {
+      return {
+        message: "You cannot manage locations for that group.",
+        saved: false,
+        fieldErrors: {
+          playgroupId: "Choose one of your hostable groups.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Host location creation failed", error);
+
+    return {
+      message: "Could not save the location. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/game-night");
+
+  return {
+    message: "Location saved.",
+    saved: true,
+    fieldErrors: {},
+    fields: {
+      ...validation.input,
+      name: "",
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      stateProvince: "",
+      postalCode: "",
+      country: "",
+      notes: "",
+    },
+  };
+}
+
+export async function updateHostLocationAction(
+  _previousState: HostLocationActionState,
+  formData: FormData,
+): Promise<HostLocationActionState> {
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "locations", "update"],
+  });
+
+  const session = await requireServerSession("/game-night");
+  const validation = validateHostLocationInput(
+    {
+      locationId: formData.get("locationId") ?? "",
+      playgroupId: formData.get("playgroupId") ?? "",
+      name: formData.get("name") ?? "",
+      addressLine1: formData.get("addressLine1") ?? "",
+      addressLine2: formData.get("addressLine2") ?? "",
+      city: formData.get("city") ?? "",
+      stateProvince: formData.get("stateProvince") ?? "",
+      postalCode: formData.get("postalCode") ?? "",
+      country: formData.get("country") ?? "",
+      notes: formData.get("notes") ?? "",
+    },
+    { requireLocationId: true },
+  );
+
+  if (!validation.ok) {
+    return {
+      message: "Fix the highlighted location fields.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await updateHostLocationForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      ...validation.input,
+      locationId: validation.input.locationId!,
+    });
+  } catch (error) {
+    if (error instanceof HostLocationManagementAuthorizationError) {
+      return {
+        message: "You cannot edit that location.",
+        saved: false,
+        fieldErrors: {
+          locationId: "Choose one of your active locations.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Host location update failed", error);
+
+    return {
+      message: "Could not update the location. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/game-night");
+
+  return {
+    message: "Location updated.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
+  };
+}
+
+export async function archiveHostLocationAction(
+  _previousState: ArchiveHostLocationActionState,
+  formData: FormData,
+): Promise<ArchiveHostLocationActionState> {
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "locations", "archive"],
+  });
+
+  const session = await requireServerSession("/game-night");
+  const validation = validateArchiveHostLocationInput({
+    locationId: formData.get("locationId") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a location to archive.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await archiveHostLocationForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      locationId: validation.input.locationId,
+    });
+  } catch (error) {
+    if (error instanceof HostLocationManagementAuthorizationError) {
+      return {
+        message: "You cannot archive that location.",
+        saved: false,
+        fieldErrors: {
+          locationId: "Choose one of your active locations.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Host location archive failed", error);
+
+    return {
+      message: "Could not archive the location. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/game-night");
+
+  return {
+    message: "Location archived.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
   };
 }
 

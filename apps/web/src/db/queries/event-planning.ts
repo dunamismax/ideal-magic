@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { recordAuditEvent } from "../audit";
 import {
@@ -50,6 +50,7 @@ export type EventPlanningSummary = {
   cancelledAt: Date | null;
   archivedAt: Date | null;
   visibility: EventVisibility;
+  addressVisibility: AddressVisibility;
   playgroup: {
     id: string;
     name: string;
@@ -160,6 +161,22 @@ export type CreatedEvent = {
   createdByUserId: string | null;
 };
 
+export type HostLocationSummary = {
+  id: string;
+  playgroupId: string;
+  name: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postalCode: string;
+  country: string;
+  notes: string;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export class EventCreationAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot create events for this playgroup.");
@@ -178,6 +195,20 @@ export class EventManagementAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot manage this event.");
     this.name = "EventManagementAuthorizationError";
+  }
+}
+
+export class HostLocationManagementAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot manage host locations for this playgroup.");
+    this.name = "HostLocationManagementAuthorizationError";
+  }
+}
+
+export class HostLocationSelectionError extends Error {
+  constructor() {
+    super("Location cannot be used for this event.");
+    this.name = "HostLocationSelectionError";
   }
 }
 
@@ -204,6 +235,8 @@ export async function createEventForPlaygroup(
     description: string;
     startsAt: Date;
     visibility: EventVisibility;
+    locationId?: string | null;
+    addressVisibility?: AddressVisibility;
   },
 ): Promise<CreatedEvent> {
   return runInTransaction(db, async (tx) => {
@@ -216,6 +249,13 @@ export async function createEventForPlaygroup(
       throw new EventCreationAuthorizationError();
     }
 
+    if (input.locationId) {
+      await assertSelectableHostLocation(tx, {
+        locationId: input.locationId,
+        playgroupId: input.playgroupId,
+      });
+    }
+
     const [event] = await tx
       .insert(events)
       .values({
@@ -224,6 +264,7 @@ export async function createEventForPlaygroup(
         description: input.description,
         startsAt: input.startsAt,
         visibility: input.visibility,
+        locationId: input.locationId ?? null,
         createdByUserId: input.viewerUserId,
       })
       .returning({
@@ -245,7 +286,7 @@ export async function createEventForPlaygroup(
     await tx.insert(eventHosts).values({
       eventId: event.id,
       userId: input.viewerUserId,
-      addressVisibility: "hidden",
+      addressVisibility: input.addressVisibility ?? "hidden",
     });
 
     return {
@@ -265,6 +306,8 @@ export async function updateEventForViewer(
     description: string;
     startsAt: Date;
     visibility: EventVisibility;
+    locationId?: string | null;
+    addressVisibility?: AddressVisibility;
   },
 ) {
   return runInTransaction(db, async (tx) => {
@@ -272,6 +315,25 @@ export async function updateEventForViewer(
       eventId: input.eventId,
       viewerUserId: input.viewerUserId,
     });
+    const previousAddressVisibility = await getEventAddressVisibility(
+      tx,
+      input.eventId,
+    );
+    const nextLocationId =
+      "locationId" in input
+        ? (input.locationId ?? null)
+        : currentEvent.locationId;
+    const nextAddressVisibility =
+      "addressVisibility" in input
+        ? (input.addressVisibility ?? "hidden")
+        : (previousAddressVisibility ?? "hidden");
+
+    if (nextLocationId) {
+      await assertSelectableHostLocation(tx, {
+        locationId: nextLocationId,
+        playgroupId: currentEvent.playgroupId,
+      });
+    }
 
     const [updated] = await tx
       .update(events)
@@ -280,6 +342,7 @@ export async function updateEventForViewer(
         description: input.description,
         startsAt: input.startsAt,
         visibility: input.visibility,
+        locationId: nextLocationId,
         updatedAt: new Date(),
       })
       .where(eq(events.id, input.eventId))
@@ -291,12 +354,31 @@ export async function updateEventForViewer(
         endsAt: events.endsAt,
         status: events.status,
         visibility: events.visibility,
+        locationId: events.locationId,
         playgroupId: events.playgroupId,
         createdByUserId: events.createdByUserId,
       });
 
     if (!updated) {
       throw new Error("Expected event update to return a row.");
+    }
+
+    const updatedHostRows = await tx
+      .update(eventHosts)
+      .set({
+        addressVisibility: nextAddressVisibility,
+      })
+      .where(eq(eventHosts.eventId, input.eventId))
+      .returning({
+        id: eventHosts.id,
+      });
+
+    if (updatedHostRows.length === 0) {
+      await tx.insert(eventHosts).values({
+        eventId: input.eventId,
+        userId: input.viewerUserId,
+        addressVisibility: nextAddressVisibility,
+      });
     }
 
     if (currentEvent.visibility !== updated.visibility) {
@@ -314,11 +396,238 @@ export async function updateEventForViewer(
       });
     }
 
+    if (
+      currentEvent.locationId !== updated.locationId ||
+      previousAddressVisibility !== nextAddressVisibility
+    ) {
+      await recordAuditEvent(tx, {
+        action: "event.location.changed",
+        actorUserId: input.viewerUserId,
+        playgroupId: updated.playgroupId,
+        eventId: updated.id,
+        targetType: "event",
+        targetId: updated.id,
+        metadata: {
+          previousLocationId: currentEvent.locationId,
+          newLocationId: updated.locationId,
+          previousLocationAccess: previousAddressVisibility,
+          newLocationAccess: nextAddressVisibility,
+        },
+      });
+    }
+
     return {
       ...updated,
       status: asEventStatus(updated.status),
       visibility: asEventVisibility(updated.visibility),
     };
+  });
+}
+
+export async function listHostLocationsForViewer(
+  db: PlanningDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupIds: string[];
+    includeArchived?: boolean;
+  },
+): Promise<HostLocationSummary[]> {
+  if (input.playgroupIds.length === 0) {
+    return [];
+  }
+
+  const rows = await db
+    .select({
+      id: eventLocations.id,
+      playgroupId: eventLocations.playgroupId,
+      name: eventLocations.name,
+      addressLine1: eventLocations.addressLine1,
+      addressLine2: eventLocations.addressLine2,
+      city: eventLocations.city,
+      stateProvince: eventLocations.stateProvince,
+      postalCode: eventLocations.postalCode,
+      country: eventLocations.country,
+      notes: eventLocations.notes,
+      archivedAt: eventLocations.archivedAt,
+      createdAt: eventLocations.createdAt,
+      updatedAt: eventLocations.updatedAt,
+    })
+    .from(eventLocations)
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, eventLocations.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .where(
+      and(
+        inArray(eventLocations.playgroupId, input.playgroupIds),
+        sql`${playgroupMemberships.role} in ('owner', 'admin', 'host')`,
+        input.includeArchived
+          ? sql`true`
+          : sql`${eventLocations.archivedAt} is null`,
+      ),
+    )
+    .orderBy(
+      asc(eventLocations.playgroupId),
+      asc(eventLocations.name),
+      asc(eventLocations.id),
+    );
+
+  return rows.map(toHostLocationSummary);
+}
+
+export async function createHostLocationForViewer(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    playgroupId: string;
+    name: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateProvince: string;
+    postalCode: string;
+    country: string;
+    notes: string;
+  },
+): Promise<HostLocationSummary> {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManageHostLocations(tx, {
+      playgroupId: input.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    const [location] = await tx
+      .insert(eventLocations)
+      .values({
+        playgroupId: input.playgroupId,
+        name: input.name,
+        addressLine1: input.addressLine1 || null,
+        addressLine2: input.addressLine2 || null,
+        city: input.city || null,
+        stateProvince: input.stateProvince || null,
+        postalCode: input.postalCode || null,
+        country: input.country || null,
+        notes: input.notes,
+        createdByUserId: input.viewerUserId,
+      })
+      .returning({
+        id: eventLocations.id,
+        playgroupId: eventLocations.playgroupId,
+        name: eventLocations.name,
+        addressLine1: eventLocations.addressLine1,
+        addressLine2: eventLocations.addressLine2,
+        city: eventLocations.city,
+        stateProvince: eventLocations.stateProvince,
+        postalCode: eventLocations.postalCode,
+        country: eventLocations.country,
+        notes: eventLocations.notes,
+        archivedAt: eventLocations.archivedAt,
+        createdAt: eventLocations.createdAt,
+        updatedAt: eventLocations.updatedAt,
+      });
+
+    if (!location) {
+      throw new Error("Expected host location insert to return a row.");
+    }
+
+    return toHostLocationSummary(location);
+  });
+}
+
+export async function updateHostLocationForViewer(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    locationId: string;
+    name: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateProvince: string;
+    postalCode: string;
+    country: string;
+    notes: string;
+  },
+): Promise<HostLocationSummary> {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManageExistingHostLocation(tx, {
+      locationId: input.locationId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    const [location] = await tx
+      .update(eventLocations)
+      .set({
+        name: input.name,
+        addressLine1: input.addressLine1 || null,
+        addressLine2: input.addressLine2 || null,
+        city: input.city || null,
+        stateProvince: input.stateProvince || null,
+        postalCode: input.postalCode || null,
+        country: input.country || null,
+        notes: input.notes,
+        updatedAt: new Date(),
+      })
+      .where(eq(eventLocations.id, input.locationId))
+      .returning({
+        id: eventLocations.id,
+        playgroupId: eventLocations.playgroupId,
+        name: eventLocations.name,
+        addressLine1: eventLocations.addressLine1,
+        addressLine2: eventLocations.addressLine2,
+        city: eventLocations.city,
+        stateProvince: eventLocations.stateProvince,
+        postalCode: eventLocations.postalCode,
+        country: eventLocations.country,
+        notes: eventLocations.notes,
+        archivedAt: eventLocations.archivedAt,
+        createdAt: eventLocations.createdAt,
+        updatedAt: eventLocations.updatedAt,
+      });
+
+    if (!location) {
+      throw new Error("Expected host location update to return a row.");
+    }
+
+    return toHostLocationSummary(location);
+  });
+}
+
+export async function archiveHostLocationForViewer(
+  db: PlanningWriteDatabase,
+  input: {
+    viewerUserId: string;
+    locationId: string;
+    archivedAt?: Date;
+  },
+) {
+  return runInTransaction(db, async (tx) => {
+    await assertCanManageExistingHostLocation(tx, {
+      locationId: input.locationId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    const changedAt = input.archivedAt ?? new Date();
+    const [location] = await tx
+      .update(eventLocations)
+      .set({
+        archivedAt: changedAt,
+        updatedAt: changedAt,
+      })
+      .where(eq(eventLocations.id, input.locationId))
+      .returning({
+        id: eventLocations.id,
+        archivedAt: eventLocations.archivedAt,
+      });
+
+    if (!location) {
+      throw new Error("Expected host location archive to return a row.");
+    }
+
+    return location;
   });
 }
 
@@ -529,6 +838,7 @@ export async function getScopedEventPlanningSummary(
     viewerUserId: input.viewerUserId,
   });
   const hostVisibilities = await getHostAddressVisibilities(db, eventRow.id);
+  const addressVisibility = hostVisibilities[0] ?? "hidden";
   const addressVisible =
     hostVisibilities.length > 0 &&
     hostVisibilities.every((hostVisibility) =>
@@ -557,6 +867,7 @@ export async function getScopedEventPlanningSummary(
     cancelledAt: eventRow.cancelledAt,
     archivedAt: eventRow.archivedAt,
     visibility,
+    addressVisibility,
     playgroup: {
       id: eventRow.playgroupId,
       name: eventRow.playgroupName,
@@ -963,6 +1274,76 @@ async function assertCanManageEvent(
   };
 }
 
+async function assertCanManageHostLocations(
+  db: PlanningDatabase,
+  input: {
+    playgroupId: string;
+    viewerUserId: string;
+  },
+) {
+  const role = await getViewerRole(db, input);
+
+  if (!role || !canManageEvent(role)) {
+    throw new HostLocationManagementAuthorizationError();
+  }
+
+  return role;
+}
+
+async function assertCanManageExistingHostLocation(
+  db: PlanningDatabase,
+  input: {
+    locationId: string;
+    viewerUserId: string;
+  },
+) {
+  const [location] = await db
+    .select({
+      playgroupId: eventLocations.playgroupId,
+      archivedAt: eventLocations.archivedAt,
+    })
+    .from(eventLocations)
+    .where(eq(eventLocations.id, input.locationId))
+    .limit(1);
+
+  if (!location || location.archivedAt) {
+    throw new HostLocationManagementAuthorizationError();
+  }
+
+  await assertCanManageHostLocations(db, {
+    playgroupId: location.playgroupId,
+    viewerUserId: input.viewerUserId,
+  });
+
+  return location;
+}
+
+async function assertSelectableHostLocation(
+  db: PlanningDatabase,
+  input: {
+    locationId: string;
+    playgroupId: string;
+  },
+) {
+  const [location] = await db
+    .select({
+      id: eventLocations.id,
+    })
+    .from(eventLocations)
+    .where(
+      and(
+        eq(eventLocations.id, input.locationId),
+        eq(eventLocations.playgroupId, input.playgroupId),
+        sql`${eventLocations.archivedAt} is null`,
+      ),
+    )
+    .limit(1);
+
+  if (!location) {
+    throw new HostLocationSelectionError();
+  }
+}
+
 async function getViewerRole(
   db: PlanningDatabase,
   input: {
@@ -1041,6 +1422,54 @@ async function getHostAddressVisibilities(
   return rows
     .map((row) => asAddressVisibility(row.addressVisibility))
     .filter((visibility) => visibility !== null);
+}
+
+async function getEventAddressVisibility(
+  db: PlanningDatabase,
+  eventId: string,
+) {
+  const [row] = await db
+    .select({
+      addressVisibility: eventHosts.addressVisibility,
+    })
+    .from(eventHosts)
+    .where(eq(eventHosts.eventId, eventId))
+    .orderBy(asc(eventHosts.createdAt), asc(eventHosts.id))
+    .limit(1);
+
+  return asAddressVisibility(row?.addressVisibility ?? null);
+}
+
+function toHostLocationSummary(row: {
+  id: string;
+  playgroupId: string;
+  name: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  stateProvince: string | null;
+  postalCode: string | null;
+  country: string | null;
+  notes: string;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): HostLocationSummary {
+  return {
+    id: row.id,
+    playgroupId: row.playgroupId,
+    name: row.name,
+    addressLine1: row.addressLine1 ?? "",
+    addressLine2: row.addressLine2 ?? "",
+    city: row.city ?? "",
+    stateProvince: row.stateProvince ?? "",
+    postalCode: row.postalCode ?? "",
+    country: row.country ?? "",
+    notes: row.notes,
+    archivedAt: row.archivedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 async function countRsvpsByStatus(db: PlanningDatabase, eventId: string) {

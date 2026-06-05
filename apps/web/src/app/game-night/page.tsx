@@ -18,6 +18,7 @@ import {
 import {
   type EventPlanningSummary,
   getScopedEventPlanningSummary,
+  listHostLocationsForViewer,
   listUpcomingEventsForViewer,
 } from "@/db/queries/event-planning";
 import {
@@ -36,6 +37,7 @@ import { EventDeckDeclarationForm } from "./event-deck-declaration-form";
 import { EventGameHistory } from "./event-game-history";
 import { EventManagementForm } from "./event-management-form";
 import { EventPodsPanel } from "./event-pods-panel";
+import { HostLocationPanel } from "./host-location-panel";
 import { MemberRsvpForm } from "./member-rsvp-form";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +112,30 @@ export default async function GameNightPage() {
       id: group.id,
       name: group.name,
     }));
+  const hostLocations = await listHostLocationsForViewer(db, {
+    viewerUserId: session.user.id,
+    playgroupIds: eventCreatableGroups.map((group) => group.id),
+  });
+  const eventFormLocations = hostLocations.map((location) => ({
+    id: location.id,
+    playgroupId: location.playgroupId,
+    name: location.name,
+  }));
+  const eventLocationsByPlaygroupId = new Map<
+    string,
+    typeof eventFormLocations
+  >();
+
+  for (const location of eventFormLocations) {
+    const existing =
+      eventLocationsByPlaygroupId.get(location.playgroupId) ?? [];
+
+    eventLocationsByPlaygroupId.set(location.playgroupId, [
+      ...existing,
+      location,
+    ]);
+  }
+
   const nextEvent = eventSummaries[0] ?? null;
   const rsvpTotal = eventSummaries.reduce(
     (total, event) => total + countRsvps(event.counts.rsvps),
@@ -120,7 +146,14 @@ export default async function GameNightPage() {
     <PageFrame eyebrow="Host planning" title="Game Night">
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <section className="grid gap-3">
-          <CreateEventForm playgroups={eventCreatableGroups} />
+          <CreateEventForm
+            locations={eventFormLocations}
+            playgroups={eventCreatableGroups}
+          />
+          <HostLocationPanel
+            locations={hostLocations}
+            playgroups={eventCreatableGroups}
+          />
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <Panel
@@ -156,6 +189,9 @@ export default async function GameNightPage() {
                   event={event}
                   historyGames={historyByEventId.get(event.id) ?? []}
                   key={event.id}
+                  locations={
+                    eventLocationsByPlaygroupId.get(event.playgroup.id) ?? []
+                  }
                   pods={podsByEventId.get(event.id) ?? []}
                 />
               ))}
@@ -174,12 +210,18 @@ export function EventCard({
   decks = [],
   declarations = [],
   historyGames = [],
+  locations = [],
   pods = [],
 }: {
   event: EventPlanningSummary;
   decks?: ViewerDeck[];
   declarations?: EventDeckDeclaration[];
   historyGames?: LoggedGameHistorySummary[];
+  locations?: {
+    id: string;
+    playgroupId: string;
+    name: string;
+  }[];
   pods?: EventPodSummary[];
 }) {
   return (
@@ -208,6 +250,22 @@ export function EventCard({
           <div className="rounded-control border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
             Cancelled
             {event.cancelledAt ? ` ${formatEventDate(event.cancelledAt)}` : ""}
+          </div>
+        ) : null}
+
+        {event.location ? (
+          <div className="rounded-control bg-background p-3 text-sm font-semibold text-muted">
+            <span className="block text-xs font-bold uppercase">
+              Host Location
+            </span>
+            <span className="mt-1 block text-foreground">
+              {event.location.name ?? "Location hidden"}
+            </span>
+            {event.location.address ? (
+              <span className="mt-1 block">
+                {formatLocationAddress(event.location.address)}
+              </span>
+            ) : null}
           </div>
         ) : null}
 
@@ -254,11 +312,30 @@ export function EventCard({
         ) : null}
 
         {event.viewer.canManageEvent ? (
-          <EventManagementForm event={event} />
+          <EventManagementForm event={event} locations={locations} />
         ) : null}
       </div>
     </article>
   );
+}
+
+function formatLocationAddress(
+  address: NonNullable<EventPlanningSummary["location"]>["address"],
+) {
+  if (!address) {
+    return "";
+  }
+
+  return [
+    address.addressLine1,
+    address.addressLine2,
+    [address.city, address.stateProvince, address.postalCode]
+      .filter(Boolean)
+      .join(", "),
+    address.country,
+  ]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 function RsvpCount({ label, value }: { label: string; value: number }) {

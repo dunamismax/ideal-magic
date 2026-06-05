@@ -240,15 +240,15 @@ agent session.
   session creation/revocation, password reset requested/completed, email
   verification requested/completed, and email change requested without
   storing emails, tokens, passwords, IPs, user agents, or raw payloads.
-- [ ] Add audit events for event location changes once location edit
+- [x] Add audit events for event location changes once location edit
   flows exist.
 
 ## Pass 2 - Host Locations And Event Operations
 
-- [ ] Build host location create/edit/archive flows with address
+- [x] Build host location create/edit/archive flows with address
   visibility controls.
-- [ ] Wire event host/location selection into event create/edit.
-- [ ] Prove host-address disclosure rules for owner/admin/host/member,
+- [x] Wire event host/location selection into event create/edit.
+- [x] Prove host-address disclosure rules for owner/admin/host/member,
   RSVP, guest, public-safe, and non-member viewers.
 - [ ] Add group edit and group archive/delete flows with safe ownership
   and last-owner behavior.

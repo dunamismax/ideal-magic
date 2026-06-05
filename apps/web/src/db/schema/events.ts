@@ -35,6 +35,7 @@ export const eventLocations = core.table(
     postalCode: text("postal_code"),
     country: text("country"),
     notes: text("notes").notNull().default(""),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -43,6 +44,10 @@ export const eventLocations = core.table(
   },
   (table) => [
     index("event_locations_playgroup_id_idx").on(table.playgroupId),
+    index("event_locations_playgroup_archived_idx").on(
+      table.playgroupId,
+      table.archivedAt,
+    ),
     nonblankTextCheck("event_locations_name_not_blank", table.name),
   ],
 );

@@ -13,15 +13,20 @@ import {
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import { createPlaygroupForUser } from "./playgroups";
 import {
+  archiveHostLocationForViewer,
+  createHostLocationForViewer,
   createEventForPlaygroup,
   EventCreationAuthorizationError,
   EventManagementAuthorizationError,
   EventRsvpAuthorizationError,
+  HostLocationManagementAuthorizationError,
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
+  listHostLocationsForViewer,
   listUpcomingEventsForViewer,
   setEventStatusForViewer,
+  updateHostLocationForViewer,
   updateEventForViewer,
   upsertMemberRsvpForEvent,
 } from "./event-planning";
@@ -138,6 +143,149 @@ describe("event planning data access", () => {
         visibility: "members",
       }),
     ).rejects.toBeInstanceOf(EventCreationAuthorizationError);
+  });
+
+  test("creates, edits, lists, and archives host locations for event managers only", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000041",
+      email: "location-owner@example.test",
+      name: "Location Owner",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000042",
+      email: "location-host@example.test",
+      name: "Location Host",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000043",
+      email: "location-member@example.test",
+      name: "Location Member",
+    });
+
+    const group = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000041",
+      ownerDisplayName: "Location Owner",
+      name: "Location Pods",
+      slugBase: "location-pods",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: group.id,
+        userId: "20000000-0000-4000-8000-000000000042",
+        role: "host",
+        displayName: "Location Host",
+      },
+      {
+        playgroupId: group.id,
+        userId: "20000000-0000-4000-8000-000000000043",
+        role: "member",
+        displayName: "Location Member",
+      },
+    ]);
+
+    const created = await createHostLocationForViewer(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000042",
+      playgroupId: group.id,
+      name: "Host Table",
+      addressLine1: "101 Fixture Way",
+      addressLine2: "",
+      city: "Playtest City",
+      stateProvince: "TS",
+      postalCode: "00000",
+      country: "US",
+      notes: "Synthetic private location note.",
+    });
+
+    expect(created).toMatchObject({
+      playgroupId: group.id,
+      name: "Host Table",
+      addressLine1: "101 Fixture Way",
+      addressLine2: "",
+      archivedAt: null,
+    });
+    await expect(
+      listHostLocationsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000041",
+        playgroupIds: [group.id],
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: created.id,
+        name: "Host Table",
+      },
+    ]);
+    await expect(
+      listHostLocationsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+        playgroupIds: [group.id],
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      updateHostLocationForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+        locationId: created.id,
+        name: "Member Edit",
+        addressLine1: "",
+        addressLine2: "",
+        city: "",
+        stateProvince: "",
+        postalCode: "",
+        country: "",
+        notes: "",
+      }),
+    ).rejects.toBeInstanceOf(HostLocationManagementAuthorizationError);
+
+    await expect(
+      updateHostLocationForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000041",
+        locationId: created.id,
+        name: "Updated Host Table",
+        addressLine1: "202 Fixture Way",
+        addressLine2: "Suite 2",
+        city: "Playtest City",
+        stateProvince: "TS",
+        postalCode: "00002",
+        country: "US",
+        notes: "Updated synthetic private location note.",
+      }),
+    ).resolves.toMatchObject({
+      id: created.id,
+      name: "Updated Host Table",
+      addressLine1: "202 Fixture Way",
+      addressLine2: "Suite 2",
+    });
+
+    const archivedAt = new Date("2030-06-01T12:00:00.000Z");
+    await expect(
+      archiveHostLocationForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000041",
+        locationId: created.id,
+        archivedAt,
+      }),
+    ).resolves.toEqual({
+      id: created.id,
+      archivedAt,
+    });
+    await expect(
+      listHostLocationsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000041",
+        playgroupIds: [group.id],
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      listHostLocationsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000041",
+        playgroupIds: [group.id],
+        includeArchived: true,
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: created.id,
+        archivedAt,
+      },
+    ]);
   });
 
   test("updates, cancels, and archives events only for owner, admin, and host roles", async () => {
@@ -485,6 +633,314 @@ describe("event planning data access", () => {
         leavingTime: null,
       }),
     ).rejects.toBeInstanceOf(EventRsvpAuthorizationError);
+  });
+
+  test("wires event locations, address visibility, disclosure, and location-change audits", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const ids = {
+      owner: "20000000-0000-4000-8000-000000000061",
+      admin: "20000000-0000-4000-8000-000000000062",
+      host: "20000000-0000-4000-8000-000000000063",
+      member: "20000000-0000-4000-8000-000000000064",
+      guest: "20000000-0000-4000-8000-000000000065",
+      viewer: "20000000-0000-4000-8000-000000000066",
+      outsider: "20000000-0000-4000-8000-000000000067",
+    } as const;
+
+    for (const [name, id] of Object.entries(ids)) {
+      await insertUser(db, {
+        id,
+        email: `${name}-disclosure@example.test`,
+        name: `${name} disclosure`,
+      });
+    }
+
+    const group = await createPlaygroupForUser(db, {
+      userId: ids.owner,
+      ownerDisplayName: "Disclosure Owner",
+      name: "Disclosure Pods",
+      slugBase: "disclosure-pods",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: group.id,
+        userId: ids.admin,
+        role: "admin",
+        displayName: "Disclosure Admin",
+      },
+      {
+        playgroupId: group.id,
+        userId: ids.host,
+        role: "host",
+        displayName: "Disclosure Host",
+      },
+      {
+        playgroupId: group.id,
+        userId: ids.member,
+        role: "member",
+        displayName: "Disclosure Member",
+      },
+      {
+        playgroupId: group.id,
+        userId: ids.guest,
+        role: "guest",
+        displayName: "Disclosure Guest",
+      },
+      {
+        playgroupId: group.id,
+        userId: ids.viewer,
+        role: "viewer",
+        displayName: "Disclosure Viewer",
+      },
+    ]);
+
+    const memberLocation = await createHostLocationForViewer(db, {
+      viewerUserId: ids.host,
+      playgroupId: group.id,
+      name: "Member Visible Room",
+      addressLine1: "303 Fixture Avenue",
+      addressLine2: "",
+      city: "Playtest City",
+      stateProvince: "TS",
+      postalCode: "00003",
+      country: "US",
+      notes: "Private member-visible fixture note.",
+    });
+    const rsvpLocation = await createHostLocationForViewer(db, {
+      viewerUserId: ids.host,
+      playgroupId: group.id,
+      name: "RSVP Visible Room",
+      addressLine1: "404 Fixture Avenue",
+      addressLine2: "",
+      city: "Playtest City",
+      stateProvince: "TS",
+      postalCode: "00004",
+      country: "US",
+      notes: "Private RSVP-visible fixture note.",
+    });
+    const event = await createEventForPlaygroup(db, {
+      viewerUserId: ids.host,
+      playgroupId: group.id,
+      title: "Disclosure Commander",
+      description: "",
+      startsAt: new Date("2030-08-01T23:00:00.000Z"),
+      visibility: "public_safe",
+      locationId: memberLocation.id,
+      addressVisibility: "members",
+    });
+
+    const ownerSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.owner,
+    });
+    const adminSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.admin,
+    });
+    const hostSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.host,
+    });
+    const memberSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.member,
+    });
+    const guestSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.guest,
+    });
+    const viewerSummary = await getScopedEventPlanningSummary(db, {
+      eventId: event.id,
+      viewerUserId: ids.viewer,
+    });
+
+    for (const summary of [
+      ownerSummary,
+      adminSummary,
+      hostSummary,
+      memberSummary,
+    ]) {
+      expect(summary?.viewer.canSeeHostAddress).toBe(true);
+      expect(summary?.location).toMatchObject({
+        id: memberLocation.id,
+        name: "Member Visible Room",
+        address: {
+          addressLine1: "303 Fixture Avenue",
+        },
+        notes: "Private member-visible fixture note.",
+      });
+    }
+    for (const summary of [guestSummary, viewerSummary]) {
+      expect(summary?.viewer.canSeeHostAddress).toBe(false);
+      expect(summary?.location).toMatchObject({
+        id: memberLocation.id,
+        name: null,
+        address: null,
+        notes: null,
+      });
+    }
+
+    await updateEventForViewer(db, {
+      viewerUserId: ids.owner,
+      eventId: event.id,
+      title: "Disclosure Commander",
+      description: "Location should remain attached.",
+      startsAt: new Date("2030-08-01T23:00:00.000Z"),
+      visibility: "public_safe",
+    });
+    await expect(
+      getScopedEventPlanningSummary(db, {
+        eventId: event.id,
+        viewerUserId: ids.owner,
+      }),
+    ).resolves.toMatchObject({
+      addressVisibility: "members",
+      location: {
+        id: memberLocation.id,
+        address: {
+          addressLine1: "303 Fixture Avenue",
+        },
+      },
+    });
+
+    await upsertMemberRsvpForEvent(db, {
+      viewerUserId: ids.member,
+      eventId: event.id,
+      status: "yes",
+      arrivalTime: null,
+      leavingTime: null,
+    });
+    await updateEventForViewer(db, {
+      viewerUserId: ids.admin,
+      eventId: event.id,
+      title: "Disclosure Commander",
+      description: "",
+      startsAt: new Date("2030-08-01T23:00:00.000Z"),
+      visibility: "public_safe",
+      locationId: rsvpLocation.id,
+      addressVisibility: "rsvps",
+    });
+
+    await expect(
+      getScopedEventPlanningSummary(db, {
+        eventId: event.id,
+        viewerUserId: ids.member,
+      }),
+    ).resolves.toMatchObject({
+      addressVisibility: "rsvps",
+      viewer: {
+        rsvpStatus: "yes",
+        canSeeHostAddress: true,
+      },
+      location: {
+        id: rsvpLocation.id,
+        name: "RSVP Visible Room",
+        address: {
+          addressLine1: "404 Fixture Avenue",
+        },
+      },
+    });
+    await upsertMemberRsvpForEvent(db, {
+      viewerUserId: ids.member,
+      eventId: event.id,
+      status: "no",
+      arrivalTime: null,
+      leavingTime: null,
+    });
+    await expect(
+      getScopedEventPlanningSummary(db, {
+        eventId: event.id,
+        viewerUserId: ids.member,
+      }),
+    ).resolves.toMatchObject({
+      viewer: {
+        rsvpStatus: "no",
+        canSeeHostAddress: false,
+      },
+      location: {
+        id: rsvpLocation.id,
+        name: null,
+        address: null,
+        notes: null,
+      },
+    });
+
+    await db
+      .update(events)
+      .set({
+        inviteTokenHash: hashInviteToken("fixture-disclosure-event-access"),
+      })
+      .where(eq(events.id, event.id));
+
+    const publicSummary = await getPublicSafeEventSummaryByInviteToken(db, {
+      inviteToken: "fixture-disclosure-event-access",
+    });
+    const publicPayload = JSON.stringify(publicSummary);
+
+    expect(publicSummary).toMatchObject({
+      id: event.id,
+      location: {
+        id: rsvpLocation.id,
+        name: "RSVP Visible Room",
+      },
+    });
+    expect(publicPayload).not.toContain("404 Fixture Avenue");
+    expect(publicPayload).not.toContain("Private RSVP-visible fixture note");
+    expect(publicPayload).not.toContain("disclosure@example.test");
+    expect(publicPayload).not.toContain("fixture-disclosure-event-access");
+    expect(publicPayload).not.toContain(
+      hashInviteToken("fixture-disclosure-event-access"),
+    );
+    await expect(
+      getScopedEventPlanningSummary(db, {
+        eventId: event.id,
+        viewerUserId: ids.outsider,
+      }),
+    ).resolves.toMatchObject({
+      viewer: {
+        role: null,
+        canSeeHostAddress: false,
+      },
+      location: {
+        id: rsvpLocation.id,
+        name: null,
+        address: null,
+        notes: null,
+      },
+    });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        eventId: auditEvents.eventId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.eventId, event.id))
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+    expect(auditRows).toContainEqual({
+      action: "event.location.changed",
+      actorUserId: ids.admin,
+      playgroupId: group.id,
+      eventId: event.id,
+      targetType: "event",
+      targetId: event.id,
+      metadata: {
+        previousLocationId: memberLocation.id,
+        newLocationId: rsvpLocation.id,
+        previousLocationAccess: "members",
+        newLocationAccess: "rsvps",
+      },
+    });
+    expect(JSON.stringify(auditRows)).not.toContain("Fixture Avenue");
+    expect(JSON.stringify(auditRows)).not.toContain("Private RSVP-visible");
+    expect(JSON.stringify(auditRows)).not.toContain("disclosure@example.test");
   });
 
   test("seeds fake planning rows idempotently and returns scoped event counts", async () => {

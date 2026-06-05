@@ -17,6 +17,7 @@ const baseEvent: EventPlanningSummary = {
   cancelledAt: null,
   archivedAt: null,
   visibility: "members",
+  addressVisibility: "hidden",
   playgroup: {
     id: "20000000-0000-4000-8000-000000000002",
     name: "Saturday Hosts",
@@ -187,6 +188,10 @@ describe("event card", () => {
     expect(
       screen.getByRole("button", { name: "Update Event" }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit Host Location")).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit Address Visibility")).toHaveValue(
+      "hidden",
+    );
     expect(
       screen.getByRole("button", { name: "Cancel Event" }),
     ).toBeInTheDocument();
@@ -196,6 +201,78 @@ describe("event card", () => {
     expect(
       screen.getByText("No logged games for this event yet."),
     ).toBeInTheDocument();
+  });
+
+  test("renders visible host location details without private notes", () => {
+    render(
+      <EventCard
+        event={{
+          ...baseEvent,
+          addressVisibility: "members",
+          location: {
+            id: "20000000-0000-4000-8000-000000000012",
+            name: "Riley's Table",
+            address: {
+              addressLine1: "101 Example Way",
+              addressLine2: null,
+              city: "Playtest City",
+              stateProvince: "TS",
+              postalCode: "00000",
+              country: "US",
+            },
+            notes: "Private door note",
+          },
+        }}
+        locations={[
+          {
+            id: "20000000-0000-4000-8000-000000000012",
+            playgroupId: baseEvent.playgroup.id,
+            name: "Riley's Table",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Host Location")).toBeInTheDocument();
+    expect(screen.getAllByText("Riley's Table").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("101 Example Way - Playtest City, TS, 00000 - US"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit Host Location")).toHaveValue(
+      "20000000-0000-4000-8000-000000000012",
+    );
+    expect(screen.getByLabelText("Edit Address Visibility")).toHaveValue(
+      "members",
+    );
+    expect(screen.queryByText("Private door note")).not.toBeInTheDocument();
+  });
+
+  test("renders redacted host location details for scoped hidden addresses", () => {
+    render(
+      <EventCard
+        event={{
+          ...baseEvent,
+          location: {
+            id: "20000000-0000-4000-8000-000000000013",
+            name: null,
+            address: null,
+            notes: null,
+          },
+          viewer: {
+            ...baseEvent.viewer,
+            role: "member",
+            canManageEvent: false,
+            canSeeHostAddress: false,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Location hidden")).toBeInTheDocument();
+    expect(screen.queryByText("101 Example Way")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Edit Host Location"),
+    ).not.toBeInTheDocument();
   });
 
   test("shows cancelled state without management controls for plain members", () => {

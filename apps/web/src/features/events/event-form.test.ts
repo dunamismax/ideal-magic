@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import {
   validateCreateEventInput,
+  validateArchiveHostLocationInput,
   validateEventStatusInput,
+  validateHostLocationInput,
   validateUpdateEventInput,
 } from "./event-form";
 
@@ -19,6 +21,8 @@ describe("event form validation", () => {
         startsAt: "2030-06-14T19:00",
         description: "  Bring bracket 2-3 decks. ",
         visibility: "members",
+        locationId: "",
+        addressVisibility: "rsvps",
       },
       { now },
     );
@@ -30,6 +34,8 @@ describe("event form validation", () => {
         title: "Friday Commander",
         description: "Bring bracket 2-3 decks.",
         visibility: "members",
+        locationId: "",
+        addressVisibility: "rsvps",
       },
     });
     expect(result.ok ? result.input.startsAt : null).toBeInstanceOf(Date);
@@ -44,6 +50,8 @@ describe("event form validation", () => {
           startsAt: "2030-06-14T19:00",
           description: "",
           visibility: "team_only",
+          locationId: "not-a-location-id",
+          addressVisibility: "everybody",
         },
         { now },
       ),
@@ -55,11 +63,15 @@ describe("event form validation", () => {
         startsAt: "2030-06-14T19:00",
         description: "",
         visibility: "team_only",
+        locationId: "not-a-location-id",
+        addressVisibility: "everybody",
       },
       fieldErrors: {
         playgroupId: "Choose a playgroup.",
         title: "Title is required.",
         visibility: "Choose a visibility.",
+        locationId: "Choose a saved location.",
+        addressVisibility: "Choose address visibility.",
       },
     });
   });
@@ -73,6 +85,8 @@ describe("event form validation", () => {
           startsAt: "2026-06-04T07:00",
           description: "x".repeat(1_001),
           visibility: "public_safe",
+          locationId: "",
+          addressVisibility: "members",
         },
         { now },
       ),
@@ -84,6 +98,8 @@ describe("event form validation", () => {
         startsAt: "2026-06-04T07:00",
         description: "x".repeat(1_001),
         visibility: "public_safe",
+        locationId: "",
+        addressVisibility: "members",
       },
       fieldErrors: {
         title: "Use 100 characters or fewer.",
@@ -101,6 +117,8 @@ describe("event form validation", () => {
         startsAt: "2030-06-14T19:30",
         description: "  New start time. ",
         visibility: "invite_only",
+        locationId: "20000000-0000-4000-8000-000000000003",
+        addressVisibility: "members",
       },
       { now },
     );
@@ -112,6 +130,8 @@ describe("event form validation", () => {
         title: "Saturday Pods",
         description: "New start time.",
         visibility: "invite_only",
+        locationId: "20000000-0000-4000-8000-000000000003",
+        addressVisibility: "members",
       },
     });
     expect(result.ok ? result.input.startsAt : null).toBeInstanceOf(Date);
@@ -126,6 +146,8 @@ describe("event form validation", () => {
           startsAt: "bad-date",
           description: "",
           visibility: "private",
+          locationId: "",
+          addressVisibility: "hidden",
         },
         { now },
       ),
@@ -137,6 +159,8 @@ describe("event form validation", () => {
         startsAt: "bad-date",
         description: "",
         visibility: "private",
+        locationId: "",
+        addressVisibility: "hidden",
       },
       fieldErrors: {
         eventId: "Choose an event.",
@@ -160,6 +184,91 @@ describe("event form validation", () => {
       fieldErrors: {
         eventId: "Choose an event.",
         status: "Choose an event action.",
+      },
+    });
+  });
+
+  test("normalizes valid host location input", () => {
+    expect(
+      validateHostLocationInput({
+        playgroupId,
+        name: "  Riley's   Table  ",
+        addressLine1: "  101   Example Way ",
+        addressLine2: " Suite 2 ",
+        city: " Playtest City ",
+        stateProvince: " TS ",
+        postalCode: " 00000 ",
+        country: " US ",
+        notes: " Door   code at table.\n\n\nBring mats. ",
+      }),
+    ).toEqual({
+      ok: true,
+      input: {
+        locationId: "",
+        playgroupId,
+        name: "Riley's Table",
+        addressLine1: "101 Example Way",
+        addressLine2: "Suite 2",
+        city: "Playtest City",
+        stateProvince: "TS",
+        postalCode: "00000",
+        country: "US",
+        notes: "Door code at table.\n\nBring mats.",
+      },
+    });
+  });
+
+  test("rejects invalid host location and archive input", () => {
+    expect(
+      validateHostLocationInput(
+        {
+          locationId: "",
+          playgroupId: "not-a-playgroup-id",
+          name: "",
+          addressLine1: "x".repeat(181),
+          addressLine2: "",
+          city: "",
+          stateProvince: "",
+          postalCode: "",
+          country: "",
+          notes: "x".repeat(1_001),
+        },
+        { requireLocationId: true },
+      ),
+    ).toEqual({
+      ok: false,
+      fields: {
+        locationId: "",
+        playgroupId: "not-a-playgroup-id",
+        name: "",
+        addressLine1: "x".repeat(181),
+        addressLine2: "",
+        city: "",
+        stateProvince: "",
+        postalCode: "",
+        country: "",
+        notes: "x".repeat(1_001),
+      },
+      fieldErrors: {
+        locationId: "Choose a location.",
+        playgroupId: "Choose a playgroup.",
+        name: "Location name is required.",
+        addressLine1: "Use 180 characters or fewer.",
+        notes: "Use 1000 characters or fewer.",
+      },
+    });
+
+    expect(
+      validateArchiveHostLocationInput({
+        locationId: "not-a-location-id",
+      }),
+    ).toEqual({
+      ok: false,
+      fields: {
+        locationId: "not-a-location-id",
+      },
+      fieldErrors: {
+        locationId: "Choose a location.",
       },
     });
   });

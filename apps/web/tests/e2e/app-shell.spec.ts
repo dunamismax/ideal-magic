@@ -724,9 +724,7 @@ test("tokenized public event invite shows public-safe planning details", async (
   await expect(
     page.getByText(`Example City Commander League ${suffix}`),
   ).toBeVisible();
-  await expect(
-    page.getByText(`Example Tabletop Room ${suffix}`),
-  ).toBeVisible();
+  await expect(page.getByText(`Example Tabletop Room ${suffix}`)).toBeVisible();
   await expect(page.getByText("0 players")).toBeVisible();
   await expect(page.getByRole("cell", { name: "Yes" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Waitlist" })).toBeVisible();
@@ -884,7 +882,9 @@ test("forgot password form requests a Better Auth reset email", async ({
     redirectTo: "/reset-password",
   });
   await expect(
-    page.getByText("If the account exists, check your email for the reset link."),
+    page.getByText(
+      "If the account exists, check your email for the reset link.",
+    ),
   ).toBeVisible();
 });
 
@@ -978,6 +978,113 @@ test("authenticated users can create and list a playgroup", async ({
   await expect(
     groupCard.getByText("Upcoming Events", { exact: true }),
   ).toBeVisible();
+});
+
+test("event managers can manage host locations and attach them to events", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `location-smoke-${suffix}@example.test`;
+  const groupName = `Location Pods ${suffix}`;
+  const locationName = `Kitchen Table ${suffix}`;
+  const updatedLocationName = `Dining Room ${suffix}`;
+  const eventTitle = `Location Event ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Host location smoke.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+  await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
+
+  await page.goto("/game-night");
+
+  const locationPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Host Locations" }) })
+    .last();
+
+  await locationPanel
+    .getByLabel("Playgroup")
+    .selectOption({ label: groupName });
+  await locationPanel.getByLabel("Location Name").fill(locationName);
+  await locationPanel.getByLabel("Address Line 1").fill("303 E2E Fixture Way");
+  await locationPanel.getByLabel("City").fill("Playtest City");
+  await locationPanel.getByLabel("State").fill("TS");
+  await locationPanel.getByLabel("Postal Code").fill("00003");
+  await locationPanel.getByLabel("Country").fill("US");
+  await locationPanel
+    .getByLabel("Location Notes")
+    .fill("Private E2E fixture note.");
+  await locationPanel.getByRole("button", { name: "Save Location" }).click();
+  await expect(locationPanel.getByText("Location saved.")).toBeVisible();
+
+  await page.reload();
+
+  const createEventForm = page
+    .locator("form")
+    .filter({ hasText: "Create Event" });
+
+  await createEventForm
+    .locator('select[name="playgroupId"]')
+    .selectOption({ label: groupName });
+  await createEventForm.locator('input[name="title"]').fill(eventTitle);
+  await createEventForm
+    .locator('input[name="startsAt"]')
+    .fill("2030-06-14T19:00");
+  await createEventForm
+    .locator('select[name="visibility"]')
+    .selectOption("members");
+  await createEventForm.locator('select[name="locationId"]').selectOption({
+    label: locationName,
+  });
+  await createEventForm
+    .locator('select[name="addressVisibility"]')
+    .selectOption("members");
+  await createEventForm.getByRole("button", { name: "Create Event" }).click();
+
+  const eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(
+    eventCard.getByRole("heading", { name: eventTitle }),
+  ).toBeVisible();
+  await expect(eventCard.getByText(locationName).first()).toBeVisible();
+  await expect(eventCard.getByText("303 E2E Fixture Way")).toBeVisible();
+  await expect(eventCard.getByText("Private E2E fixture note.")).toHaveCount(0);
+  await expect(eventCard.getByLabel("Edit Host Location")).toBeVisible();
+  await expect(eventCard.getByLabel("Edit Address Visibility")).toHaveValue(
+    "members",
+  );
+
+  await locationPanel
+    .locator('input[name="name"]')
+    .nth(1)
+    .fill(updatedLocationName);
+  await locationPanel.getByRole("button", { name: "Update Location" }).click();
+  await expect(locationPanel.getByText("Location updated.")).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page
+      .locator("article")
+      .filter({ hasText: eventTitle })
+      .getByText(updatedLocationName)
+      .first(),
+  ).toBeVisible();
+
+  await page
+    .locator("section")
+    .filter({ hasText: "Host Locations" })
+    .getByRole("button", { name: "Archive Location" })
+    .click();
+  await expect(page.getByText("No saved host locations")).toBeVisible();
+
+  await expect(
+    page
+      .locator("form")
+      .filter({ hasText: "Create Event" })
+      .getByLabel("Host Location")
+      .locator("option", { hasText: updatedLocationName }),
+  ).toHaveCount(0);
 });
 
 test("group owners can create, list, and revoke invite links", async ({
@@ -1103,8 +1210,7 @@ test("event managers can move and publish pod assignments", async ({
   const outsiderEmail = `pod-outsider-${suffix}@example.test`;
   const groupName = `Move Pods ${suffix}`;
   const eventTitle = `Manual Pod Move ${suffix}`;
-  const podLifeHrefPattern =
-    /\/events\/[0-9a-f-]+\/pods\/[0-9a-f-]+\/life$/;
+  const podLifeHrefPattern = /\/events\/[0-9a-f-]+\/pods\/[0-9a-f-]+\/life$/;
 
   await signUpVerifyAndLogin(
     page,

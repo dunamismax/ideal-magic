@@ -1,4 +1,8 @@
-import type { EventStatus, EventVisibility } from "@/db/scopes";
+import type {
+  AddressVisibility,
+  EventStatus,
+  EventVisibility,
+} from "@/db/scopes";
 
 export type CreateEventInput = {
   playgroupId: string;
@@ -6,6 +10,8 @@ export type CreateEventInput = {
   startsAt: string;
   description: string;
   visibility: EventVisibility;
+  locationId: string;
+  addressVisibility: AddressVisibility;
 };
 
 export type UpdateEventInput = Omit<CreateEventInput, "playgroupId"> & {
@@ -15,6 +21,23 @@ export type UpdateEventInput = Omit<CreateEventInput, "playgroupId"> & {
 export type EventStatusInput = {
   eventId: string;
   status: Extract<EventStatus, "cancelled" | "archived">;
+};
+
+export type HostLocationInput = {
+  locationId?: string;
+  playgroupId: string;
+  name: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postalCode: string;
+  country: string;
+  notes: string;
+};
+
+export type ArchiveHostLocationInput = {
+  locationId: string;
 };
 
 export type CreateEventValidationResult =
@@ -54,9 +77,35 @@ export type EventStatusValidationResult =
       fields: EventStatusInput;
     };
 
+export type HostLocationValidationResult =
+  | {
+      ok: true;
+      input: HostLocationInput;
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof HostLocationInput, string>>;
+      fields: HostLocationInput;
+    };
+
+export type ArchiveHostLocationValidationResult =
+  | {
+      ok: true;
+      input: ArchiveHostLocationInput;
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof ArchiveHostLocationInput, string>>;
+      fields: ArchiveHostLocationInput;
+    };
+
 const maxEventTitleLength = 100;
 const maxEventDescriptionLength = 1_000;
+const maxLocationNameLength = 100;
+const maxAddressLineLength = 180;
+const maxLocationNotesLength = 1_000;
 const eventVisibilities = ["members", "invite_only", "public_safe"] as const;
+const addressVisibilities = ["rsvps", "members", "public", "hidden"] as const;
 const manageableEventStatuses = ["cancelled", "archived"] as const;
 
 export function validateCreateEventInput(
@@ -71,6 +120,10 @@ export function validateCreateEventInput(
     startsAt: String(rawInput.startsAt ?? "").trim(),
     description: normalizeText(rawInput.description),
     visibility: String(rawInput.visibility ?? "") as EventVisibility,
+    locationId: normalizeText(rawInput.locationId),
+    addressVisibility: String(
+      rawInput.addressVisibility ?? "",
+    ) as AddressVisibility,
   };
   const fieldErrors: Partial<Record<keyof CreateEventInput, string>> = {};
   const parsedStartsAt = parseStartsAt(fields.startsAt);
@@ -99,6 +152,14 @@ export function validateCreateEventInput(
     fieldErrors.visibility = "Choose a visibility.";
   }
 
+  if (fields.locationId && !isUuid(fields.locationId)) {
+    fieldErrors.locationId = "Choose a saved location.";
+  }
+
+  if (!includesString(addressVisibilities, fields.addressVisibility)) {
+    fieldErrors.addressVisibility = "Choose address visibility.";
+  }
+
   if (Object.keys(fieldErrors).length > 0 || !parsedStartsAt) {
     return {
       ok: false,
@@ -115,6 +176,8 @@ export function validateCreateEventInput(
       startsAt: parsedStartsAt,
       description: fields.description,
       visibility: fields.visibility,
+      locationId: fields.locationId,
+      addressVisibility: fields.addressVisibility,
     },
   };
 }
@@ -132,6 +195,8 @@ export function validateUpdateEventInput(
       startsAt: rawInput.startsAt,
       description: rawInput.description,
       visibility: rawInput.visibility,
+      locationId: rawInput.locationId,
+      addressVisibility: rawInput.addressVisibility,
     },
     options,
   );
@@ -144,6 +209,8 @@ export function validateUpdateEventInput(
       startsAt: createValidation.fields.startsAt,
       description: createValidation.fields.description,
       visibility: createValidation.fields.visibility,
+      locationId: createValidation.fields.locationId,
+      addressVisibility: createValidation.fields.addressVisibility,
     };
     const fieldErrors: Partial<Record<keyof UpdateEventInput, string>> = {};
 
@@ -152,6 +219,8 @@ export function validateUpdateEventInput(
       "startsAt",
       "description",
       "visibility",
+      "locationId",
+      "addressVisibility",
     ] as const) {
       if (createValidation.fieldErrors[fieldName]) {
         fieldErrors[fieldName] = createValidation.fieldErrors[fieldName];
@@ -181,6 +250,8 @@ export function validateUpdateEventInput(
         startsAt: String(rawInput.startsAt ?? "").trim(),
         description: createValidation.input.description,
         visibility: createValidation.input.visibility,
+        locationId: createValidation.input.locationId,
+        addressVisibility: createValidation.input.addressVisibility,
       },
     };
   }
@@ -193,6 +264,8 @@ export function validateUpdateEventInput(
       startsAt: createValidation.input.startsAt,
       description: createValidation.input.description,
       visibility: createValidation.input.visibility,
+      locationId: createValidation.input.locationId,
+      addressVisibility: createValidation.input.addressVisibility,
     },
   };
 }
@@ -230,10 +303,113 @@ export function validateEventStatusInput(
   };
 }
 
+export function validateHostLocationInput(
+  rawInput: Partial<
+    Record<keyof HostLocationInput, FormDataEntryValue | string>
+  >,
+  options: { requireLocationId?: boolean } = {},
+): HostLocationValidationResult {
+  const locationId = normalizeText(rawInput.locationId);
+  const fields: HostLocationInput = {
+    locationId,
+    playgroupId: normalizeText(rawInput.playgroupId),
+    name: normalizeText(rawInput.name),
+    addressLine1: normalizeText(rawInput.addressLine1),
+    addressLine2: normalizeText(rawInput.addressLine2),
+    city: normalizeText(rawInput.city),
+    stateProvince: normalizeText(rawInput.stateProvince),
+    postalCode: normalizeText(rawInput.postalCode),
+    country: normalizeText(rawInput.country),
+    notes: normalizeMultilineText(rawInput.notes),
+  };
+  const fieldErrors: Partial<Record<keyof HostLocationInput, string>> = {};
+
+  if (options.requireLocationId && !locationId) {
+    fieldErrors.locationId = "Choose a location.";
+  } else if (locationId && !isUuid(locationId)) {
+    fieldErrors.locationId = "Choose a location.";
+  }
+
+  if (!isUuid(fields.playgroupId)) {
+    fieldErrors.playgroupId = "Choose a playgroup.";
+  }
+
+  if (!fields.name) {
+    fieldErrors.name = "Location name is required.";
+  } else if (fields.name.length > maxLocationNameLength) {
+    fieldErrors.name = `Use ${maxLocationNameLength} characters or fewer.`;
+  }
+
+  for (const fieldName of [
+    "addressLine1",
+    "addressLine2",
+    "city",
+    "stateProvince",
+    "postalCode",
+    "country",
+  ] as const) {
+    if (fields[fieldName].length > maxAddressLineLength) {
+      fieldErrors[fieldName] =
+        `Use ${maxAddressLineLength} characters or fewer.`;
+    }
+  }
+
+  if (fields.notes.length > maxLocationNotesLength) {
+    fieldErrors.notes = `Use ${maxLocationNotesLength} characters or fewer.`;
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      fieldErrors,
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
+  };
+}
+
+export function validateArchiveHostLocationInput(
+  rawInput: Partial<
+    Record<keyof ArchiveHostLocationInput, FormDataEntryValue | string>
+  >,
+): ArchiveHostLocationValidationResult {
+  const fields: ArchiveHostLocationInput = {
+    locationId: normalizeText(rawInput.locationId),
+  };
+
+  if (!isUuid(fields.locationId)) {
+    return {
+      ok: false,
+      fieldErrors: {
+        locationId: "Choose a location.",
+      },
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
+  };
+}
+
 function normalizeText(value: FormDataEntryValue | string | undefined) {
   return String(value ?? "")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function normalizeMultilineText(
+  value: FormDataEntryValue | string | undefined,
+) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 function parseStartsAt(value: string) {

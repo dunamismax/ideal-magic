@@ -7,6 +7,7 @@ import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { fieldControlClassName, FormField } from "@/components/ui/form-field";
 import type { EventPlanningSummary } from "@/db/queries/event-planning";
+import type { EventFormLocation } from "./create-event-form";
 import {
   type EventStatusActionState,
   updateEventAction,
@@ -16,6 +17,7 @@ import {
 
 type EventManagementFormProps = {
   event: EventPlanningSummary;
+  locations: EventFormLocation[];
 };
 
 function createUpdateInitialState(
@@ -31,6 +33,8 @@ function createUpdateInitialState(
       startsAt: formatDateTimeLocalValue(event.startsAt),
       description: event.description,
       visibility: event.visibility,
+      locationId: event.location?.id ?? "",
+      addressVisibility: event.addressVisibility,
     },
   };
 }
@@ -49,7 +53,10 @@ function createStatusInitialState(
   };
 }
 
-export function EventManagementForm({ event }: EventManagementFormProps) {
+export function EventManagementForm({
+  event,
+  locations,
+}: EventManagementFormProps) {
   const [updateState, updateFormAction] = useActionState(
     updateEventAction,
     createUpdateInitialState(event),
@@ -114,6 +121,43 @@ export function EventManagementForm({ event }: EventManagementFormProps) {
               <option value="members">Members</option>
               <option value="invite_only">Invite Only</option>
               <option value="public_safe">Public Safe</option>
+            </select>
+          </FormField>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField
+            label="Edit Host Location"
+            error={updateState.fieldErrors.locationId}
+          >
+            <select
+              className={fieldControlClassName}
+              defaultValue={updateState.fields.locationId}
+              name="locationId"
+            >
+              <option value="">No saved location</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField
+            label="Edit Address Visibility"
+            error={updateState.fieldErrors.addressVisibility}
+          >
+            <select
+              className={fieldControlClassName}
+              defaultValue={updateState.fields.addressVisibility}
+              name="addressVisibility"
+              required
+            >
+              <option value="hidden">Hidden</option>
+              <option value="rsvps">Yes/Maybe RSVPs</option>
+              <option value="members">Members</option>
+              <option value="public">Public</option>
             </select>
           </FormField>
         </div>

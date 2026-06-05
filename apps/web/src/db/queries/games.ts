@@ -127,6 +127,32 @@ export type LoggedGameHistorySummary = {
   }[];
 };
 
+export type MetaHealthSummary = {
+  totalLoggedGames: number;
+  eventsWithGames: number;
+  distinctKnownPlayers: number;
+  guestSeatCount: number;
+  distinctDeckSnapshots: number;
+  distinctCommanderSnapshots: number;
+  colorIdentitySpread: MetaHealthSpreadItem[];
+  archetypeSpread: MetaHealthSpreadItem[];
+  repeatPlayerPairCount: number;
+  topRepeatPlayerPairs: MetaHealthPairSummary[];
+  repeatDeckPairCount: number;
+  topRepeatDeckPairs: MetaHealthPairSummary[];
+};
+
+export type MetaHealthSpreadItem = {
+  label: string;
+  count: number;
+};
+
+export type MetaHealthPairSummary = {
+  leftLabel: string;
+  rightLabel: string;
+  gameCount: number;
+};
+
 export class PodGameLoggingAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot log a game from this pod.");
@@ -226,6 +252,160 @@ export async function getLoggedGameForViewer(
   });
 
   return game ?? null;
+}
+
+export async function getMetaHealthSummaryForViewer(
+  db: GameReadDatabase,
+  input: {
+    viewerUserId: string;
+    eventId?: string;
+    playgroupId?: string;
+  },
+): Promise<MetaHealthSummary> {
+  const gameRows = await db
+    .select({
+      id: games.id,
+      eventId: games.eventId,
+      completedAt: games.completedAt,
+    })
+    .from(games)
+    .innerJoin(events, eq(events.id, games.eventId))
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, events.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .where(
+      and(
+        inArray(playgroupMemberships.role, loggedGameViewerRoles),
+        input.eventId ? eq(games.eventId, input.eventId) : undefined,
+        input.playgroupId
+          ? eq(events.playgroupId, input.playgroupId)
+          : undefined,
+      ),
+    )
+    .orderBy(desc(games.completedAt), desc(games.id));
+
+  if (gameRows.length === 0) {
+    return createEmptyMetaHealthSummary();
+  }
+
+  const gameIds = gameRows.map((game) => game.id);
+  const completedAtByGameId = new Map(
+    gameRows.map((game) => [game.id, game.completedAt]),
+  );
+  const playerRows = await db
+    .select({
+      gameId: gamePlayers.gameId,
+      userId: gamePlayers.userId,
+      deckId: gamePlayers.deckId,
+      participantNameSnapshot: gamePlayers.participantNameSnapshot,
+      deckNameSnapshot: gamePlayers.deckNameSnapshot,
+      commanderSnapshot: gamePlayers.commanderSnapshot,
+      colorIdentitySnapshot: gamePlayers.colorIdentitySnapshot,
+      bracketSnapshot: gamePlayers.bracketSnapshot,
+      powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
+      archetypeSnapshot: gamePlayers.archetypeSnapshot,
+    })
+    .from(gamePlayers)
+    .where(inArray(gamePlayers.gameId, gameIds));
+
+  const matchupRows = await db
+    .select({
+      gameId: matchupHistory.gameId,
+      leftUserId: matchupHistory.leftUserId,
+      rightUserId: matchupHistory.rightUserId,
+      leftDeckId: matchupHistory.leftDeckId,
+      rightDeckId: matchupHistory.rightDeckId,
+    })
+    .from(matchupHistory)
+    .where(inArray(matchupHistory.gameId, gameIds));
+
+  const eventIds = new Set<string>();
+  const knownUserIds = new Set<string>();
+  const deckSnapshotKeys = new Set<string>();
+  const commanderNames = new Set<string>();
+  const colorIdentityCounts = new Map<string, number>();
+  const archetypeCounts = new Map<string, number>();
+  const userLabelCandidates = new Map<string, LabelCandidate>();
+  const deckLabelCandidates = new Map<string, LabelCandidate>();
+  let guestSeatCount = 0;
+
+  for (const game of gameRows) {
+    eventIds.add(game.eventId);
+  }
+
+  for (const player of playerRows) {
+    const completedAt = completedAtByGameId.get(player.gameId) ?? new Date(0);
+
+    if (player.userId) {
+      knownUserIds.add(player.userId);
+      setLatestLabel(userLabelCandidates, player.userId, {
+        label: player.participantNameSnapshot || "Player",
+        completedAt,
+      });
+    } else {
+      guestSeatCount += 1;
+    }
+
+    if (player.deckNameSnapshot.trim()) {
+      deckSnapshotKeys.add(
+        [
+          player.deckNameSnapshot,
+          player.commanderSnapshot.join("/"),
+          player.colorIdentitySnapshot,
+          player.bracketSnapshot ?? "",
+          player.powerEstimateSnapshot ?? "",
+          player.archetypeSnapshot,
+        ].join("\u001f"),
+      );
+    }
+
+    if (player.deckId && player.deckNameSnapshot.trim()) {
+      setLatestLabel(deckLabelCandidates, player.deckId, {
+        label: player.deckNameSnapshot,
+        completedAt,
+      });
+    }
+
+    for (const commander of player.commanderSnapshot) {
+      const normalizedCommander = commander.trim();
+
+      if (normalizedCommander) {
+        commanderNames.add(normalizedCommander);
+      }
+    }
+
+    const colorIdentity = player.colorIdentitySnapshot.trim();
+
+    if (colorIdentity) {
+      incrementCount(colorIdentityCounts, colorIdentity);
+    }
+
+    const archetype = player.archetypeSnapshot.trim();
+
+    if (archetype) {
+      incrementCount(archetypeCounts, archetype);
+    }
+  }
+
+  return {
+    totalLoggedGames: gameRows.length,
+    eventsWithGames: eventIds.size,
+    distinctKnownPlayers: knownUserIds.size,
+    guestSeatCount,
+    distinctDeckSnapshots: deckSnapshotKeys.size,
+    distinctCommanderSnapshots: commanderNames.size,
+    colorIdentitySpread: toSortedSpread(colorIdentityCounts),
+    archetypeSpread: toSortedSpread(archetypeCounts),
+    ...summarizeRepeatPairs({
+      matchupRows,
+      userLabels: toLabelMap(userLabelCandidates),
+      deckLabels: toLabelMap(deckLabelCandidates),
+    }),
+  };
 }
 
 async function listScopedLoggedGames(
@@ -368,6 +548,141 @@ async function listScopedLoggedGames(
       players,
     };
   });
+}
+
+type LabelCandidate = {
+  label: string;
+  completedAt: Date;
+};
+
+function createEmptyMetaHealthSummary(): MetaHealthSummary {
+  return {
+    totalLoggedGames: 0,
+    eventsWithGames: 0,
+    distinctKnownPlayers: 0,
+    guestSeatCount: 0,
+    distinctDeckSnapshots: 0,
+    distinctCommanderSnapshots: 0,
+    colorIdentitySpread: [],
+    archetypeSpread: [],
+    repeatPlayerPairCount: 0,
+    topRepeatPlayerPairs: [],
+    repeatDeckPairCount: 0,
+    topRepeatDeckPairs: [],
+  };
+}
+
+function setLatestLabel(
+  labels: Map<string, LabelCandidate>,
+  id: string,
+  candidate: LabelCandidate,
+) {
+  const current = labels.get(id);
+
+  if (!current || candidate.completedAt > current.completedAt) {
+    labels.set(id, candidate);
+  }
+}
+
+function toLabelMap(candidates: Map<string, LabelCandidate>) {
+  return new Map(
+    [...candidates.entries()].map(([id, candidate]) => [id, candidate.label]),
+  );
+}
+
+function incrementCount(counts: Map<string, number>, key: string) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function toSortedSpread(counts: Map<string, number>): MetaHealthSpreadItem[] {
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort(
+      (left, right) =>
+        right.count - left.count || left.label.localeCompare(right.label),
+    );
+}
+
+function summarizeRepeatPairs(input: {
+  matchupRows: {
+    leftUserId: string | null;
+    rightUserId: string | null;
+    leftDeckId: string | null;
+    rightDeckId: string | null;
+  }[];
+  userLabels: Map<string, string>;
+  deckLabels: Map<string, string>;
+}): Pick<
+  MetaHealthSummary,
+  | "repeatPlayerPairCount"
+  | "topRepeatPlayerPairs"
+  | "repeatDeckPairCount"
+  | "topRepeatDeckPairs"
+> {
+  const playerPairs = new Map<string, number>();
+  const deckPairs = new Map<string, number>();
+
+  for (const row of input.matchupRows) {
+    if (row.leftUserId && row.rightUserId) {
+      incrementCount(playerPairs, makePairKey(row.leftUserId, row.rightUserId));
+    }
+
+    if (row.leftDeckId && row.rightDeckId) {
+      incrementCount(deckPairs, makePairKey(row.leftDeckId, row.rightDeckId));
+    }
+  }
+
+  const repeatPlayerPairs = toRepeatPairSummaries({
+    pairs: playerPairs,
+    labels: input.userLabels,
+    fallbackLabel: "Player",
+  });
+  const repeatDeckPairs = toRepeatPairSummaries({
+    pairs: deckPairs,
+    labels: input.deckLabels,
+    fallbackLabel: "Deck",
+  });
+
+  return {
+    repeatPlayerPairCount: repeatPlayerPairs.length,
+    topRepeatPlayerPairs: repeatPlayerPairs.slice(0, 3),
+    repeatDeckPairCount: repeatDeckPairs.length,
+    topRepeatDeckPairs: repeatDeckPairs.slice(0, 3),
+  };
+}
+
+function toRepeatPairSummaries(input: {
+  pairs: Map<string, number>;
+  labels: Map<string, string>;
+  fallbackLabel: string;
+}): MetaHealthPairSummary[] {
+  return [...input.pairs.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key, gameCount]) => {
+      const [leftId, rightId] = splitPairKey(key);
+
+      return {
+        leftLabel: input.labels.get(leftId) ?? input.fallbackLabel,
+        rightLabel: input.labels.get(rightId) ?? input.fallbackLabel,
+        gameCount,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.gameCount - left.gameCount ||
+        left.leftLabel.localeCompare(right.leftLabel) ||
+        left.rightLabel.localeCompare(right.rightLabel),
+    );
+}
+
+function makePairKey(left: string, right: string) {
+  return `${left}\u001f${right}`;
+}
+
+function splitPairKey(key: string): [string, string] {
+  const [left, right] = key.split("\u001f");
+
+  return [left ?? "", right ?? ""];
 }
 
 export async function logGameFromPublishedPod(
@@ -1005,7 +1320,10 @@ async function listEventGameParticipantRows(
         asc(eventDeckDeclarations.id),
       ),
   ]);
-  const declarationsByUserId = new Map<string, (typeof declarationRows)[number]>();
+  const declarationsByUserId = new Map<
+    string,
+    (typeof declarationRows)[number]
+  >();
 
   for (const declaration of declarationRows) {
     if (!declarationsByUserId.has(declaration.userId)) {

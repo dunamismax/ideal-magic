@@ -30,6 +30,7 @@ import {
   EventGameLoggingAuthorizationError,
   EventGameLoggingBlockedError,
   getLoggedGameForViewer,
+  getMetaHealthSummaryForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
   PodGameLoggingBlockedError,
@@ -548,6 +549,109 @@ describe("game logging data access", () => {
     ).resolves.toEqual([]);
   });
 
+  test("summarizes scoped meta health from logged game records with repeat pairs", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "First meta draw.",
+      completedAt: new Date("2030-06-15T05:00:00.000Z"),
+    });
+    await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "Second meta draw.",
+      completedAt: new Date("2030-06-15T06:00:00.000Z"),
+    });
+
+    const summary = await getMetaHealthSummaryForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const eventSummary = await getMetaHealthSummaryForViewer(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const emptyEventSummary = await getMetaHealthSummaryForViewer(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: "40000000-0000-4000-8000-000000000999",
+    });
+    const outsiderSummary = await getMetaHealthSummaryForViewer(db, {
+      viewerUserId: fixture.outsiderId,
+    });
+    const payload = JSON.stringify(summary);
+
+    expect(summary).toMatchObject({
+      totalLoggedGames: 2,
+      eventsWithGames: 1,
+      distinctKnownPlayers: 3,
+      guestSeatCount: 2,
+      distinctDeckSnapshots: 3,
+      distinctCommanderSnapshots: 3,
+      repeatPlayerPairCount: 3,
+      repeatDeckPairCount: 3,
+    });
+    expect(summary.colorIdentitySpread).toEqual([
+      { label: "RG", count: 4 },
+      { label: "WUB", count: 2 },
+    ]);
+    expect(summary.archetypeSpread).toEqual([
+      { label: "Midrange", count: 4 },
+      { label: "Control", count: 2 },
+    ]);
+    expect(summary.topRepeatPlayerPairs).toEqual(
+      expect.arrayContaining([
+        {
+          leftLabel: "Owner Player",
+          rightLabel: "Member 1",
+          gameCount: 2,
+        },
+        {
+          leftLabel: "Owner Player",
+          rightLabel: "Member 2",
+          gameCount: 2,
+        },
+        {
+          leftLabel: "Member 1",
+          rightLabel: "Member 2",
+          gameCount: 2,
+        },
+      ]),
+    );
+    expect(summary.topRepeatDeckPairs).toEqual(
+      expect.arrayContaining([
+        {
+          leftLabel: "Owner Deck",
+          rightLabel: "Member 1 Deck",
+          gameCount: 2,
+        },
+        {
+          leftLabel: "Owner Deck",
+          rightLabel: "Member 2 Deck",
+          gameCount: 2,
+        },
+        {
+          leftLabel: "Member 1 Deck",
+          rightLabel: "Member 2 Deck",
+          gameCount: 2,
+        },
+      ]),
+    );
+    expect(eventSummary).toEqual(summary);
+    expect(emptyEventSummary.totalLoggedGames).toBe(0);
+    expect(outsiderSummary.totalLoggedGames).toBe(0);
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("Guest RSVP");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
+  });
+
   test("redacts guest details in logged game history projections", async () => {
     const { db } = await createMigratedPgliteDatabase();
     const fixture = await createPublishedPodGameFixture(db);
@@ -642,13 +746,15 @@ describe("game logging data access", () => {
       resultType: "team_win",
       notes: "Scoped detail note",
     });
-    expect(
-      detail?.winners.map((winner) => winner.participantName),
-    ).toEqual(["Owner Player", "Guest RSVP"]);
+    expect(detail?.winners.map((winner) => winner.participantName)).toEqual([
+      "Owner Player",
+      "Guest RSVP",
+    ]);
     expect(detail?.players).toHaveLength(4);
     expect(
-      detail?.players.find((player) => player.participantName === "Owner Player")
-        ?.deck,
+      detail?.players.find(
+        (player) => player.participantName === "Owner Player",
+      )?.deck,
     ).toMatchObject({
       deckNameSnapshot: "Owner Deck",
       commanderSnapshot: ["Owner Commander"],
@@ -964,13 +1070,11 @@ describe("game logging data access", () => {
       eventId: fixture.eventId,
       viewerUserId: fixture.ownerId,
     });
-    const outsiderParticipants = await listEventLifeCounterParticipantsForViewer(
-      db,
-      {
+    const outsiderParticipants =
+      await listEventLifeCounterParticipantsForViewer(db, {
         eventId: fixture.eventId,
         viewerUserId: fixture.outsiderId,
-      },
-    );
+      });
     const payload = JSON.stringify(participants);
 
     expect(participants).toHaveLength(4);

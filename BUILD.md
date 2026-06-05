@@ -762,6 +762,21 @@ history display and empty state, `/history` game list and detail views,
 multiple-winner display, draw/no-winner display, route links, and empty
 state.
 
+The first scoped meta-health summary now appears on `/history` for
+authenticated owners, admins, hosts, and members. It is source-backed by
+visible `games`, `game_players`, and `matchup_history` rows and reports
+total logged games, events with games, distinct known players, guest seat
+count, distinct deck snapshots, distinct commander snapshots,
+color-identity spread, archetype spread, repeat known-player pairs, and
+repeat known-deck pairs. Pair summaries use latest safe game-player
+snapshots for labels, exclude guest seats from repeat-pair names, and
+omit emails, invite tokens/token hashes, host addresses, RSVP notes,
+private guest names/details, and contact data. Focused PGlite tests
+cover scoped access, non-member denial, metric correctness, event
+scoping, repeat-pair summaries, and private-data redaction. Component
+tests cover the populated summary, full empty state, partial spread empty
+states, repeat-pair empty states, and redaction.
+
 Standalone `/life` counters can now be attached to a scoped scheduled
 event by an authenticated authorized user, import the eligible event
 roster into the local counter, and save an explicit result to group
@@ -790,12 +805,13 @@ UI/action projections. Focused unit, component, and PGlite tests cover
 event-linked and pod-linked counter import, save validation, save forms,
 scoped save persistence, team/no-winner semantics, non-member denial,
 guest redaction, and matchup-history writes. Standalone counter game
-saves, Postgres counter snapshot sync, finish order beyond winner
-marking, elimination detail, poison/commander-damage loss detail,
-dedicated event history pages, public history views, meta health summaries,
-materialized summary views, arbitrary local-player identity matching for
-standalone saves, and Playwright coverage for the
-quick-log/history/life-save UI remain unimplemented.
+saves through event attachment exist, but Postgres counter snapshot sync,
+finish order beyond winner marking, elimination detail,
+poison/commander-damage loss detail, dedicated event history pages,
+public history views, richer meta-health dashboards/materialized summary
+views, arbitrary local-player identity matching for standalone saves, and
+Playwright coverage for the quick-log/history/life-save UI remain
+unimplemented.
 
 ## Phase 11 - Simplification And Removal
 

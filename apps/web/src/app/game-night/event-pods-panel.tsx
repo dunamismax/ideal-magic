@@ -3,7 +3,9 @@
 import {
   ArrowRightLeft,
   CheckCircle2,
+  Lock,
   Shuffle,
+  Unlock,
   UsersRound,
 } from "lucide-react";
 import { useActionState } from "react";
@@ -14,10 +16,12 @@ import type { EventPodSummary } from "@/db/queries/pods";
 import {
   generatePodsAction,
   movePodSeatAction,
+  updatePodSeatLockAction,
   updatePodPublicationAction,
   type GeneratePodsActionState,
   type MovePodSeatActionState,
   type PodPublicationActionState,
+  type PodSeatLockActionState,
 } from "./actions";
 
 type EventPodsPanelProps = {
@@ -280,19 +284,119 @@ function PodBlock({
               {seat.deck?.powerEstimateSnapshot ? (
                 <Badge value={`Power ${seat.deck.powerEstimateSnapshot}`} />
               ) : null}
+              {seat.locked ? <Badge value="Locked seat" /> : null}
             </div>
             {canManageEvent && pod.state === "proposed" ? (
-              <MoveSeatForm
-                eventId={eventId}
-                pods={pods}
-                seat={seat}
-                sourcePod={pod}
-              />
+              <div className="grid gap-2 lg:min-w-72">
+                {seat.locked ? null : (
+                  <MoveSeatForm
+                    eventId={eventId}
+                    pods={pods}
+                    seat={seat}
+                    sourcePod={pod}
+                  />
+                )}
+                <LockSeatForm eventId={eventId} seat={seat} />
+              </div>
             ) : null}
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+function createLockSeatInitialState(input: {
+  eventId: string;
+  seatId: string;
+  locked: boolean;
+}): PodSeatLockActionState {
+  return {
+    message: null,
+    saved: false,
+    fieldErrors: {},
+    fields: {
+      eventId: input.eventId,
+      seatId: input.seatId,
+      intent: input.locked ? "unlock" : "lock",
+    },
+  };
+}
+
+function LockSeatForm({
+  eventId,
+  seat,
+}: {
+  eventId: string;
+  seat: EventPodSummary["seats"][number];
+}) {
+  const [state, formAction] = useActionState(
+    updatePodSeatLockAction,
+    createLockSeatInitialState({
+      eventId,
+      seatId: seat.id,
+      locked: seat.locked,
+    }),
+  );
+  const intent = seat.locked ? "unlock" : "lock";
+  const lockLabel =
+    intent === "lock"
+      ? `Lock ${seat.participantName}`
+      : `Unlock ${seat.participantName}`;
+
+  return (
+    <form action={formAction} className="grid gap-2">
+      <input name="eventId" type="hidden" value={state.fields.eventId} />
+      <input name="seatId" type="hidden" value={state.fields.seatId} />
+      <input name="intent" type="hidden" value={intent} />
+      <LockSeatButton intent={intent} label={lockLabel} />
+      {state.message ? (
+        <p
+          className={
+            state.saved
+              ? "text-xs font-bold text-accent"
+              : "text-xs font-bold text-danger"
+          }
+          role="status"
+        >
+          {state.message}
+        </p>
+      ) : null}
+      {state.fieldErrors.eventId ||
+      state.fieldErrors.seatId ||
+      state.fieldErrors.intent ? (
+        <p className="text-xs font-bold text-danger">
+          {state.fieldErrors.eventId ??
+            state.fieldErrors.seatId ??
+            state.fieldErrors.intent}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function LockSeatButton({
+  intent,
+  label,
+}: {
+  intent: "lock" | "unlock";
+  label: string;
+}) {
+  const { pending } = useFormStatus();
+  const Icon = intent === "lock" ? Lock : Unlock;
+
+  return (
+    <Button
+      aria-label={label}
+      className="w-full justify-center"
+      disabled={pending}
+      title={label}
+      type="submit"
+      variant={intent === "lock" ? "secondary" : "primary"}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      {pending ? "Saving" : intent === "lock" ? "Lock Seat" : "Unlock Seat"}
+    </Button>
   );
 }
 
@@ -338,7 +442,7 @@ function MoveSeatForm({
   const moveLabel = `Move ${seat.participantName}`;
 
   return (
-    <form action={formAction} className="grid gap-2 lg:min-w-72">
+    <form action={formAction} className="grid gap-2">
       <input name="eventId" type="hidden" value={state.fields.eventId} />
       <input name="seatId" type="hidden" value={state.fields.seatId} />
       <div className="grid grid-cols-[1fr_5rem_auto] gap-2">

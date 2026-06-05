@@ -14,6 +14,12 @@ export type PodPublicationInput = {
   intent: "publish" | "unpublish";
 };
 
+export type PodSeatLockInput = {
+  eventId: string;
+  seatId: string;
+  intent: "lock" | "unlock";
+};
+
 export type GeneratePodsValidationResult =
   | {
       ok: true;
@@ -45,6 +51,17 @@ export type PodPublicationValidationResult =
       ok: false;
       fieldErrors: Partial<Record<keyof PodPublicationInput, string>>;
       fields: PodPublicationInput;
+    };
+
+export type PodSeatLockValidationResult =
+  | {
+      ok: true;
+      input: PodSeatLockInput;
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof PodSeatLockInput, string>>;
+      fields: PodSeatLockInput;
     };
 
 export function validateGeneratePodsInput(
@@ -136,6 +153,45 @@ export function validatePodPublicationInput(
 
   if (intent !== "publish" && intent !== "unpublish") {
     fieldErrors.intent = "Choose publish or unpublish.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      fieldErrors,
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
+  };
+}
+
+export function validatePodSeatLockInput(
+  rawInput: Partial<
+    Record<keyof PodSeatLockInput, FormDataEntryValue | string>
+  >,
+): PodSeatLockValidationResult {
+  const intent = normalizeText(rawInput.intent);
+  const fields: PodSeatLockInput = {
+    eventId: normalizeText(rawInput.eventId),
+    seatId: normalizeText(rawInput.seatId),
+    intent: intent === "unlock" ? "unlock" : "lock",
+  };
+  const fieldErrors: Partial<Record<keyof PodSeatLockInput, string>> = {};
+
+  if (!isUuid(fields.eventId)) {
+    fieldErrors.eventId = "Choose an event.";
+  }
+
+  if (!isUuid(fields.seatId)) {
+    fieldErrors.seatId = "Choose a seat.";
+  }
+
+  if (intent !== "lock" && intent !== "unlock") {
+    fieldErrors.intent = "Choose lock or unlock.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {

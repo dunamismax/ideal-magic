@@ -43,20 +43,26 @@ import {
   publishPodsForEventManager,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
+  PodGenerationBlockedByLockedSeatsError,
   PodPublicationAuthorizationError,
   PodPublicationBlockedError,
+  PodSeatLockAuthorizationError,
+  PodSeatLockBlockedError,
   movePodSeatForEventManager,
   PodSeatMoveAuthorizationError,
   PodSeatMoveBlockedError,
+  setPodSeatLockForEventManager,
   unpublishPodsForEventManager,
 } from "@/db/queries/pods";
 import {
   type GeneratePodsInput,
   type MovePodSeatInput,
   type PodPublicationInput,
+  type PodSeatLockInput,
   validateGeneratePodsInput,
   validateMovePodSeatInput,
   validatePodPublicationInput,
+  validatePodSeatLockInput,
 } from "@/features/pods/pod-form";
 
 export type CreateEventActionState = {
@@ -112,6 +118,13 @@ export type MovePodSeatActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof MovePodSeatInput, string>>;
   fields: MovePodSeatInput;
+};
+
+export type PodSeatLockActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof PodSeatLockInput, string>>;
+  fields: PodSeatLockInput;
 };
 
 export type PodPublicationActionState = {
@@ -545,6 +558,15 @@ export async function generatePodsAction(
       };
     }
 
+    if (error instanceof PodGenerationBlockedByLockedSeatsError) {
+      return {
+        message: error.message,
+        saved: false,
+        fieldErrors: {},
+        fields,
+      };
+    }
+
     console.error("Pod generation failed", error);
 
     return {
@@ -632,6 +654,86 @@ export async function movePodSeatAction(
       saved: false,
       fieldErrors: {},
       fields,
+    };
+  }
+}
+
+export async function updatePodSeatLockAction(
+  _previousState: PodSeatLockActionState,
+  formData: FormData,
+): Promise<PodSeatLockActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: PodSeatLockInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+    seatId: String(formData.get("seatId") ?? ""),
+    intent:
+      String(formData.get("intent") ?? "") === "unlock" ? "unlock" : "lock",
+  };
+  const validation = validatePodSeatLockInput({
+    eventId: fields.eventId,
+    seatId: fields.seatId,
+    intent: String(formData.get("intent") ?? ""),
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid seat lock action.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    const pods = await setPodSeatLockForEventManager(createDatabase(), {
+      viewerUserId: session.user.id,
+      eventId: validation.input.eventId,
+      seatId: validation.input.seatId,
+      locked: validation.input.intent === "lock",
+    });
+    const seat = pods
+      .flatMap((pod) => pod.seats)
+      .find((entry) => entry.id === validation.input.seatId);
+
+    revalidatePath("/game-night");
+
+    return {
+      message:
+        validation.input.intent === "lock"
+          ? `Locked ${seat?.participantName ?? "seat"}.`
+          : `Unlocked ${seat?.participantName ?? "seat"}.`,
+      saved: true,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  } catch (error) {
+    if (error instanceof PodSeatLockAuthorizationError) {
+      return {
+        message: "You cannot lock seats for that event.",
+        saved: false,
+        fieldErrors: {
+          eventId: "Choose one of your managed events.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    if (error instanceof PodSeatLockBlockedError) {
+      return {
+        message: error.message,
+        saved: false,
+        fieldErrors: {},
+        fields: validation.input,
+      };
+    }
+
+    console.error("Pod seat lock update failed", error);
+
+    return {
+      message: "Could not update the seat lock. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
     };
   }
 }

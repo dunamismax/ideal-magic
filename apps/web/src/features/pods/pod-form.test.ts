@@ -4,6 +4,7 @@ import {
   validateGeneratePodsInput,
   validateMovePodSeatInput,
   validatePodPublicationInput,
+  validatePodSeatLockInput,
 } from "./pod-form";
 
 describe("pod form validation", () => {
@@ -84,6 +85,38 @@ describe("pod form validation", () => {
       fields: {
         eventId: "not-an-event",
         intent: "publish",
+      },
+    });
+  });
+
+  test("validates pod seat lock input", () => {
+    expect(
+      validatePodSeatLockInput({
+        eventId: "20000000-0000-4000-8000-000000000001",
+        seatId: "20000000-0000-4000-8000-000000000002",
+        intent: "lock",
+      }),
+    ).toEqual({
+      ok: true,
+      input: {
+        eventId: "20000000-0000-4000-8000-000000000001",
+        seatId: "20000000-0000-4000-8000-000000000002",
+        intent: "lock",
+      },
+    });
+
+    expect(
+      validatePodSeatLockInput({
+        eventId: "",
+        seatId: "not-a-seat",
+        intent: "hold",
+      }),
+    ).toMatchObject({
+      ok: false,
+      fieldErrors: {
+        eventId: "Choose an event.",
+        seatId: "Choose a seat.",
+        intent: "Choose lock or unlock.",
       },
     });
   });

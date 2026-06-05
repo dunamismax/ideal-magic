@@ -26,13 +26,17 @@ import {
   generateDraftPodsForEvent,
   listPodsForEventViewer,
   movePodSeatForEventManager,
+  PodGenerationBlockedByLockedSeatsError,
   PodPublicationAuthorizationError,
   PodPublicationBlockedError,
   publishPodsForEventManager,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
+  PodSeatLockAuthorizationError,
+  PodSeatLockBlockedError,
   PodSeatMoveAuthorizationError,
   PodSeatMoveBlockedError,
+  setPodSeatLockForEventManager,
   unpublishPodsForEventManager,
 } from "./pods";
 
@@ -345,6 +349,116 @@ describe("pod data access", () => {
         targetSeatPosition: 1,
       }),
     ).rejects.toBeInstanceOf(PodSeatMoveBlockedError);
+  });
+
+  test("locks and unlocks draft seats only for event managers", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const sourceSeat = generated[1]?.seats[0];
+    const targetPod = generated[0];
+
+    if (!sourceSeat || !targetPod) {
+      throw new Error("Expected a generated two-pod fixture.");
+    }
+
+    await expect(
+      setPodSeatLockForEventManager(db, {
+        viewerUserId: fixture.memberIds[0] ?? fixture.outsiderId,
+        eventId: fixture.eventId,
+        seatId: sourceSeat.id,
+        locked: true,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatLockAuthorizationError);
+
+    const locked = await setPodSeatLockForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      seatId: sourceSeat.id,
+      locked: true,
+    });
+    const lockedSeat = locked
+      .flatMap((pod) => pod.seats)
+      .find((seat) => seat.id === sourceSeat.id);
+
+    expect(lockedSeat).toMatchObject({
+      id: sourceSeat.id,
+      locked: true,
+      participantName: sourceSeat.participantName,
+    });
+
+    await expect(
+      movePodSeatForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        seatId: sourceSeat.id,
+        targetPodId: targetPod.id,
+        targetSeatPosition: 2,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatMoveBlockedError);
+
+    await expect(
+      generateDraftPodsForEvent(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+      }),
+    ).rejects.toBeInstanceOf(PodGenerationBlockedByLockedSeatsError);
+
+    const unlocked = await setPodSeatLockForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      seatId: sourceSeat.id,
+      locked: false,
+    });
+    const unlockedSeat = unlocked
+      .flatMap((pod) => pod.seats)
+      .find((seat) => seat.id === sourceSeat.id);
+
+    expect(unlockedSeat?.locked).toBe(false);
+
+    const moved = await movePodSeatForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      seatId: sourceSeat.id,
+      targetPodId: targetPod.id,
+      targetSeatPosition: 2,
+    });
+
+    expect(moved[0]?.seats[1]).toMatchObject({
+      id: sourceSeat.id,
+      locked: false,
+    });
+  });
+
+  test("blocks lock changes on published pods", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const sourceSeat = generated[0]?.seats[0];
+
+    if (!sourceSeat) {
+      throw new Error("Expected a generated pod seat fixture.");
+    }
+
+    await publishPodsForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    await expect(
+      setPodSeatLockForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        seatId: sourceSeat.id,
+        locked: true,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatLockBlockedError);
   });
 });
 

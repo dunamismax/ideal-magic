@@ -1114,7 +1114,21 @@ test("event managers can move and publish pod assignments", async ({
     podTwo.locator("li").filter({ hasText: "Player B" }),
   ).toBeVisible();
 
-  const playerBSeat = podTwo.locator("li").filter({ hasText: "Player B" });
+  let playerBSeat = podTwo.locator("li").filter({ hasText: "Player B" });
+
+  await playerBSeat.getByRole("button", { name: "Lock Player B" }).click();
+  await expect(playerBSeat.getByText("Locked Player B.")).toBeVisible();
+  await expect(playerBSeat.getByText("Locked seat")).toBeVisible();
+  await expect(playerBSeat.getByLabel("Move Player B to pod")).toHaveCount(0);
+  await eventCard.getByRole("button", { name: "Generate Draft Pods" }).click();
+  await expect(
+    eventCard.getByText("Unlock draft pod seats before regenerating pods."),
+  ).toBeVisible();
+
+  await playerBSeat.getByRole("button", { name: "Unlock Player B" }).click();
+  await expect(playerBSeat.getByText("Unlocked Player B.")).toBeVisible();
+  await expect(playerBSeat.getByText("Locked seat")).toHaveCount(0);
+  await expect(playerBSeat.getByLabel("Move Player B to pod")).toBeVisible();
 
   await playerBSeat.getByLabel("Move Player B to pod").selectOption({
     label: "Pod 1",
@@ -1127,13 +1141,13 @@ test("event managers can move and publish pod assignments", async ({
 
   await page.reload();
   eventCard = page.locator("article").filter({ hasText: eventTitle });
+  playerBSeat = eventCard
+    .getByLabel("Pod 1 pod assignment")
+    .locator("li")
+    .filter({ hasText: "Player B" });
 
-  await expect(
-    eventCard
-      .getByLabel("Pod 1 pod assignment")
-      .locator("li")
-      .filter({ hasText: "Player B" }),
-  ).toBeVisible();
+  await expect(playerBSeat).toBeVisible();
+  await expect(playerBSeat.getByText("Locked seat")).toHaveCount(0);
   await expect(
     eventCard
       .getByLabel("Pod 2 pod assignment")

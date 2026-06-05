@@ -80,6 +80,13 @@ export class PodGenerationBlockedByExistingPodsError extends Error {
   }
 }
 
+export class PodGenerationBlockedByLockedSeatsError extends Error {
+  constructor() {
+    super("Unlock draft pod seats before regenerating pods.");
+    this.name = "PodGenerationBlockedByLockedSeatsError";
+  }
+}
+
 export class PodSeatMoveAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot move pod seats for this event.");
@@ -91,6 +98,20 @@ export class PodSeatMoveBlockedError extends Error {
   constructor(message = "Pod seat cannot be moved.") {
     super(message);
     this.name = "PodSeatMoveBlockedError";
+  }
+}
+
+export class PodSeatLockAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot lock pod seats for this event.");
+    this.name = "PodSeatLockAuthorizationError";
+  }
+}
+
+export class PodSeatLockBlockedError extends Error {
+  constructor(message = "Pod seat lock state cannot be changed.") {
+    super(message);
+    this.name = "PodSeatLockBlockedError";
   }
 }
 
@@ -161,6 +182,10 @@ export async function generateDraftPodsForEvent(
 
     if (existingNonDraftPods.length > 0) {
       throw new PodGenerationBlockedByExistingPodsError();
+    }
+
+    if (await hasLockedDraftSeats(tx, input.eventId)) {
+      throw new PodGenerationBlockedByLockedSeatsError();
     }
 
     const participants = await listEligiblePodParticipants(tx, {
@@ -580,6 +605,67 @@ export async function movePodSeatForEventManager(
   });
 }
 
+export async function setPodSeatLockForEventManager(
+  db: PodWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    seatId: string;
+    locked: boolean;
+  },
+): Promise<EventPodSummary[]> {
+  return runInTransaction(db, async (tx) => {
+    const eventRow = await getEventForPodAccess(tx, input.eventId);
+
+    if (!eventRow || eventRow.status !== "scheduled") {
+      throw new PodSeatLockAuthorizationError();
+    }
+
+    const viewerRole = await getViewerRole(tx, {
+      playgroupId: eventRow.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!viewerRole || !canManageEvent(viewerRole)) {
+      throw new PodSeatLockAuthorizationError();
+    }
+
+    const [seatRow] = await tx
+      .select({
+        id: podSeats.id,
+        eventId: podSeats.eventId,
+        locked: podSeats.locked,
+        sourcePodState: pods.state,
+      })
+      .from(podSeats)
+      .innerJoin(pods, eq(pods.id, podSeats.podId))
+      .where(eq(podSeats.id, input.seatId))
+      .limit(1);
+
+    if (!seatRow || seatRow.eventId !== input.eventId) {
+      throw new PodSeatLockAuthorizationError();
+    }
+
+    if (seatRow.sourcePodState !== "proposed") {
+      throw new PodSeatLockBlockedError(
+        "Only proposed pod seats can be locked or unlocked.",
+      );
+    }
+
+    if (seatRow.locked !== input.locked) {
+      await tx
+        .update(podSeats)
+        .set({
+          locked: input.locked,
+          updatedAt: new Date(),
+        })
+        .where(eq(podSeats.id, input.seatId));
+    }
+
+    return listPodsForEventViewer(tx, input);
+  });
+}
+
 async function authorizePodPublication(
   db: PodReadDatabase,
   input: {
@@ -615,6 +701,25 @@ async function listPodStateRows(db: PodReadDatabase, eventId: string) {
     .from(pods)
     .where(eq(pods.eventId, eventId))
     .orderBy(asc(pods.position));
+}
+
+async function hasLockedDraftSeats(db: PodReadDatabase, eventId: string) {
+  const [row] = await db
+    .select({
+      id: podSeats.id,
+    })
+    .from(podSeats)
+    .innerJoin(pods, eq(pods.id, podSeats.podId))
+    .where(
+      and(
+        eq(pods.eventId, eventId),
+        eq(pods.state, "proposed"),
+        eq(podSeats.locked, true),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(row);
 }
 
 async function hasLinkedPodRecords(db: PodReadDatabase, eventId: string) {

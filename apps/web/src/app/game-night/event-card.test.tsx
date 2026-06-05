@@ -220,6 +220,9 @@ describe("event card", () => {
     expect(
       screen.getByRole("button", { name: "Move Riley Chen" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Lock Riley Chen" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Power 7").length).toBeGreaterThan(0);
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();
@@ -245,6 +248,43 @@ describe("event card", () => {
     expect(
       screen.queryByRole("button", { name: "Publish Pods" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Move Riley Chen to pod"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Move Riley Chen" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Lock Riley Chen" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Unlock Riley Chen" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("renders locked draft seats with unlock controls and no move controls", () => {
+    render(
+      <EventCard
+        declarations={[declaration]}
+        event={baseEvent}
+        pods={[
+          {
+            ...pod,
+            seats: [
+              {
+                ...pod.seats[0]!,
+                locked: true,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Locked seat")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Unlock Riley Chen" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
@@ -280,6 +320,12 @@ describe("event card", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Move Riley Chen" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Lock Riley Chen" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Unlock Riley Chen" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();

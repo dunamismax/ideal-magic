@@ -42,10 +42,15 @@ import {
   generateDraftPodsForEvent,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
+  movePodSeatForEventManager,
+  PodSeatMoveAuthorizationError,
+  PodSeatMoveBlockedError,
 } from "@/db/queries/pods";
 import {
   type GeneratePodsInput,
+  type MovePodSeatInput,
   validateGeneratePodsInput,
+  validateMovePodSeatInput,
 } from "@/features/pods/pod-form";
 
 export type CreateEventActionState = {
@@ -94,6 +99,13 @@ export type GeneratePodsActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof GeneratePodsInput, string>>;
   fields: GeneratePodsInput;
+};
+
+export type MovePodSeatActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof MovePodSeatInput, string>>;
+  fields: MovePodSeatInput;
 };
 
 export async function createEventAction(
@@ -524,6 +536,86 @@ export async function generatePodsAction(
 
     return {
       message: "Could not generate pods. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields,
+    };
+  }
+}
+
+export async function movePodSeatAction(
+  _previousState: MovePodSeatActionState,
+  formData: FormData,
+): Promise<MovePodSeatActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: MovePodSeatInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+    seatId: String(formData.get("seatId") ?? ""),
+    targetPodId: String(formData.get("targetPodId") ?? ""),
+    targetSeatPosition: Number(formData.get("targetSeatPosition") ?? ""),
+  };
+  const validation = validateMovePodSeatInput(fields);
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid pod and seat.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    const pods = await movePodSeatForEventManager(createDatabase(), {
+      viewerUserId: session.user.id,
+      eventId: validation.input.eventId,
+      seatId: validation.input.seatId,
+      targetPodId: validation.input.targetPodId,
+      targetSeatPosition: validation.input.targetSeatPosition,
+    });
+    const targetPod = pods.find(
+      (pod) => pod.id === validation.input.targetPodId,
+    );
+    const movedSeat = targetPod?.seats.find(
+      (seat) => seat.id === validation.input.seatId,
+    );
+
+    revalidatePath("/game-night");
+
+    return {
+      message:
+        targetPod && movedSeat
+          ? `Moved ${movedSeat.participantName} to ${targetPod.name} seat ${movedSeat.seatPosition}.`
+          : "Pod seat moved.",
+      saved: true,
+      fieldErrors: {},
+      fields,
+    };
+  } catch (error) {
+    if (error instanceof PodSeatMoveAuthorizationError) {
+      return {
+        message: "You cannot move seats for that event.",
+        saved: false,
+        fieldErrors: {
+          eventId: "Choose one of your managed events.",
+        },
+        fields,
+      };
+    }
+
+    if (error instanceof PodSeatMoveBlockedError) {
+      return {
+        message: error.message,
+        saved: false,
+        fieldErrors: {},
+        fields,
+      };
+    }
+
+    console.error("Pod seat movement failed", error);
+
+    return {
+      message: "Could not move the pod seat. Try again.",
       saved: false,
       fieldErrors: {},
       fields,

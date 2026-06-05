@@ -204,13 +204,45 @@ describe("event card", () => {
     expect(
       screen.getByRole("button", { name: "Generate Draft Pods" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Pod 1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pod 1" })).toBeInTheDocument();
     expect(screen.getByText("Riley Chen")).toBeInTheDocument();
     expect(
       screen.getByText("Atraxa Counters - Atraxa, Grand Unifier"),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Move Riley Chen to pod")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Move Riley Chen to seat"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Move Riley Chen" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Power 7").length).toBeGreaterThan(0);
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();
+  });
+
+  test("hides manual pod movement controls from non-managers", () => {
+    render(
+      <EventCard
+        declarations={[declaration]}
+        event={{
+          ...baseEvent,
+          viewer: {
+            ...baseEvent.viewer,
+            role: "member",
+            canManageEvent: false,
+          },
+        }}
+        pods={[pod]}
+      />,
+    );
+
+    expect(screen.getByText("Draft Pods")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Move Riley Chen to pod"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Move Riley Chen" }),
+    ).not.toBeInTheDocument();
   });
 });

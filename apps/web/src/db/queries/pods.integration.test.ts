@@ -2,7 +2,13 @@ import { eq } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
 
 import type { AppDatabase } from "@/db/client";
-import { eventRsvps, playgroupMemberships, pods, users } from "@/db/schema";
+import {
+  eventRsvps,
+  playgroupMemberships,
+  podSeats,
+  pods,
+  users,
+} from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import {
   createDeckForUser,
@@ -17,8 +23,11 @@ import { createPlaygroupForUser } from "./playgroups";
 import {
   generateDraftPodsForEvent,
   listPodsForEventViewer,
+  movePodSeatForEventManager,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
+  PodSeatMoveAuthorizationError,
+  PodSeatMoveBlockedError,
 } from "./pods";
 
 describe("pod data access", () => {
@@ -132,6 +141,70 @@ describe("pod data access", () => {
         eventId: fixture.eventId,
       }),
     ).rejects.toBeInstanceOf(PodGenerationBlockedByExistingPodsError);
+  });
+
+  test("moves unlocked draft seats between proposed pods for event managers", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const sourceSeat = generated[1]?.seats[0];
+    const targetPod = generated[0];
+
+    if (!sourceSeat || !targetPod) {
+      throw new Error("Expected a generated two-pod fixture.");
+    }
+
+    await expect(
+      movePodSeatForEventManager(db, {
+        viewerUserId: fixture.memberIds[0] ?? fixture.outsiderId,
+        eventId: fixture.eventId,
+        seatId: sourceSeat.id,
+        targetPodId: targetPod.id,
+        targetSeatPosition: 2,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatMoveAuthorizationError);
+
+    const moved = await movePodSeatForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      seatId: sourceSeat.id,
+      targetPodId: targetPod.id,
+      targetSeatPosition: 2,
+    });
+
+    expect(moved.map((pod) => pod.seats.length)).toEqual([5, 2]);
+    expect(moved[0]?.seats.map((seat) => seat.seatPosition)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+    expect(moved[1]?.seats.map((seat) => seat.seatPosition)).toEqual([1, 2]);
+    expect(moved[0]?.seats[1]).toMatchObject({
+      id: sourceSeat.id,
+      participantName: sourceSeat.participantName,
+      deck: {
+        deckNameSnapshot: sourceSeat.deck?.deckNameSnapshot,
+        commanderSnapshot: sourceSeat.deck?.commanderSnapshot,
+      },
+    });
+
+    await db
+      .update(podSeats)
+      .set({
+        locked: true,
+      })
+      .where(eq(podSeats.id, sourceSeat.id));
+
+    await expect(
+      movePodSeatForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        seatId: sourceSeat.id,
+        targetPodId: moved[1]?.id ?? "",
+        targetSeatPosition: 1,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatMoveBlockedError);
   });
 });
 

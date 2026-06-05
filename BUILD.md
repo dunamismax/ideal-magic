@@ -612,14 +612,19 @@ Generation is deterministic, prefers four-player pods, handles 3-player,
 single-player leftovers, and persists `pods` plus `pod_seats` rows with
 size, bracket, and availability scores. Regeneration replaces only
 proposed draft pods and refuses to overwrite locked, active, completed,
-or cancelled pods. Authenticated event participants can see generated pod
-seats through the scoped Game Night surface, while non-members cannot.
-The projection omits emails, invite tokens, token hashes, host addresses,
-private notes, guest names/details, and private contact fields. Unit,
-PGlite integration, component rendering, Playwright, and database gates
-cover draft generation and display. Repeat-pairing history, deck-variety
-optimization, guest placement, late-arrival scoring beyond simple maybe
-availability, host overrides, manual movement, locking, publishing,
+or cancelled pods. Managers can now manually move unlocked seats between
+proposed pods and seat positions from `/game-night`; movement is
+transactional, compacts source and target seat order, preserves deck
+declaration snapshot references, refuses non-manager access, and refuses
+locked seats or non-proposed pods. Authenticated event participants can
+see generated pod seats through the scoped Game Night surface, while
+non-members cannot. The projection omits emails, invite tokens, token
+hashes, host addresses, private notes, guest names/details, and private
+contact fields. Unit, PGlite integration, component rendering,
+Playwright, and database gates cover draft generation, display, and
+manual movement. Repeat-pairing history, deck-variety optimization,
+guest placement, late-arrival scoring beyond simple maybe availability,
+host overrides, manager locking/unlocking controls, publishing,
 published-pod life-counter launch, and game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health

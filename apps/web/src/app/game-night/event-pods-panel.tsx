@@ -1,12 +1,22 @@
 "use client";
 
-import { CheckCircle2, Shuffle, UsersRound } from "lucide-react";
+import {
+  ArrowRightLeft,
+  CheckCircle2,
+  Shuffle,
+  UsersRound,
+} from "lucide-react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import type { EventPodSummary } from "@/db/queries/pods";
-import { generatePodsAction, type GeneratePodsActionState } from "./actions";
+import {
+  generatePodsAction,
+  movePodSeatAction,
+  type GeneratePodsActionState,
+  type MovePodSeatActionState,
+} from "./actions";
 
 type EventPodsPanelProps = {
   eventId: string;
@@ -85,7 +95,13 @@ export function EventPodsPanel({
       {pods.length > 0 ? (
         <div className="grid gap-3">
           {pods.map((pod) => (
-            <PodBlock key={pod.id} pod={pod} />
+            <PodBlock
+              canManageEvent={canManageEvent}
+              eventId={eventId}
+              key={pod.id}
+              pod={pod}
+              pods={pods}
+            />
           ))}
         </div>
       ) : null}
@@ -104,9 +120,22 @@ function GeneratePodsButton() {
   );
 }
 
-function PodBlock({ pod }: { pod: EventPodSummary }) {
+function PodBlock({
+  canManageEvent,
+  eventId,
+  pod,
+  pods,
+}: {
+  canManageEvent: boolean;
+  eventId: string;
+  pod: EventPodSummary;
+  pods: EventPodSummary[];
+}) {
   return (
-    <div className="rounded-control border border-border bg-background p-3">
+    <div
+      aria-label={`${pod.name} pod assignment`}
+      className="rounded-control border border-border bg-background p-3"
+    >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="text-sm font-black">{pod.name}</h4>
@@ -125,7 +154,7 @@ function PodBlock({ pod }: { pod: EventPodSummary }) {
       <ol className="mt-3 grid gap-2">
         {pod.seats.map((seat) => (
           <li
-            className="grid gap-2 rounded-control border border-border/70 bg-surface px-3 py-2 sm:grid-cols-[auto_1fr_auto] sm:items-center"
+            className="grid gap-2 rounded-control border border-border/70 bg-surface px-3 py-2 lg:grid-cols-[auto_1fr_auto] lg:items-center"
             key={seat.id}
           >
             <span className="inline-flex size-7 items-center justify-center rounded-full bg-accent text-xs font-black text-accent-foreground">
@@ -151,10 +180,128 @@ function PodBlock({ pod }: { pod: EventPodSummary }) {
                 <Badge value={`Power ${seat.deck.powerEstimateSnapshot}`} />
               ) : null}
             </div>
+            {canManageEvent ? (
+              <MoveSeatForm
+                eventId={eventId}
+                pods={pods}
+                seat={seat}
+                sourcePod={pod}
+              />
+            ) : null}
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+function createMoveSeatInitialState(input: {
+  eventId: string;
+  seatId: string;
+  targetPodId: string;
+  targetSeatPosition: number;
+}): MovePodSeatActionState {
+  return {
+    message: null,
+    saved: false,
+    fieldErrors: {},
+    fields: {
+      eventId: input.eventId,
+      seatId: input.seatId,
+      targetPodId: input.targetPodId,
+      targetSeatPosition: input.targetSeatPosition,
+    },
+  };
+}
+
+function MoveSeatForm({
+  eventId,
+  pods,
+  seat,
+  sourcePod,
+}: {
+  eventId: string;
+  pods: EventPodSummary[];
+  seat: EventPodSummary["seats"][number];
+  sourcePod: EventPodSummary;
+}) {
+  const [state, formAction] = useActionState(
+    movePodSeatAction,
+    createMoveSeatInitialState({
+      eventId,
+      seatId: seat.id,
+      targetPodId: sourcePod.id,
+      targetSeatPosition: seat.seatPosition,
+    }),
+  );
+  const moveLabel = `Move ${seat.participantName}`;
+
+  return (
+    <form action={formAction} className="grid gap-2 lg:min-w-72">
+      <input name="eventId" type="hidden" value={state.fields.eventId} />
+      <input name="seatId" type="hidden" value={state.fields.seatId} />
+      <div className="grid grid-cols-[1fr_5rem_auto] gap-2">
+        <select
+          aria-label={`${moveLabel} to pod`}
+          className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          defaultValue={state.fields.targetPodId}
+          name="targetPodId"
+        >
+          {pods.map((pod) => (
+            <option key={pod.id} value={pod.id}>
+              {pod.name}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label={`${moveLabel} to seat`}
+          className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          defaultValue={state.fields.targetSeatPosition}
+          min={1}
+          name="targetSeatPosition"
+          type="number"
+        />
+        <MoveSeatButton label={moveLabel} />
+      </div>
+      {state.message ? (
+        <p
+          className={
+            state.saved
+              ? "text-xs font-bold text-accent"
+              : "text-xs font-bold text-danger"
+          }
+          role="status"
+        >
+          {state.message}
+        </p>
+      ) : null}
+      {state.fieldErrors.targetPodId ||
+      state.fieldErrors.targetSeatPosition ||
+      state.fieldErrors.seatId ? (
+        <p className="text-xs font-bold text-danger">
+          {state.fieldErrors.targetPodId ??
+            state.fieldErrors.targetSeatPosition ??
+            state.fieldErrors.seatId}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function MoveSeatButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      aria-label={label}
+      className="size-9 p-0"
+      disabled={pending}
+      title={label}
+      type="submit"
+      variant="secondary"
+    >
+      <ArrowRightLeft className="size-4" aria-hidden="true" />
+    </Button>
   );
 }
 

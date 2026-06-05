@@ -1016,6 +1016,130 @@ test("group owners can update member roles and remove memberships", async ({
   ).toHaveCount(0);
 });
 
+test("event managers can manually move draft pod seats", async ({
+  browser,
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const ownerEmail = `pod-move-owner-${suffix}@example.test`;
+  const groupName = `Move Pods ${suffix}`;
+  const eventTitle = `Manual Pod Move ${suffix}`;
+
+  await page.goto("/signup?next=/groups");
+  await page.getByLabel("Name").fill("Player A");
+  await page.getByLabel("Email").fill(ownerEmail);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  await expect(page).toHaveURL("/groups");
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Manual pod movement smoke.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+
+  const groupCard = page.locator("article").filter({ hasText: groupName });
+
+  await groupCard.getByRole("button", { name: "Create Invite" }).click();
+  const invitePath = await groupCard
+    .getByRole("link", { name: /\/invites\/groups\// })
+    .innerText();
+
+  await page.goto("/game-night");
+  await page
+    .locator('select[name="playgroupId"]')
+    .selectOption({ label: groupName });
+  await page.getByLabel("Event Title").fill(eventTitle);
+  await page.getByLabel("Start").fill("2030-06-14T19:00");
+  await page.getByLabel("Visibility").selectOption("members");
+  await page.getByLabel("Description").fill("Seven players make two pods.");
+  await page.getByRole("button", { name: "Create Event" }).click();
+
+  let eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(
+    eventCard.getByRole("heading", { name: eventTitle }),
+  ).toBeVisible();
+  await eventCard.getByLabel("RSVP Status").selectOption("yes");
+  await eventCard.getByRole("button", { name: "Save RSVP" }).click();
+  await expect(eventCard.getByText("RSVP saved.")).toBeVisible();
+
+  for (const playerName of [
+    "Player B",
+    "Player C",
+    "Player D",
+    "Player E",
+    "Player F",
+    "Player G",
+  ]) {
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    const memberEmail = `${playerName.toLowerCase().replaceAll(" ", "-")}-${suffix}@example.test`;
+
+    await memberPage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
+    await memberPage.getByLabel("Name").fill(playerName);
+    await memberPage.getByLabel("Email").fill(memberEmail);
+    await memberPage.getByLabel("Password").fill("correct-horse-battery");
+    await memberPage.getByRole("button", { name: "Create Account" }).click();
+    await expect(memberPage).toHaveURL(invitePath);
+    await memberPage.getByRole("button", { name: "Join Group" }).click();
+    await expect(memberPage).toHaveURL("/groups");
+
+    await memberPage.goto("/game-night");
+    const memberEventCard = memberPage
+      .locator("article")
+      .filter({ hasText: eventTitle });
+
+    await expect(
+      memberEventCard.getByRole("heading", { name: eventTitle }),
+    ).toBeVisible();
+    await memberEventCard.getByLabel("RSVP Status").selectOption("yes");
+    await memberEventCard.getByRole("button", { name: "Save RSVP" }).click();
+    await expect(memberEventCard.getByText("RSVP saved.")).toBeVisible();
+    await memberContext.close();
+  }
+
+  await page.goto("/game-night");
+  eventCard = page.locator("article").filter({ hasText: eventTitle });
+  await eventCard.getByRole("button", { name: "Generate Draft Pods" }).click();
+  await expect(eventCard.getByText("Generated 2 draft pods.")).toBeVisible();
+
+  const podOne = eventCard.getByLabel("Pod 1 pod assignment");
+  const podTwo = eventCard.getByLabel("Pod 2 pod assignment");
+
+  await expect(
+    podOne.locator("li").filter({ hasText: "Player A" }),
+  ).toBeVisible();
+  await expect(
+    podTwo.locator("li").filter({ hasText: "Player B" }),
+  ).toBeVisible();
+
+  const playerBSeat = podTwo.locator("li").filter({ hasText: "Player B" });
+
+  await playerBSeat.getByLabel("Move Player B to pod").selectOption({
+    label: "Pod 1",
+  });
+  await playerBSeat.getByLabel("Move Player B to seat").fill("2");
+  await playerBSeat.getByRole("button", { name: "Move Player B" }).click();
+  await expect(
+    podOne.locator("li").filter({ hasText: "Player B" }),
+  ).toBeVisible();
+
+  await page.reload();
+  eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(
+    eventCard
+      .getByLabel("Pod 1 pod assignment")
+      .locator("li")
+      .filter({ hasText: "Player B" }),
+  ).toBeVisible();
+  await expect(
+    eventCard
+      .getByLabel("Pod 2 pod assignment")
+      .locator("li")
+      .filter({ hasText: "Player B" }),
+  ).toHaveCount(0);
+});
+
 test("authenticated group owners can create an event and RSVP", async ({
   page,
 }, testInfo) => {
@@ -1143,7 +1267,7 @@ test("authenticated group owners can create an event and RSVP", async ({
 
   await eventCard.getByRole("button", { name: "Generate Draft Pods" }).click();
   await expect(eventCard.getByText("Generated 1 draft pod.")).toBeVisible();
-  await expect(eventCard.getByText("Pod 1")).toBeVisible();
+  await expect(eventCard.getByRole("heading", { name: "Pod 1" })).toBeVisible();
   await expect(eventCard.getByText("Riley Chen")).toBeVisible();
   await expect(
     eventCard.getByText(

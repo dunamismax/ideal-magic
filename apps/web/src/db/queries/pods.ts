@@ -21,7 +21,7 @@ import {
 type PodReadDatabase = Pick<AppDatabase, "select">;
 type PodWriteDatabase = Pick<
   AppDatabase,
-  "select" | "insert" | "delete" | "transaction"
+  "select" | "insert" | "delete" | "update" | "transaction"
 >;
 
 export type PodState =
@@ -74,6 +74,20 @@ export class PodGenerationBlockedByExistingPodsError extends Error {
   constructor() {
     super("Existing non-draft pods cannot be overwritten.");
     this.name = "PodGenerationBlockedByExistingPodsError";
+  }
+}
+
+export class PodSeatMoveAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot move pod seats for this event.");
+    this.name = "PodSeatMoveAuthorizationError";
+  }
+}
+
+export class PodSeatMoveBlockedError extends Error {
+  constructor(message = "Pod seat cannot be moved.") {
+    super(message);
+    this.name = "PodSeatMoveBlockedError";
   }
 }
 
@@ -306,6 +320,149 @@ export async function listPodsForEventViewer(
   return [...podsById.values()];
 }
 
+export async function movePodSeatForEventManager(
+  db: PodWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    seatId: string;
+    targetPodId: string;
+    targetSeatPosition: number;
+  },
+): Promise<EventPodSummary[]> {
+  return runInTransaction(db, async (tx) => {
+    const eventRow = await getEventForPodAccess(tx, input.eventId);
+
+    if (!eventRow || eventRow.status !== "scheduled") {
+      throw new PodSeatMoveAuthorizationError();
+    }
+
+    const viewerRole = await getViewerRole(tx, {
+      playgroupId: eventRow.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!viewerRole || !canManageEvent(viewerRole)) {
+      throw new PodSeatMoveAuthorizationError();
+    }
+
+    const [seatRow] = await tx
+      .select({
+        id: podSeats.id,
+        podId: podSeats.podId,
+        eventId: podSeats.eventId,
+        seatPosition: podSeats.seatPosition,
+        locked: podSeats.locked,
+        participantDisplayName: playgroupMemberships.displayName,
+        userName: users.name,
+        guestName: podSeats.guestName,
+        sourcePodId: pods.id,
+        sourcePodName: pods.name,
+        sourcePodState: pods.state,
+      })
+      .from(podSeats)
+      .innerJoin(pods, eq(pods.id, podSeats.podId))
+      .leftJoin(users, eq(users.id, podSeats.userId))
+      .leftJoin(
+        playgroupMemberships,
+        and(
+          eq(playgroupMemberships.playgroupId, eventRow.playgroupId),
+          eq(playgroupMemberships.userId, podSeats.userId),
+        ),
+      )
+      .where(eq(podSeats.id, input.seatId))
+      .limit(1);
+
+    if (!seatRow || seatRow.eventId !== input.eventId) {
+      throw new PodSeatMoveAuthorizationError();
+    }
+
+    if (seatRow.locked) {
+      throw new PodSeatMoveBlockedError("Locked seats cannot be moved.");
+    }
+
+    if (seatRow.sourcePodState !== "proposed") {
+      throw new PodSeatMoveBlockedError("Only proposed pods can be adjusted.");
+    }
+
+    const [targetPod] = await tx
+      .select({
+        id: pods.id,
+        eventId: pods.eventId,
+        name: pods.name,
+        state: pods.state,
+      })
+      .from(pods)
+      .where(eq(pods.id, input.targetPodId))
+      .limit(1);
+
+    if (!targetPod || targetPod.eventId !== input.eventId) {
+      throw new PodSeatMoveAuthorizationError();
+    }
+
+    if (targetPod.state !== "proposed") {
+      throw new PodSeatMoveBlockedError("Only proposed pods can be adjusted.");
+    }
+
+    const sourceSeats = await listSeatOrderRows(tx, seatRow.podId);
+    const targetSeats =
+      targetPod.id === seatRow.podId
+        ? sourceSeats
+        : await listSeatOrderRows(tx, targetPod.id);
+    const maxTargetPosition =
+      targetPod.id === seatRow.podId
+        ? targetSeats.length
+        : targetSeats.length + 1;
+
+    if (input.targetSeatPosition > maxTargetPosition) {
+      throw new PodSeatMoveBlockedError(
+        "Target seat position is outside that pod.",
+      );
+    }
+
+    if (
+      targetPod.id === seatRow.podId &&
+      input.targetSeatPosition === seatRow.seatPosition
+    ) {
+      return listPodsForEventViewer(tx, input);
+    }
+
+    if (
+      targetSeats.some(
+        (seat) =>
+          seat.id !== seatRow.id &&
+          seat.locked &&
+          seat.seatPosition >= input.targetSeatPosition,
+      )
+    ) {
+      throw new PodSeatMoveBlockedError(
+        "Locked target seats cannot be shifted.",
+      );
+    }
+
+    const updatedOrders = createMovedSeatOrders({
+      sourcePodId: seatRow.podId,
+      targetPodId: targetPod.id,
+      movingSeatId: seatRow.id,
+      targetSeatPosition: input.targetSeatPosition,
+      sourceSeats,
+      targetSeats,
+    });
+    const now = new Date();
+
+    await applySeatOrders(tx, updatedOrders, {
+      baseTemporarySeatPosition: 10_000,
+      updatedAt: now,
+    });
+    await applySeatOrders(tx, updatedOrders, {
+      baseTemporarySeatPosition: null,
+      updatedAt: now,
+    });
+
+    return listPodsForEventViewer(tx, input);
+  });
+}
+
 async function listEligiblePodParticipants(
   db: PodReadDatabase,
   input: {
@@ -398,6 +555,115 @@ async function listEligiblePodParticipants(
       };
     })
     .filter((participant) => participant !== null);
+}
+
+type SeatOrderRow = {
+  id: string;
+  podId: string;
+  seatPosition: number;
+  locked: boolean;
+};
+
+type SeatOrderUpdate = {
+  id: string;
+  podId: string;
+  seatPosition: number;
+};
+
+async function listSeatOrderRows(
+  db: PodReadDatabase,
+  podId: string,
+): Promise<SeatOrderRow[]> {
+  return db
+    .select({
+      id: podSeats.id,
+      podId: podSeats.podId,
+      seatPosition: podSeats.seatPosition,
+      locked: podSeats.locked,
+    })
+    .from(podSeats)
+    .where(eq(podSeats.podId, podId))
+    .orderBy(asc(podSeats.seatPosition), asc(podSeats.id));
+}
+
+function createMovedSeatOrders(input: {
+  sourcePodId: string;
+  targetPodId: string;
+  movingSeatId: string;
+  targetSeatPosition: number;
+  sourceSeats: SeatOrderRow[];
+  targetSeats: SeatOrderRow[];
+}): SeatOrderUpdate[] {
+  if (input.sourcePodId === input.targetPodId) {
+    const reorderedSeats = input.sourceSeats.filter(
+      (seat) => seat.id !== input.movingSeatId,
+    );
+    const movingSeat = input.sourceSeats.find(
+      (seat) => seat.id === input.movingSeatId,
+    );
+
+    if (!movingSeat) {
+      throw new PodSeatMoveBlockedError("Seat no longer exists.");
+    }
+
+    reorderedSeats.splice(input.targetSeatPosition - 1, 0, movingSeat);
+
+    return reorderedSeats.map((seat, index) => ({
+      id: seat.id,
+      podId: input.targetPodId,
+      seatPosition: index + 1,
+    }));
+  }
+
+  const sourceUpdates = input.sourceSeats
+    .filter((seat) => seat.id !== input.movingSeatId)
+    .map((seat, index) => ({
+      id: seat.id,
+      podId: input.sourcePodId,
+      seatPosition: index + 1,
+    }));
+  const targetSeats = input.targetSeats.filter(
+    (seat) => seat.id !== input.movingSeatId,
+  );
+
+  targetSeats.splice(input.targetSeatPosition - 1, 0, {
+    id: input.movingSeatId,
+    podId: input.targetPodId,
+    seatPosition: input.targetSeatPosition,
+    locked: false,
+  });
+
+  return [
+    ...sourceUpdates,
+    ...targetSeats.map((seat, index) => ({
+      id: seat.id,
+      podId: input.targetPodId,
+      seatPosition: index + 1,
+    })),
+  ];
+}
+
+async function applySeatOrders(
+  db: Pick<AppDatabase, "update">,
+  updates: SeatOrderUpdate[],
+  input: {
+    baseTemporarySeatPosition: number | null;
+    updatedAt: Date;
+  },
+) {
+  for (const [index, update] of updates.entries()) {
+    await db
+      .update(podSeats)
+      .set({
+        podId: update.podId,
+        seatPosition:
+          input.baseTemporarySeatPosition === null
+            ? update.seatPosition
+            : input.baseTemporarySeatPosition + index,
+        updatedAt: input.updatedAt,
+      })
+      .where(eq(podSeats.id, update.id));
+  }
 }
 
 async function getEventForPodAccess(db: PodReadDatabase, eventId: string) {

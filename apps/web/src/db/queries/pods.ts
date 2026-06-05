@@ -241,7 +241,7 @@ export async function generateDraftPodsForEvent(
             eventId: input.eventId,
             rsvpId: seat.rsvpId,
             userId: seat.userId,
-            guestName: null,
+            guestName: seat.guestName,
             deckDeclarationId: seat.deckDeclaration?.id ?? null,
             deckId: seat.deckDeclaration?.deckId ?? null,
             seatPosition: seat.seatPosition,
@@ -774,7 +774,7 @@ async function listEligiblePodParticipants(
     playgroupId: string;
   },
 ): Promise<PodGenerationParticipant[]> {
-  const [rsvpRows, declarationRows] = await Promise.all([
+  const [rsvpRows, guestRsvpRows, declarationRows] = await Promise.all([
     db
       .select({
         rsvpId: eventRsvps.id,
@@ -802,6 +802,24 @@ async function listEligiblePodParticipants(
         ),
       )
       .orderBy(asc(playgroupMemberships.displayName), asc(eventRsvps.id)),
+    db
+      .select({
+        rsvpId: eventRsvps.id,
+        guestName: eventRsvps.guestName,
+        status: eventRsvps.status,
+        arrivalTime: eventRsvps.arrivalTime,
+        leavingTime: eventRsvps.leavingTime,
+      })
+      .from(eventRsvps)
+      .where(
+        and(
+          eq(eventRsvps.eventId, input.eventId),
+          sql`${eventRsvps.userId} is null`,
+          sql`${eventRsvps.status} in ('yes', 'maybe')`,
+          sql`${eventRsvps.guestName} is not null`,
+        ),
+      )
+      .orderBy(asc(eventRsvps.guestName), asc(eventRsvps.id)),
     db
       .select({
         id: eventDeckDeclarations.id,
@@ -858,7 +876,30 @@ async function listEligiblePodParticipants(
         deckDeclaration: declarationsByUserId.get(row.userId) ?? null,
       };
     })
-    .filter((participant) => participant !== null);
+    .filter((participant) => participant !== null)
+    .concat(
+      guestRsvpRows
+        .map((row): PodGenerationParticipant | null => {
+          const status = asEligibleRsvpStatus(row.status);
+          const guestName = row.guestName?.trim();
+
+          if (!status || !guestName) {
+            return null;
+          }
+
+          return {
+            rsvpId: row.rsvpId,
+            userId: null,
+            guestName,
+            displayName: guestName,
+            rsvpStatus: status,
+            arrivalTime: row.arrivalTime,
+            leavingTime: row.leavingTime,
+            deckDeclaration: null,
+          };
+        })
+        .filter((participant) => participant !== null),
+    );
 }
 
 async function listMatchupHistoryForPodGeneration(

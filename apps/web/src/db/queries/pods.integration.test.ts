@@ -214,6 +214,86 @@ describe("pod data access", () => {
     });
   });
 
+  test("generates guest RSVP seats while redacting guest names from pod summaries", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+
+    await db.insert(eventRsvps).values([
+      {
+        id: "30000000-0000-4000-8000-000000000201",
+        eventId: fixture.eventId,
+        userId: null,
+        guestName: "Private Guest One",
+        status: "yes",
+        notes: "Private guest seating note",
+      },
+      {
+        id: "30000000-0000-4000-8000-000000000202",
+        eventId: fixture.eventId,
+        userId: null,
+        guestName: "Private Guest Two",
+        status: "yes",
+        notes: "Another private guest seating note",
+      },
+    ]);
+
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    expect(generated).toHaveLength(2);
+    expect(
+      generated.map(
+        (pod) =>
+          pod.seats.filter((seat) => seat.participantName === "Guest RSVP")
+            .length,
+      ),
+    ).toEqual([1, 1]);
+    expect(generated.every((pod) => pod.guestPlacementScore === 40)).toBe(
+      true,
+    );
+
+    const persistedGuestSeats = await db
+      .select({
+        podId: podSeats.podId,
+        userId: podSeats.userId,
+        guestName: podSeats.guestName,
+      })
+      .from(podSeats)
+      .where(eq(podSeats.eventId, fixture.eventId));
+    const guestSeats = persistedGuestSeats.filter(
+      (seat) => seat.guestName !== null,
+    );
+
+    expect(guestSeats).toHaveLength(2);
+    expect(new Set(guestSeats.map((seat) => seat.podId)).size).toBe(2);
+    expect(guestSeats).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: null,
+          guestName: "Private Guest One",
+        }),
+        expect.objectContaining({
+          userId: null,
+          guestName: "Private Guest Two",
+        }),
+      ]),
+    );
+
+    const memberPods = await listPodsForEventViewer(db, {
+      viewerUserId: fixture.memberIds[1] ?? fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const summaryPayload = JSON.stringify(memberPods);
+
+    expect(summaryPayload).toContain("Guest RSVP");
+    expect(summaryPayload).not.toContain("Private Guest One");
+    expect(summaryPayload).not.toContain("Private Guest Two");
+    expect(summaryPayload).not.toContain("Private guest seating note");
+    expect(summaryPayload).not.toContain("@example.test");
+  });
+
   test("does not overwrite non-draft pods during generation", async () => {
     const { db } = await createMigratedPgliteDatabase();
     const fixture = await createPodPlanningFixture(db);

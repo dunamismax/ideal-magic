@@ -639,18 +639,24 @@ late arrivals, early leaving times, and shared availability windows.
 Generation reads scoped `matchup_history` rows for the event playgroup
 and persists the resulting size, bracket, repeat-pair, repeat-deck,
 availability, total-score, and scoring-detail values on `pods`; the
-score now affects assignments instead of only describing them. Guest
-placement remains unimplemented because guest pod seats are not modeled
-in generation yet, so `guest_placement_score` remains a neutral stored
-value. Host overrides also remain unimplemented because there is no
-override model yet. The projection omits emails, invite tokens, token
-hashes, host addresses, private notes, guest names/details, and private
-contact fields. Unit, PGlite integration, component rendering,
-Playwright, and database gates cover draft generation, scoring-driven
-repeat-pair avoidance, display, manual movement, locking, unlocking,
-publishing, unpublishing, scoped participant visibility, launch-link
-visibility, and non-member denial. Guest placement, host overrides, and
-game logging remain unimplemented.
+score now affects assignments instead of only describing them.
+Generation now also seats event-scoped guest RSVP rows as guest-backed
+participants, persists `pod_seats.guest_name` only for those guest seats,
+and scores guest placement by preferring to distribute guest RSVPs across
+pods with authenticated players instead of clumping or isolating guests.
+Participant-facing pod summaries continue to redact guest names/details
+as `Guest RSVP`. This guest support seats one guest RSVP per RSVP row;
+named plus-ones in `event_guests` and member RSVP `guest_count` values
+are not yet modeled as separate pod-seat identities. Host overrides also
+remain unimplemented because there is no override model yet. The
+projection omits emails, invite tokens, token hashes, host addresses,
+private notes, guest names/details, and private contact fields. Unit,
+PGlite integration, component rendering, Playwright, and database gates
+cover draft generation, scoring-driven repeat-pair avoidance, guest RSVP
+distribution and redaction, display, manual movement, locking,
+unlocking, publishing, unpublishing, scoped participant visibility,
+launch-link visibility, and non-member denial. Host overrides, plus-one
+guest seating, and game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 

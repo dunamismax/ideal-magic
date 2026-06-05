@@ -13,7 +13,8 @@ export type PodGenerationDeckSnapshot = {
 
 export type PodGenerationParticipant = {
   rsvpId: string;
-  userId: string;
+  userId: string | null;
+  guestName?: string | null;
   displayName: string;
   rsvpStatus: PodGenerationRsvpStatus;
   arrivalTime: Date | null;
@@ -34,7 +35,8 @@ export type PodGenerationOptions = {
 
 export type GeneratedPodSeat = {
   rsvpId: string;
-  userId: string;
+  userId: string | null;
+  guestName: string | null;
   seatPosition: number;
   arrivalTime: Date | null;
   leavingTime: Date | null;
@@ -125,6 +127,7 @@ function createPodDraft(
   const declaredDeckCount = participants.filter(
     (participant) => participant.deckDeclaration !== null,
   ).length;
+  const guestCount = participants.filter(isGuestParticipant).length;
 
   return {
     name: `Pod ${input.position}`,
@@ -133,7 +136,7 @@ function createPodDraft(
     bracketCompatibilityScore: score.bracketCompatibilityScore,
     repeatPlayerPairPenalty: score.repeatPlayerPairPenalty,
     repeatDeckMatchupPenalty: score.repeatDeckMatchupPenalty,
-    guestPlacementScore: 0,
+    guestPlacementScore: score.guestPlacementScore,
     availabilityWindowScore: score.availabilityWindowScore,
     totalScore: score.totalScore,
     scoringDetails: {
@@ -147,19 +150,18 @@ function createPodDraft(
         (participant) => participant.rsvpStatus === "maybe",
       ).length,
       declaredDeckCount,
+      guestCount,
       bracketSpread: getBracketSpread(participants),
       deckVariety: score.deckVarietyDetails,
       repeatPairing: score.repeatPairingDetails,
       availability: score.availabilityDetails,
-      guestPlacement: {
-        score: 0,
-        status: "not-modeled-for-authenticated-rsvps",
-      },
+      guestPlacement: score.guestPlacementDetails,
       notes: getPodSizeNote(participants.length),
     },
     seats: participants.map((participant, index) => ({
       rsvpId: participant.rsvpId,
       userId: participant.userId,
+      guestName: participant.guestName ?? null,
       seatPosition: index + 1,
       arrivalTime: participant.arrivalTime,
       leavingTime: participant.leavingTime,
@@ -174,11 +176,13 @@ type PodScore = {
   repeatPlayerPairPenalty: number;
   repeatDeckMatchupPenalty: number;
   availabilityWindowScore: number;
+  guestPlacementScore: number;
   deckVarietyScore: number;
   totalScore: number;
   deckVarietyDetails: Record<string, unknown>;
   repeatPairingDetails: Record<string, unknown>;
   availabilityDetails: Record<string, unknown>;
+  guestPlacementDetails: Record<string, unknown>;
 };
 
 type PodScoringContext = {
@@ -420,6 +424,7 @@ function scorePodParticipants(
   const bracketCompatibilityScore = scoreBracketCompatibility(participants);
   const deckVariety = scoreDeckVariety(participants);
   const availability = scoreAvailability(participants);
+  const guestPlacement = scoreGuestPlacement(participants);
   const repeatPairing = scoreRepeatPairings(participants, scoringContext);
   const repeatPlayerPairPenalty = repeatPairing.playerPairCount * 35;
   const repeatDeckMatchupPenalty = repeatPairing.deckMatchupCount * 20;
@@ -427,7 +432,8 @@ function scorePodParticipants(
     sizeFitScore +
     bracketCompatibilityScore +
     deckVariety.score +
-    availability.score -
+    availability.score +
+    guestPlacement.score -
     repeatPlayerPairPenalty -
     repeatDeckMatchupPenalty;
 
@@ -437,6 +443,7 @@ function scorePodParticipants(
     repeatPlayerPairPenalty,
     repeatDeckMatchupPenalty,
     availabilityWindowScore: availability.score,
+    guestPlacementScore: guestPlacement.score,
     deckVarietyScore: deckVariety.score,
     totalScore,
     deckVarietyDetails: deckVariety.details,
@@ -447,6 +454,7 @@ function scorePodParticipants(
       deckPenalty: repeatDeckMatchupPenalty,
     },
     availabilityDetails: availability.details,
+    guestPlacementDetails: guestPlacement.details,
   };
 }
 
@@ -648,6 +656,51 @@ function scoreDeckVariety(participants: PodGenerationParticipant[]) {
   };
 }
 
+function scoreGuestPlacement(participants: PodGenerationParticipant[]) {
+  const guestCount = participants.filter(isGuestParticipant).length;
+  const userBackedCount = participants.length - guestCount;
+  const repeatedGuestCount = Math.max(0, guestCount - 1);
+  const isolatedGuestPod = guestCount > 0 && userBackedCount === 0;
+  let penalty = repeatedGuestCount * 24;
+
+  if (guestCount === 0) {
+    return {
+      score: 0,
+      details: {
+        score: 0,
+        guestCount,
+        userBackedCount,
+        repeatedGuestCount,
+        isolatedGuestPod,
+      },
+    };
+  }
+
+  if (isolatedGuestPod) {
+    penalty += 40;
+  }
+
+  if (guestCount >= 3 && userBackedCount === 1) {
+    penalty += 12;
+  }
+  const score = Math.max(0, 40 - penalty);
+
+  return {
+    score,
+    details: {
+      score,
+      guestCount,
+      userBackedCount,
+      repeatedGuestCount,
+      isolatedGuestPod,
+    },
+  };
+}
+
+function isGuestParticipant(participant: PodGenerationParticipant) {
+  return participant.userId === null;
+}
+
 function scoreRepeatPairings(
   participants: PodGenerationParticipant[],
   scoringContext: PodScoringContext,
@@ -774,11 +827,15 @@ function getBucketSignature(buckets: PodGenerationParticipant[][]) {
   return buckets
     .map((bucket) =>
       bucket
-        .map((participant) => participant.userId)
+        .map((participant) => getParticipantIdentity(participant))
         .toSorted()
         .join(","),
     )
     .join("|");
+}
+
+function getParticipantIdentity(participant: PodGenerationParticipant) {
+  return participant.userId ?? `guest:${participant.rsvpId}`;
 }
 
 function getBracketSpread(participants: PodGenerationParticipant[]) {

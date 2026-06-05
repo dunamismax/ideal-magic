@@ -177,6 +177,42 @@ describe("pod generation", () => {
       ),
     ).toBe(true);
   });
+
+  test("scores guest placement by distributing guest RSVPs across pods", () => {
+    const pods = generateDraftPodAssignments([
+      participant("Ari", "yes", "3", 6),
+      participant("Bea", "yes", "3", 6),
+      participant("Cal", "yes", "3", 6),
+      participant("Dee", "yes", "3", 6),
+      participant("Eli", "yes", "3", 6),
+      participant("Fae", "yes", "3", 6),
+      guestParticipant("Guest Alpha", "yes"),
+      guestParticipant("Guest Beta", "yes"),
+    ]);
+
+    expect(pods).toHaveLength(2);
+    expect(
+      pods.map(
+        (pod) => pod.seats.filter((seat) => seat.userId === null).length,
+      ),
+    ).toEqual([1, 1]);
+    expect(pods.every((pod) => pod.guestPlacementScore === 40)).toBe(true);
+    expect(pods[0]?.scoringDetails).toMatchObject({
+      guestCount: 1,
+      guestPlacement: {
+        guestCount: 1,
+        repeatedGuestCount: 0,
+        isolatedGuestPod: false,
+      },
+    });
+    expect(
+      pods.flatMap((pod) =>
+        pod.seats
+          .filter((seat) => seat.userId === null)
+          .map((seat) => seat.guestName),
+      ),
+    ).toEqual(["Guest Alpha", "Guest Beta"]);
+  });
 });
 
 type ParticipantOptions = {
@@ -210,5 +246,21 @@ function participant(
       powerEstimateSnapshot: power,
       archetypeSnapshot: options.archetype ?? "Midrange",
     },
+  };
+}
+
+function guestParticipant(
+  name: string,
+  rsvpStatus: PodGenerationParticipant["rsvpStatus"],
+): PodGenerationParticipant {
+  return {
+    rsvpId: `${name.toLowerCase().replaceAll(" ", "-")}-rsvp-id`,
+    userId: null,
+    guestName: name,
+    displayName: name,
+    rsvpStatus,
+    arrivalTime: null,
+    leavingTime: null,
+    deckDeclaration: null,
   };
 }

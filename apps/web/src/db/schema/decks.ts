@@ -118,6 +118,16 @@ export const eventDeckDeclarations = core.table(
       .notNull()
       .default(""),
     bracketSnapshot: text("bracket_snapshot"),
+    powerEstimateSnapshot: integer("power_estimate_snapshot"),
+    archetypeSnapshot: text("archetype_snapshot").notNull().default(""),
+    tagsSnapshot: text("tags_snapshot")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    visibilitySnapshot: text("visibility_snapshot")
+      .notNull()
+      .default("private"),
+    externalUrlSnapshot: text("external_url_snapshot"),
     testingNotes: text("testing_notes").notNull().default(""),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -145,6 +155,14 @@ export const eventDeckDeclarations = core.table(
     check(
       "event_deck_declarations_color_identity_snapshot_check",
       sql`${table.colorIdentitySnapshot} ~ '^[WUBRG]*$'`,
+    ),
+    check(
+      "event_deck_declarations_power_estimate_snapshot_check",
+      sql`${table.powerEstimateSnapshot} is null or ${table.powerEstimateSnapshot} between 1 and 10`,
+    ),
+    check(
+      "event_deck_declarations_visibility_snapshot_check",
+      sql`${table.visibilitySnapshot} in ('private', 'playgroup', 'public')`,
     ),
   ],
 );

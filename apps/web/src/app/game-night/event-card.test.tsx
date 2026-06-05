@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 
+import type { EventDeckDeclaration, ViewerDeck } from "@/db/queries/decks";
 import type { EventPlanningSummary } from "@/db/queries/event-planning";
 import { EventCard } from "./page";
 
@@ -40,6 +41,40 @@ const baseEvent: EventPlanningSummary = {
     pods: 0,
     loggedGames: 0,
   },
+};
+
+const viewerDeck: ViewerDeck = {
+  id: "20000000-0000-4000-8000-000000000003",
+  name: "Atraxa Counters",
+  commanders: ["Atraxa, Grand Unifier"],
+  colorIdentity: "WUBG",
+  bracket: "3",
+  powerEstimate: 7,
+  archetype: "Counters",
+  tags: ["midrange"],
+  visibility: "private",
+  playgroup: null,
+  externalUrl: null,
+  createdAt: new Date("2026-06-04T00:00:00.000Z"),
+  updatedAt: new Date("2026-06-04T00:00:00.000Z"),
+};
+
+const declaration: EventDeckDeclaration = {
+  id: "20000000-0000-4000-8000-000000000004",
+  eventId: baseEvent.id,
+  userId: "20000000-0000-4000-8000-000000000005",
+  deckId: viewerDeck.id,
+  preference: 1,
+  deckNameSnapshot: "Atraxa Counters",
+  commanderSnapshot: ["Atraxa, Grand Unifier"],
+  colorIdentitySnapshot: "WUBG",
+  bracketSnapshot: "3",
+  powerEstimateSnapshot: 7,
+  archetypeSnapshot: "Counters",
+  tagsSnapshot: ["midrange"],
+  visibilitySnapshot: "private",
+  externalUrlSnapshot: null,
+  createdAt: new Date("2026-06-04T00:00:00.000Z"),
 };
 
 describe("event card", () => {
@@ -88,5 +123,40 @@ describe("event card", () => {
     expect(
       screen.queryByRole("button", { name: "Archive Event" }),
     ).not.toBeInTheDocument();
+  });
+
+  test("renders deck declaration controls from snapshot metadata", () => {
+    render(
+      <EventCard
+        declarations={[declaration]}
+        decks={[
+          viewerDeck,
+          {
+            ...viewerDeck,
+            id: "20000000-0000-4000-8000-000000000006",
+            name: "Krenko Tokens",
+            commanders: ["Krenko, Mob Boss"],
+            colorIdentity: "R",
+            bracket: "2",
+            powerEstimate: 5,
+            archetype: "Tokens",
+          },
+        ]}
+        event={baseEvent}
+      />,
+    );
+
+    expect(screen.getByText("Deck Declarations")).toBeInTheDocument();
+    expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
+    expect(screen.getByText("Atraxa, Grand Unifier")).toBeInTheDocument();
+    expect(screen.getByText("Bracket 3")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Declare Deck" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Undeclare Atraxa Counters" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/token hash/i)).not.toBeInTheDocument();
   });
 });

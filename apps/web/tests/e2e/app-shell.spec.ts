@@ -1022,6 +1022,7 @@ test("authenticated group owners can create an event and RSVP", async ({
   const suffix = `${Date.now()}-${testInfo.workerIndex}`;
   const email = `event-smoke-${suffix}@example.test`;
   const groupName = `Saturday Hosts ${suffix}`;
+  const deckName = `Atraxa Counters ${suffix}`;
   const eventTitle = `Saturday Commander ${suffix}`;
   const editedEventTitle = `Sunday Commander ${suffix}`;
 
@@ -1037,11 +1038,41 @@ test("authenticated group owners can create an event and RSVP", async ({
   await page.getByRole("button", { name: "Create Group" }).click();
   await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
 
+  await page.goto("/decks");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Decks" }),
+  ).toBeVisible();
+  await page.getByLabel("Deck Name").fill(deckName);
+  await page
+    .getByLabel("Commanders")
+    .fill("Atraxa, Grand Unifier\nTekuthal, Inquiry Dominus");
+  await page.getByLabel("Colors").fill("wubg");
+  await page.getByLabel("Bracket").selectOption("3");
+  await page.getByLabel("Power").fill("7");
+  await page.getByLabel("Archetype").fill("Counters");
+  await page.getByLabel("Tags").fill("midrange, proliferate");
+  await page.getByLabel("Visibility").selectOption("playgroup");
+  await page
+    .locator('select[name="playgroupId"]')
+    .selectOption({ label: groupName });
+  await page
+    .getByLabel("External URL")
+    .fill("https://example.test/decks/atraxa");
+  await page.getByRole("button", { name: "Create Deck" }).click();
+
+  const deckCard = page.locator("article").filter({ hasText: deckName });
+
+  await expect(deckCard.getByRole("heading", { name: deckName })).toBeVisible();
+  await expect(deckCard.getByText("Atraxa, Grand Unifier")).toBeVisible();
+  await expect(deckCard.getByText("WUBG")).toBeVisible();
+
   await page.goto("/game-night");
   await expect(
     page.getByRole("heading", { level: 1, name: "Game Night" }),
   ).toBeVisible();
-  await page.getByLabel("Playgroup").selectOption({ label: groupName });
+  await page
+    .locator('select[name="playgroupId"]')
+    .selectOption({ label: groupName });
   await page.getByLabel("Event Title").fill(eventTitle);
   await page.getByLabel("Start").fill("2030-06-14T19:00");
   await page.getByLabel("Visibility").selectOption("members");
@@ -1058,6 +1089,22 @@ test("authenticated group owners can create an event and RSVP", async ({
     eventCard.locator("span").filter({ hasText: "Members" }),
   ).toBeVisible();
   await expect(eventCard.getByText("owner")).toBeVisible();
+
+  await eventCard
+    .locator('select[name="deckId"]')
+    .selectOption({ label: deckName });
+  await eventCard.locator('select[name="preference"]').selectOption("2");
+  await eventCard.getByRole("button", { name: "Declare Deck" }).click();
+  await expect(eventCard.getByText("Deck declared.")).toBeVisible();
+  await expect(eventCard.getByText(deckName).first()).toBeVisible();
+  await expect(eventCard.getByText("Bracket 3")).toBeVisible();
+  await expect(eventCard.getByText("Power 7")).toBeVisible();
+
+  await eventCard
+    .getByRole("button", { name: `Undeclare ${deckName}` })
+    .click();
+  await expect(eventCard.getByText("Deck undeclared.")).toBeVisible();
+  await expect(eventCard.getByText("No decks declared.")).toBeVisible();
 
   await eventCard.getByLabel("RSVP Status").selectOption("maybe");
   await eventCard.getByLabel("Arrival").fill("2030-06-14T19:30");

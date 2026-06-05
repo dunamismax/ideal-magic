@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 
 import { createDatabase } from "@/db/client";
 import {
+  declareDeckForEvent,
+  DeckDeclarationAuthorizationError,
+  DeckDeclarationDuplicateError,
+  undeclareDeckForEvent,
+} from "@/db/queries/decks";
+import {
   createEventForPlaygroup,
   EventCreationAuthorizationError,
   EventManagementAuthorizationError,
@@ -26,6 +32,12 @@ import {
   type MemberRsvpInput,
   validateMemberRsvpInput,
 } from "@/features/events/member-rsvp";
+import {
+  type DeckDeclarationInput,
+  type UndeclareDeckInput,
+  validateDeckDeclarationInput,
+  validateUndeclareDeckInput,
+} from "@/features/decks/deck-form";
 
 export type CreateEventActionState = {
   message: string | null;
@@ -52,6 +64,20 @@ export type EventStatusActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof EventStatusInput, string>>;
   fields: EventStatusInput;
+};
+
+export type DeckDeclarationActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof DeckDeclarationInput, string>>;
+  fields: DeckDeclarationInput;
+};
+
+export type UndeclareDeckActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof UndeclareDeckInput, string>>;
+  fields: UndeclareDeckInput;
 };
 
 export async function createEventAction(
@@ -293,5 +319,130 @@ export async function updateEventStatusAction(
     saved: true,
     fieldErrors: {},
     fields: validation.input,
+  };
+}
+
+export async function declareDeckAction(
+  _previousState: DeckDeclarationActionState,
+  formData: FormData,
+): Promise<DeckDeclarationActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: DeckDeclarationInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+    deckId: String(formData.get("deckId") ?? ""),
+    preference: String(formData.get("preference") ?? ""),
+  };
+  const validation = validateDeckDeclarationInput(fields);
+
+  if (!validation.ok) {
+    return {
+      message: "Fix the highlighted deck declaration fields.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await declareDeckForEvent(createDatabase(), {
+      viewerUserId: session.user.id,
+      ...validation.input,
+    });
+  } catch (error) {
+    if (error instanceof DeckDeclarationAuthorizationError) {
+      return {
+        message: "You cannot declare that deck for this event.",
+        saved: false,
+        fieldErrors: {
+          deckId: "Choose one of your decks for a scoped event.",
+        },
+        fields,
+      };
+    }
+
+    if (error instanceof DeckDeclarationDuplicateError) {
+      return {
+        message: "That deck is already declared for this event.",
+        saved: false,
+        fieldErrors: {
+          deckId: "Choose a different deck.",
+        },
+        fields,
+      };
+    }
+
+    console.error("Deck declaration failed", error);
+
+    return {
+      message: "Could not declare the deck. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields,
+    };
+  }
+
+  revalidatePath("/game-night");
+
+  return {
+    message: "Deck declared.",
+    saved: true,
+    fieldErrors: {},
+    fields,
+  };
+}
+
+export async function undeclareDeckAction(
+  _previousState: UndeclareDeckActionState,
+  formData: FormData,
+): Promise<UndeclareDeckActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: UndeclareDeckInput = {
+    declarationId: String(formData.get("declarationId") ?? ""),
+  };
+  const validation = validateUndeclareDeckInput(fields);
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid deck declaration.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await undeclareDeckForEvent(createDatabase(), {
+      viewerUserId: session.user.id,
+      declarationId: validation.input.declarationId,
+    });
+  } catch (error) {
+    if (error instanceof DeckDeclarationAuthorizationError) {
+      return {
+        message: "You cannot remove that deck declaration.",
+        saved: false,
+        fieldErrors: {
+          declarationId: "Choose one of your declarations.",
+        },
+        fields,
+      };
+    }
+
+    console.error("Deck undeclaration failed", error);
+
+    return {
+      message: "Could not remove the deck declaration. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields,
+    };
+  }
+
+  revalidatePath("/game-night");
+
+  return {
+    message: "Deck undeclared.",
+    saved: true,
+    fieldErrors: {},
+    fields,
   };
 }

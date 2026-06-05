@@ -10,6 +10,12 @@ import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/ui/empty-state";
 import { createDatabase } from "@/db/client";
 import {
+  listDecksForOwner,
+  listEventDeckDeclarationsForViewer,
+  type EventDeckDeclaration,
+  type ViewerDeck,
+} from "@/db/queries/decks";
+import {
   type EventPlanningSummary,
   getScopedEventPlanningSummary,
   listUpcomingEventsForViewer,
@@ -18,6 +24,7 @@ import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
 import { canManageEvent } from "@/db/scopes";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateEventForm } from "./create-event-form";
+import { EventDeckDeclarationForm } from "./event-deck-declaration-form";
 import { EventManagementForm } from "./event-management-form";
 import { MemberRsvpForm } from "./member-rsvp-form";
 
@@ -26,7 +33,7 @@ export const dynamic = "force-dynamic";
 export default async function GameNightPage() {
   const session = await requireServerSession("/game-night");
   const db = createDatabase();
-  const [groups, upcomingEvents] = await Promise.all([
+  const [groups, upcomingEvents, decks] = await Promise.all([
     listPlaygroupsForViewer(db, {
       viewerUserId: session.user.id,
     }),
@@ -35,6 +42,9 @@ export default async function GameNightPage() {
       page: {
         pageSize: 8,
       },
+    }),
+    listDecksForOwner(db, {
+      ownerUserId: session.user.id,
     }),
   ]);
   const eventSummaries = (
@@ -47,6 +57,18 @@ export default async function GameNightPage() {
       ),
     )
   ).filter((event) => event !== null);
+  const declarationEntries = await Promise.all(
+    eventSummaries.map(async (event) => [
+      event.id,
+      await listEventDeckDeclarationsForViewer(db, {
+        eventId: event.id,
+        viewerUserId: session.user.id,
+      }),
+    ]),
+  );
+  const declarationsByEventId = new Map(
+    declarationEntries as [string, EventDeckDeclaration[]][],
+  );
   const eventCreatableGroups = groups
     .filter((group) => canManageEvent(group.role))
     .map((group) => ({
@@ -93,7 +115,12 @@ export default async function GameNightPage() {
           {eventSummaries.length > 0 ? (
             <div className="grid gap-3">
               {eventSummaries.map((event) => (
-                <EventCard event={event} key={event.id} />
+                <EventCard
+                  decks={decks}
+                  declarations={declarationsByEventId.get(event.id) ?? []}
+                  event={event}
+                  key={event.id}
+                />
               ))}
             </div>
           ) : (
@@ -105,7 +132,15 @@ export default async function GameNightPage() {
   );
 }
 
-export function EventCard({ event }: { event: EventPlanningSummary }) {
+export function EventCard({
+  event,
+  decks = [],
+  declarations = [],
+}: {
+  event: EventPlanningSummary;
+  decks?: ViewerDeck[];
+  declarations?: EventDeckDeclaration[];
+}) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
       <div className="grid gap-4">
@@ -141,6 +176,14 @@ export function EventCard({ event }: { event: EventPlanningSummary }) {
           <RsvpCount label="No" value={event.counts.rsvps.no} />
           <RsvpCount label="Waitlist" value={event.counts.rsvps.waitlist} />
         </div>
+
+        {event.viewer.canRsvp ? (
+          <EventDeckDeclarationForm
+            declarations={declarations}
+            decks={decks}
+            eventId={event.id}
+          />
+        ) : null}
 
         {event.viewer.canRsvp ? (
           <MemberRsvpForm

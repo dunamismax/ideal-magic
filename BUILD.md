@@ -555,15 +555,32 @@ address disclosure, or public calendar export.
 ## Phase 8 - Deck Declarations
 
 - [ ] Build lightweight deck CRUD for commander-night planning.
-- [ ] Support name, commander or commanders, colors, bracket/power,
+- [x] Support name, commander or commanders, colors, bracket/power,
   archetype/tags, visibility, owner, and optional external URL.
-- [ ] Build event deck declaration and undeclaration flows.
+- [x] Build event deck declaration and undeclaration flows.
 - [ ] Snapshot declaration metadata for events and game records.
 - [ ] Add commander lookup where it makes entry faster and more accurate.
-- [ ] Avoid full deckbuilder, collection tracking, and card inventory
+- [x] Avoid full deckbuilder, collection tracking, and card inventory
   behavior.
-- [ ] Verify deck creation and event deck declaration with tests and
+- [x] Verify deck creation and event deck declaration with tests and
   Playwright.
+
+Current Phase 8 foundation adds authenticated lightweight deck create/list
+in `/decks` for planning metadata only: deck name, one or more manually
+entered commanders, color identity, bracket, power estimate, archetype,
+tags, visibility, owner, optional playgroup scope, and optional external
+URL. It adds scoped event deck declaration and undeclaration controls to
+`/game-night` for authenticated event participants, with owner-only deck
+selection and declaration-time snapshots for deck name, commanders,
+colors, bracket, power estimate, archetype, tags, visibility, and external
+URL. PGlite integration tests cover owner-scoped deck lists, playgroup
+visibility authorization, declaration authorization, duplicate
+protection, undeclaration, and immutable snapshots after later deck edits.
+Unit/component tests cover validation and public-safe rendering, and
+Playwright covers signup -> group -> deck create -> event create -> deck
+declaration -> undeclaration -> RSVP. Full deck update/delete UI,
+commander lookup, game-record snapshot integration, full deckbuilder,
+collection tracking, and card inventory remain unimplemented.
 
 ## Phase 9 - Pod Generation And Pod Management
 

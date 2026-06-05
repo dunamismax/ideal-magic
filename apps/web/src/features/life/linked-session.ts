@@ -7,6 +7,7 @@ import {
   type LifeCounterSnapshot,
   type Player,
 } from "./session";
+import type { EventLifeCounterParticipantSummary } from "@/db/queries/event-planning";
 import type { EventPodSummary } from "@/db/queries/pods";
 
 type LinkedPlayer = {
@@ -19,21 +20,6 @@ type LinkedPlayer = {
 
 type LinkedPodSeat = LinkedPlayer & {
   seat: string;
-};
-
-type LinkedEvent = {
-  id: string;
-  title: string;
-  dateLabel: string;
-  participants: LinkedPlayer[];
-  pods: LinkedPod[];
-};
-
-type LinkedPod = {
-  id: string;
-  label: string;
-  published: boolean;
-  seats: LinkedPodSeat[];
 };
 
 export type LinkedLifeCounterContext = {
@@ -57,180 +43,45 @@ type PublishedPodLifeCounterInput = {
   now?: string;
 };
 
-const linkedEvents = [
-  {
-    id: "commander-night-demo",
-    title: "Wednesday Commander Night",
-    dateLabel: "June 3, 2026",
-    participants: [
-      {
-        id: "nora",
-        name: "Nora",
-        commanders: ["Muldrotha, the Gravetide"],
-        deckLabel: "Graveyard Value",
-        color: "player-a",
-      },
-      {
-        id: "theo",
-        name: "Theo",
-        commanders: ["Alela, Artful Provocateur"],
-        deckLabel: "Faerie Tempo",
-        color: "player-b",
-      },
-      {
-        id: "mara",
-        name: "Mara",
-        commanders: ["Isshin, Two Heavens as One"],
-        deckLabel: "Attack Triggers",
-        color: "player-c",
-      },
-      {
-        id: "sol",
-        name: "Sol",
-        commanders: ["Etali, Primal Conqueror"],
-        deckLabel: "Big Mana",
-        color: "player-d",
-      },
-      {
-        id: "jules",
-        name: "Jules",
-        commanders: ["Kraum, Ludevic's Opus", "Tymna the Weaver"],
-        deckLabel: "Partner Midrange",
-        color: "player-e",
-      },
-      {
-        id: "priya",
-        name: "Priya",
-        commanders: ["Shorikai, Genesis Engine"],
-        deckLabel: "Artifact Control",
-        color: "player-f",
-      },
-    ],
-    pods: [
-      {
-        id: "pod-alpha",
-        label: "Pod Alpha",
-        published: true,
-        seats: [
-          {
-            id: "nora",
-            name: "Nora",
-            commanders: ["Muldrotha, the Gravetide"],
-            deckLabel: "Graveyard Value",
-            seat: "North",
-            color: "player-a",
-          },
-          {
-            id: "theo",
-            name: "Theo",
-            commanders: ["Alela, Artful Provocateur"],
-            deckLabel: "Faerie Tempo",
-            seat: "East",
-            color: "player-b",
-          },
-          {
-            id: "mara",
-            name: "Mara",
-            commanders: ["Isshin, Two Heavens as One"],
-            deckLabel: "Attack Triggers",
-            seat: "South",
-            color: "player-c",
-          },
-          {
-            id: "sol",
-            name: "Sol",
-            commanders: ["Etali, Primal Conqueror"],
-            deckLabel: "Big Mana",
-            seat: "West",
-            color: "player-d",
-          },
-        ],
-      },
-      {
-        id: "pod-beta",
-        label: "Pod Beta",
-        published: true,
-        seats: [
-          {
-            id: "jules",
-            name: "Jules",
-            commanders: ["Kraum, Ludevic's Opus", "Tymna the Weaver"],
-            deckLabel: "Partner Midrange",
-            seat: "North",
-            color: "player-e",
-          },
-          {
-            id: "priya",
-            name: "Priya",
-            commanders: ["Shorikai, Genesis Engine"],
-            deckLabel: "Artifact Control",
-            seat: "East",
-            color: "player-f",
-          },
-          {
-            id: "guest-1",
-            name: "Guest 1",
-            commanders: ["Tatyova, Benthic Druid"],
-            deckLabel: "Lands",
-            seat: "South",
-            color: "player-g",
-          },
-        ],
-      },
-    ],
-  },
-] satisfies LinkedEvent[];
-
-export function getEventLifeCounterContext(
-  eventId: string,
+export function createEventLifeCounterContextFromParticipants({
+  event,
+  participants,
   now = new Date().toISOString(),
-): LinkedLifeCounterContext | null {
-  const event = linkedEvents.find((entry) => entry.id === eventId);
-
-  if (!event) {
-    return null;
-  }
-
-  const snapshot = createSnapshotFromLinkedPlayers(event.participants);
+}: {
+  event: {
+    id: string;
+    title: string;
+    startsAt: Date;
+  };
+  participants: readonly EventLifeCounterParticipantSummary[];
+  now?: string;
+}): LinkedLifeCounterContext {
+  const snapshot = createSnapshotFromLinkedPlayers(
+    participants.map((participant, index) => ({
+      id: participant.id,
+      name: participant.participantName,
+      commanders: participant.deck?.commanderSnapshot ?? [],
+      deckLabel: participant.deck?.deckNameSnapshot ?? "",
+      seat: seats[index] ?? `Seat ${index + 1}`,
+    })),
+  );
 
   return {
     kind: "event",
-    eventId,
+    eventId: event.id,
     title: `${event.title} Life Counter`,
-    eyebrow: `Event-linked local session - ${event.dateLabel}`,
-    statusLabel: `${snapshot.playerCount} event players imported from RSVPs and declared decks. Server save is not enabled yet.`,
-    importedPlayerCount: snapshot.playerCount,
+    eyebrow: `Event-linked local session - ${event.startsAt.toLocaleDateString(
+      "en-US",
+      {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      },
+    )}`,
+    statusLabel: `${participants.length} event players imported from RSVPs and declared decks. Save a completed result when the game is ready for group history.`,
+    importedPlayerCount: participants.length,
     session: createInitialLifeCounterSession(now, {
-      id: createLinkedSessionId("event", eventId),
-      snapshot,
-    }),
-  };
-}
-
-export function getPodLifeCounterContext(
-  eventId: string,
-  podId: string,
-  now = new Date().toISOString(),
-): LinkedLifeCounterContext | null {
-  const event = linkedEvents.find((entry) => entry.id === eventId);
-  const pod = event?.pods.find((entry) => entry.id === podId);
-
-  if (!event || !pod || !pod.published) {
-    return null;
-  }
-
-  const snapshot = createSnapshotFromLinkedPlayers(pod.seats);
-
-  return {
-    kind: "pod",
-    eventId,
-    podId,
-    title: `${pod.label} Life Counter`,
-    eyebrow: `Pod-linked local session - ${event.title}`,
-    statusLabel: `${snapshot.playerCount} published pod seats imported in table order. Server save is not enabled yet.`,
-    importedPlayerCount: snapshot.playerCount,
-    session: createInitialLifeCounterSession(now, {
-      id: createLinkedSessionId("pod", eventId, podId),
+      id: createLinkedSessionId("event", event.id),
       snapshot,
     }),
   };

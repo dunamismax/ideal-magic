@@ -460,8 +460,10 @@ or complete auth/server save behavior.
   event or pod.
 - [x] Convert a completed pod-linked counter session into a structured
   game log through explicit result selection.
-- [ ] Convert standalone and event-linked counter sessions into
-  structured game logs when scoped and explicitly saved.
+- [x] Convert event-linked counter sessions into structured game logs
+  when scoped and explicitly saved.
+- [ ] Convert standalone counter sessions into structured game logs when
+  scoped and explicitly saved.
 - [ ] Preserve local Dexie history after server save.
 - [ ] Handle offline edits and later sync without overwriting newer
   server state silently.
@@ -472,19 +474,26 @@ or complete auth/server save behavior.
 - [ ] Verify linked game save with Playwright once Postgres save and
   game-log conversion exist.
 
-Current Phase 6 foundation originally used deterministic local fixture
-data in the TypeScript app to prove linked route shape, setup import,
-and local Dexie session separation. The pod-linked route
-`/events/[eventId]/pods/[podId]/life` now uses authenticated scoped
-Postgres access for published pod seats, imports safe participant names
-and deck/commander snapshots into the local counter, and exposes an
-explicit save form for locked published pods. Saving a completed
-pod-linked counter result creates structured game history through the
-same transactional `games`, `game_players`, `game_results`, and
+Current Phase 6 originally used deterministic local fixture data in the
+TypeScript app to prove linked route shape, setup import, and local Dexie
+session separation. The event-linked route `/events/[eventId]/life` now
+uses authenticated scoped Postgres access for yes/maybe event RSVPs,
+imports safe participant names plus each member's preferred event deck
+declaration snapshot into the local counter, and exposes an explicit
+save form when at least two eligible event participants are available.
+Saving a completed event-linked counter result creates event-only game
+history with `games.pod_id = null`, `game_players.pod_seat_id = null`,
+valid `game_results`, and `matchup_history` rows. The pod-linked route
+`/events/[eventId]/pods/[podId]/life` uses authenticated scoped Postgres
+access for published pod seats, imports safe participant names and
+deck/commander snapshots into the local counter, and exposes an explicit
+save form for locked published pods. Saving a completed pod-linked
+counter result creates structured game history through the same
+transactional `games`, `game_players`, `game_results`, and
 `matchup_history` writer used by pod quick logging. Guest names remain
 internal and render as `Guest RSVP`; local counter notes and unsaved
 session state are not submitted. This does not implement Postgres
-counter snapshot save, server sync, conflict handling, standalone/event
+counter snapshot save, server sync, conflict handling, standalone
 counter game-log conversion, finish order beyond winner marking,
 elimination detail, poison/commander-damage loss detail, or Playwright
 coverage for the save flow.
@@ -675,8 +684,8 @@ guest seating, and life-counter-to-game logging remain unimplemented.
 - [x] Build quick game logging from an event pod.
 - [x] Build game logging from a completed pod-linked life counter session
   with explicit result selection.
-- [ ] Build game logging from standalone and event-linked life counter
-  sessions.
+- [x] Build game logging from event-linked life counter sessions.
+- [ ] Build game logging from standalone life counter sessions.
 - [ ] Store result type, winner or winners, participants, commanders,
   decks, finish order, eliminations, commander-damage losses, poison
   losses, and notes.
@@ -739,25 +748,33 @@ component tests cover the `/game-night` quick-log controls,
 event-card history display and empty state, `/history` game list,
 multiple-winner display, and empty state.
 
-Completed pod-linked life counters can now save an explicit result to
-group history from `/events/[eventId]/pods/[podId]/life` for
-authenticated scoped viewers who can log that pod. The route imports
-published pod seats from Postgres instead of demo fixtures, keeps the
-counter session local in Dexie, and submits only event ID, pod ID, result
-type, winner seat IDs, and optional notes when the player chooses to
-save. The save path reuses the same transactional game writer as
-quick-logging, so it persists coherent `games`, `game_players`,
-`game_results`, and `matchup_history` rows, updates the pod to
-completed, applies the same result semantics, and keeps guest names,
-emails, invite tokens/token hashes, host addresses, RSVP notes, private
-guest details, and contact data out of UI/action projections. Focused
-unit, component, and PGlite tests cover pod-linked counter import, save
-validation, the save form, scoped save persistence, team/no-winner
-semantics through the shared writer, non-member denial, guest redaction,
-and matchup-history writes. Standalone/event-linked counter game saves,
-Postgres counter snapshot sync, finish order beyond winner marking,
-elimination detail, poison/commander-damage loss detail, dedicated event
-history pages, public history views, meta health summaries,
+Completed event-linked life counters can now save an explicit result to
+group history from `/events/[eventId]/life` for authenticated scoped
+event participants and event managers. The route imports eligible
+yes/maybe RSVPs and preferred event deck declaration snapshots from
+Postgres instead of demo fixtures, keeps the counter session local in
+Dexie, and submits only event ID, result type, winner event participant
+IDs, and optional notes when the player chooses to save. The save path
+persists coherent event-only `games`, `game_players`, `game_results`,
+and `matchup_history` rows without reusing pod-only APIs. Completed
+pod-linked life counters can save an explicit result to group history
+from `/events/[eventId]/pods/[podId]/life` for authenticated scoped
+viewers who can log that pod. The route imports published pod seats from
+Postgres instead of demo fixtures, keeps the counter session local in
+Dexie, and submits only event ID, pod ID, result type, winner seat IDs,
+and optional notes when the player chooses to save. The save path reuses
+the same transactional game writer as quick-logging, so it persists
+coherent `games`, `game_players`, `game_results`, and `matchup_history`
+rows, updates the pod to completed, applies the same result semantics,
+and keeps guest names, emails, invite tokens/token hashes, host
+addresses, RSVP notes, private guest details, and contact data out of
+UI/action projections. Focused unit, component, and PGlite tests cover
+event-linked and pod-linked counter import, save validation, save forms,
+scoped save persistence, team/no-winner semantics, non-member denial,
+guest redaction, and matchup-history writes. Standalone counter game
+saves, Postgres counter snapshot sync, finish order beyond winner
+marking, elimination detail, poison/commander-damage loss detail,
+dedicated event history pages, public history views, meta health summaries,
 materialized summary views, and Playwright coverage for the
 quick-log/history/life-save UI remain unimplemented.
 

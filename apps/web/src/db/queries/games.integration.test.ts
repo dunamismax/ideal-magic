@@ -21,14 +21,18 @@ import {
 } from "./decks";
 import {
   createEventForPlaygroup,
+  listEventLifeCounterParticipantsForViewer,
   upsertMemberRsvpForEvent,
 } from "./event-planning";
 import {
   listLoggedGamesForEventViewer,
   listLoggedGamesForViewer,
+  EventGameLoggingAuthorizationError,
+  EventGameLoggingBlockedError,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
   PodGameLoggingBlockedError,
+  saveCompletedEventLifeCounterGame,
   saveCompletedPodLifeCounterGame,
 } from "./games";
 import { createPlaygroupForUser } from "./playgroups";
@@ -817,6 +821,268 @@ describe("game logging data access", () => {
     expect(payload).not.toContain("Private guest RSVP note");
     expect(payload).not.toContain("@example.test");
     expect(payload).not.toContain("token");
+  });
+
+  test("imports safe event life counter participants from RSVPs and deck declarations", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    const participants = await listEventLifeCounterParticipantsForViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const outsiderParticipants = await listEventLifeCounterParticipantsForViewer(
+      db,
+      {
+        eventId: fixture.eventId,
+        viewerUserId: fixture.outsiderId,
+      },
+    );
+    const payload = JSON.stringify(participants);
+
+    expect(participants).toHaveLength(4);
+    expect(participants[0]).toMatchObject({
+      participantName: "Member 1",
+      rsvpStatus: "yes",
+      deck: {
+        deckNameSnapshot: "Member 1 Deck",
+        commanderSnapshot: ["Member 1 Commander"],
+      },
+    });
+    expect(
+      participants.map((participant) => participant.participantName),
+    ).toContain("Guest RSVP");
+    expect(outsiderParticipants).toEqual([]);
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
+  });
+
+  test("saves a completed event life counter result into event-only game history", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const participants = await listEventLifeCounterParticipantsForViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const memberParticipant = participants.find(
+      (participant) => participant.participantName === "Member 1",
+    );
+    const guestParticipant = participants.find(
+      (participant) => participant.participantName === "Guest RSVP",
+    );
+
+    if (!memberParticipant || !guestParticipant) {
+      throw new Error("Expected member and guest event participants.");
+    }
+
+    const logged = await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "team_win",
+      winnerParticipantIds: [memberParticipant.id, guestParticipant.id],
+      notes: "  Saved from event counter.  ",
+      completedAt: new Date("2030-06-15T06:00:00.000Z"),
+    });
+
+    expect(logged).toMatchObject({
+      eventId: fixture.eventId,
+      resultType: "team_win",
+      notes: "Saved from event counter.",
+    });
+    expect(
+      logged.players
+        .filter((player) => player.isWinner)
+        .map((player) => player.participantName),
+    ).toEqual(["Member 1", "Guest RSVP"]);
+    expect(JSON.stringify(logged)).not.toContain("Private Guest");
+    expect(JSON.stringify(logged)).not.toContain("@example.test");
+
+    const [gameRow] = await db
+      .select({
+        podId: games.podId,
+        resultType: games.resultType,
+        notes: games.notes,
+      })
+      .from(games)
+      .where(eq(games.id, logged.id));
+
+    expect(gameRow).toEqual({
+      podId: null,
+      resultType: "team_win",
+      notes: "Saved from event counter.",
+    });
+
+    const persistedPlayers = await db
+      .select({
+        podSeatId: gamePlayers.podSeatId,
+        userId: gamePlayers.userId,
+        guestName: gamePlayers.guestName,
+        participantNameSnapshot: gamePlayers.participantNameSnapshot,
+        deckNameSnapshot: gamePlayers.deckNameSnapshot,
+        isWinner: gamePlayers.isWinner,
+        team: gamePlayers.team,
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.gameId, logged.id))
+      .orderBy(asc(gamePlayers.seatPosition));
+    const persistedGuest = persistedPlayers.find(
+      (player) => player.guestName !== null,
+    );
+
+    expect(persistedPlayers.every((player) => player.podSeatId === null)).toBe(
+      true,
+    );
+    expect(persistedPlayers.find((player) => player.isWinner)).toMatchObject({
+      participantNameSnapshot: "Member 1",
+      deckNameSnapshot: "Member 1 Deck",
+      team: "winning_team",
+    });
+    expect(persistedGuest).toMatchObject({
+      userId: null,
+      guestName: "Private Guest",
+      participantNameSnapshot: "Private Guest",
+      isWinner: true,
+      team: "winning_team",
+    });
+
+    const [resultRow] = await db
+      .select({
+        resultType: gameResults.resultType,
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+        notes: gameResults.notes,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      resultType: "team_win",
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: "winning_team",
+      notes: "Saved from event counter.",
+    });
+
+    const historyRows = await db
+      .select({
+        leftUserId: matchupHistory.leftUserId,
+        rightUserId: matchupHistory.rightUserId,
+        leftDeckId: matchupHistory.leftDeckId,
+        rightDeckId: matchupHistory.rightDeckId,
+      })
+      .from(matchupHistory)
+      .where(eq(matchupHistory.gameId, logged.id));
+
+    expect(historyRows).toHaveLength(3);
+    expect(
+      historyRows.every(
+        (row) =>
+          row.leftUserId &&
+          row.rightUserId &&
+          row.leftDeckId &&
+          row.rightDeckId,
+      ),
+    ).toBe(true);
+
+    const [eventHistory] = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const payload = JSON.stringify(eventHistory);
+
+    expect(eventHistory).toMatchObject({
+      id: logged.id,
+      pod: null,
+      resultType: "team_win",
+      notes: "Saved from event counter.",
+    });
+    expect(
+      eventHistory?.winners.map((winner) => winner.participantName),
+    ).toEqual(["Member 1", "Guest RSVP"]);
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
+  });
+
+  test("saves event life counter draw results without winners", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    const logged = await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "Event table draw.",
+    });
+
+    expect(logged.resultType).toBe("draw");
+    expect(logged.players.every((player) => !player.isWinner)).toBe(true);
+
+    const [resultRow] = await db
+      .select({
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: null,
+    });
+  });
+
+  test("denies event life counter saves from non-members and invalid winners", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const participants = await listEventLifeCounterParticipantsForViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const winner = participants[0];
+
+    if (!winner) {
+      throw new Error("Expected event participant.");
+    }
+
+    await expect(
+      saveCompletedEventLifeCounterGame(db, {
+        viewerUserId: fixture.outsiderId,
+        eventId: fixture.eventId,
+        resultType: "normal_win",
+        winnerParticipantIds: [winner.id],
+      }),
+    ).rejects.toBeInstanceOf(EventGameLoggingAuthorizationError);
+
+    await expect(
+      saveCompletedEventLifeCounterGame(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        resultType: "normal_win",
+        winnerParticipantIds: [],
+      }),
+    ).rejects.toThrow(EventGameLoggingBlockedError);
+
+    await expect(
+      saveCompletedEventLifeCounterGame(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        resultType: "team_win",
+        winnerParticipantIds: [
+          winner.id,
+          "40000000-0000-4000-8000-000000000999",
+        ],
+      }),
+    ).rejects.toThrow("Winners must be eligible event participants.");
   });
 
   test("denies completed pod life counter saves from non-members", async () => {

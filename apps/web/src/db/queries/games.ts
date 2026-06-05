@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
 import { normalizePageRequest, type PageRequest } from "../pagination";
 import {
   eventDeckDeclarations,
+  eventRsvps,
   events,
   gamePlayers,
   gameResults,
@@ -45,6 +46,30 @@ export type LoggedPodGameSummary = {
   players: {
     id: string;
     podSeatId: string;
+    participantName: string;
+    seatPosition: number;
+    isWinner: boolean;
+    deck: {
+      deckId: string;
+      deckNameSnapshot: string;
+      commanderSnapshot: string[];
+      colorIdentitySnapshot: string;
+      bracketSnapshot: "1" | "2" | "3" | "4" | "5" | null;
+      powerEstimateSnapshot: number | null;
+      archetypeSnapshot: string;
+    } | null;
+  }[];
+};
+
+export type LoggedEventGameSummary = {
+  id: string;
+  eventId: string;
+  resultType: GameResultType;
+  notes: string;
+  completedAt: Date;
+  players: {
+    id: string;
+    participantId: string;
     participantName: string;
     seatPosition: number;
     isWinner: boolean;
@@ -113,6 +138,20 @@ export class PodGameLoggingBlockedError extends Error {
   constructor(message = "Game cannot be logged from this pod.") {
     super(message);
     this.name = "PodGameLoggingBlockedError";
+  }
+}
+
+export class EventGameLoggingAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot log a game from this event.");
+    this.name = "EventGameLoggingAuthorizationError";
+  }
+}
+
+export class EventGameLoggingBlockedError extends Error {
+  constructor(message = "Game cannot be logged from this event.") {
+    super(message);
+    this.name = "EventGameLoggingBlockedError";
   }
 }
 
@@ -537,6 +576,209 @@ export async function saveCompletedPodLifeCounterGame(
   return logGameFromPublishedPod(db, input);
 }
 
+export async function saveCompletedEventLifeCounterGame(
+  db: GameWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    resultType: GameResultType;
+    winnerParticipantIds?: readonly string[];
+    notes?: string;
+    completedAt?: Date;
+  },
+): Promise<LoggedEventGameSummary> {
+  return runInTransaction(db, async (tx) => {
+    const context = await getEventLoggingContext(tx, {
+      eventId: input.eventId,
+    });
+
+    if (!context) {
+      throw new EventGameLoggingAuthorizationError();
+    }
+
+    const viewerRole = await getViewerRole(tx, {
+      playgroupId: context.playgroupId,
+      viewerUserId: input.viewerUserId,
+    });
+    const viewerRsvp = await getViewerEligibleRsvpForEvent(tx, {
+      eventId: input.eventId,
+      viewerUserId: input.viewerUserId,
+    });
+    const canLogAsManager = Boolean(viewerRole && canManageEvent(viewerRole));
+    const canLogAsParticipant = Boolean(
+      viewerRole && canRsvpToEvent(viewerRole) && viewerRsvp,
+    );
+
+    if (!canLogAsManager && !canLogAsParticipant) {
+      throw new EventGameLoggingAuthorizationError();
+    }
+
+    if (context.eventStatus !== "scheduled") {
+      throw new EventGameLoggingBlockedError(
+        "Only scheduled events can log games.",
+      );
+    }
+
+    const participants = await listEventGameParticipantRows(tx, {
+      eventId: input.eventId,
+      playgroupId: context.playgroupId,
+    });
+
+    if (participants.length < 2) {
+      throw new EventGameLoggingBlockedError(
+        "An event needs at least two yes or maybe RSVPs before logging a game.",
+      );
+    }
+
+    const winnerParticipantIds = new Set(input.winnerParticipantIds ?? []);
+    const winnerValidationError = validateWinnerCountForResult({
+      resultType: input.resultType,
+      winnerCount: winnerParticipantIds.size,
+    });
+
+    if (winnerValidationError) {
+      throw new EventGameLoggingBlockedError(winnerValidationError);
+    }
+
+    for (const winnerParticipantId of winnerParticipantIds) {
+      if (
+        !participants.some(
+          (participant) => participant.id === winnerParticipantId,
+        )
+      ) {
+        throw new EventGameLoggingBlockedError(
+          "Winners must be eligible event participants.",
+        );
+      }
+    }
+
+    const notes = normalizeNotes(input.notes);
+    const completedAt = input.completedAt ?? new Date();
+    const [game] = await tx
+      .insert(games)
+      .values({
+        eventId: input.eventId,
+        podId: null,
+        loggedByUserId: input.viewerUserId,
+        resultType: input.resultType,
+        notes,
+        completedAt,
+      })
+      .returning({
+        id: games.id,
+        eventId: games.eventId,
+        resultType: games.resultType,
+        notes: games.notes,
+        completedAt: games.completedAt,
+      });
+
+    if (!game) {
+      throw new Error("Expected game insert to return an event-linked row.");
+    }
+
+    const insertedPlayers = await tx
+      .insert(gamePlayers)
+      .values(
+        participants.map((participant, index) => ({
+          gameId: game.id,
+          podSeatId: null,
+          userId: participant.userId,
+          guestName: participant.guestName,
+          deckId: participant.deckId,
+          participantNameSnapshot: getInternalParticipantName(participant),
+          deckNameSnapshot: participant.deckNameSnapshot ?? "",
+          commanderSnapshot: participant.commanderSnapshot ?? [],
+          colorIdentitySnapshot: participant.colorIdentitySnapshot ?? "",
+          bracketSnapshot: asBracket(participant.bracketSnapshot),
+          powerEstimateSnapshot: participant.powerEstimateSnapshot,
+          archetypeSnapshot: participant.archetypeSnapshot ?? "",
+          seatPosition: index + 1,
+          finishPosition: winnerParticipantIds.has(participant.id) ? 1 : null,
+          isWinner: winnerParticipantIds.has(participant.id),
+          team:
+            input.resultType === "team_win" &&
+            winnerParticipantIds.has(participant.id)
+              ? "winning_team"
+              : null,
+        })),
+      )
+      .returning({
+        id: gamePlayers.id,
+        userId: gamePlayers.userId,
+        guestName: gamePlayers.guestName,
+        deckId: gamePlayers.deckId,
+        participantNameSnapshot: gamePlayers.participantNameSnapshot,
+        deckNameSnapshot: gamePlayers.deckNameSnapshot,
+        commanderSnapshot: gamePlayers.commanderSnapshot,
+        colorIdentitySnapshot: gamePlayers.colorIdentitySnapshot,
+        bracketSnapshot: gamePlayers.bracketSnapshot,
+        powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
+        archetypeSnapshot: gamePlayers.archetypeSnapshot,
+        seatPosition: gamePlayers.seatPosition,
+        isWinner: gamePlayers.isWinner,
+      });
+
+    const playersWithParticipantIds = insertedPlayers.map((player, index) => ({
+      ...player,
+      participantId: participants[index]?.id ?? "",
+    }));
+    const winners = insertedPlayers.filter((player) => player.isWinner);
+    const firstWinner = winners[0];
+
+    await tx.insert(gameResults).values({
+      gameId: game.id,
+      resultType: input.resultType,
+      winnerUserId: winners.length === 1 ? (firstWinner?.userId ?? null) : null,
+      winningDeckId:
+        winners.length === 1 ? (firstWinner?.deckId ?? null) : null,
+      winningTeam: input.resultType === "team_win" ? "winning_team" : null,
+      notes,
+    });
+
+    const matchupRows = createMatchupHistoryRows({
+      gameId: game.id,
+      eventId: input.eventId,
+      playgroupId: context.playgroupId,
+      players: insertedPlayers,
+    });
+
+    if (matchupRows.length > 0) {
+      await tx.insert(matchupHistory).values(matchupRows).onConflictDoNothing();
+    }
+
+    return {
+      id: game.id,
+      eventId: game.eventId,
+      resultType: asGameResultType(game.resultType),
+      notes: game.notes,
+      completedAt: game.completedAt,
+      players: playersWithParticipantIds
+        .sort((left, right) => left.seatPosition - right.seatPosition)
+        .map((player) => ({
+          id: player.id,
+          participantId: player.participantId,
+          participantName:
+            player.guestName === null
+              ? player.participantNameSnapshot || "Player"
+              : "Guest RSVP",
+          seatPosition: player.seatPosition,
+          isWinner: player.isWinner,
+          deck: player.deckId
+            ? {
+                deckId: player.deckId,
+                deckNameSnapshot: player.deckNameSnapshot,
+                commanderSnapshot: player.commanderSnapshot,
+                colorIdentitySnapshot: player.colorIdentitySnapshot,
+                bracketSnapshot: asBracket(player.bracketSnapshot),
+                powerEstimateSnapshot: player.powerEstimateSnapshot,
+                archetypeSnapshot: player.archetypeSnapshot,
+              }
+            : null,
+        })),
+    };
+  });
+}
+
 async function getPublishedPodLoggingContext(
   db: GameReadDatabase,
   input: {
@@ -559,6 +801,49 @@ async function getPublishedPodLoggingContext(
     .limit(1);
 
   return row ?? null;
+}
+
+async function getEventLoggingContext(
+  db: GameReadDatabase,
+  input: {
+    eventId: string;
+  },
+) {
+  const [row] = await db
+    .select({
+      eventId: events.id,
+      eventStatus: events.status,
+      playgroupId: events.playgroupId,
+    })
+    .from(events)
+    .where(eq(events.id, input.eventId))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function getViewerEligibleRsvpForEvent(
+  db: GameReadDatabase,
+  input: {
+    eventId: string;
+    viewerUserId: string;
+  },
+) {
+  const [rsvp] = await db
+    .select({
+      id: eventRsvps.id,
+    })
+    .from(eventRsvps)
+    .where(
+      and(
+        eq(eventRsvps.eventId, input.eventId),
+        eq(eventRsvps.userId, input.viewerUserId),
+        inArray(eventRsvps.status, ["yes", "maybe"]),
+      ),
+    )
+    .limit(1);
+
+  return rsvp ?? null;
 }
 
 async function getViewerSeatForPod(
@@ -625,6 +910,91 @@ async function listGameLogSeatRows(
       and(eq(podSeats.eventId, input.eventId), eq(podSeats.podId, input.podId)),
     )
     .orderBy(asc(podSeats.seatPosition), asc(podSeats.id));
+}
+
+async function listEventGameParticipantRows(
+  db: GameReadDatabase,
+  input: {
+    eventId: string;
+    playgroupId: string;
+  },
+) {
+  const [participantRows, declarationRows] = await Promise.all([
+    db
+      .select({
+        id: eventRsvps.id,
+        userId: eventRsvps.userId,
+        guestName: eventRsvps.guestName,
+        displayName: playgroupMemberships.displayName,
+        userName: users.name,
+      })
+      .from(eventRsvps)
+      .leftJoin(users, eq(users.id, eventRsvps.userId))
+      .leftJoin(
+        playgroupMemberships,
+        and(
+          eq(playgroupMemberships.playgroupId, input.playgroupId),
+          eq(playgroupMemberships.userId, eventRsvps.userId),
+        ),
+      )
+      .where(
+        and(
+          eq(eventRsvps.eventId, input.eventId),
+          inArray(eventRsvps.status, ["yes", "maybe"]),
+          sql`(${eventRsvps.userId} is null or ${playgroupMemberships.id} is not null)`,
+        ),
+      )
+      .orderBy(
+        asc(sql`case when ${eventRsvps.userId} is null then 1 else 0 end`),
+        asc(playgroupMemberships.displayName),
+        asc(users.name),
+        asc(eventRsvps.guestName),
+        asc(eventRsvps.id),
+      ),
+    db
+      .select({
+        id: eventDeckDeclarations.id,
+        userId: eventDeckDeclarations.userId,
+        deckId: eventDeckDeclarations.deckId,
+        deckNameSnapshot: eventDeckDeclarations.deckNameSnapshot,
+        commanderSnapshot: eventDeckDeclarations.commanderSnapshot,
+        colorIdentitySnapshot: eventDeckDeclarations.colorIdentitySnapshot,
+        bracketSnapshot: eventDeckDeclarations.bracketSnapshot,
+        powerEstimateSnapshot: eventDeckDeclarations.powerEstimateSnapshot,
+        archetypeSnapshot: eventDeckDeclarations.archetypeSnapshot,
+      })
+      .from(eventDeckDeclarations)
+      .where(eq(eventDeckDeclarations.eventId, input.eventId))
+      .orderBy(
+        asc(eventDeckDeclarations.userId),
+        asc(eventDeckDeclarations.preference),
+        asc(eventDeckDeclarations.id),
+      ),
+  ]);
+  const declarationsByUserId = new Map<string, (typeof declarationRows)[number]>();
+
+  for (const declaration of declarationRows) {
+    if (!declarationsByUserId.has(declaration.userId)) {
+      declarationsByUserId.set(declaration.userId, declaration);
+    }
+  }
+
+  return participantRows.map((participant) => {
+    const declaration = participant.userId
+      ? declarationsByUserId.get(participant.userId)
+      : null;
+
+    return {
+      ...participant,
+      deckId: declaration?.deckId ?? null,
+      deckNameSnapshot: declaration?.deckNameSnapshot ?? null,
+      commanderSnapshot: declaration?.commanderSnapshot ?? null,
+      colorIdentitySnapshot: declaration?.colorIdentitySnapshot ?? null,
+      bracketSnapshot: declaration?.bracketSnapshot ?? null,
+      powerEstimateSnapshot: declaration?.powerEstimateSnapshot ?? null,
+      archetypeSnapshot: declaration?.archetypeSnapshot ?? null,
+    };
+  });
 }
 
 function createMatchupHistoryRows(input: {

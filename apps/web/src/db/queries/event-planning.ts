@@ -11,6 +11,7 @@ import {
   playgroupMemberships,
   playgroups,
   pods,
+  users,
 } from "../schema";
 import {
   type AddressVisibility,
@@ -130,6 +131,22 @@ export type PublicSafeGuestRsvpSummary = {
   namedGuests: number;
 };
 
+export type EventLifeCounterParticipantSummary = {
+  id: string;
+  participantName: string;
+  rsvpStatus: Extract<RsvpStatus, "yes" | "maybe">;
+  deck: {
+    declarationId: string;
+    deckId: string;
+    deckNameSnapshot: string;
+    commanderSnapshot: string[];
+    colorIdentitySnapshot: string;
+    bracketSnapshot: "1" | "2" | "3" | "4" | "5" | null;
+    powerEstimateSnapshot: number | null;
+    archetypeSnapshot: string;
+  } | null;
+};
+
 export type CreatedEvent = {
   id: string;
   title: string;
@@ -175,6 +192,7 @@ const playgroupRoles = [
 ] as const;
 const eventVisibilities = ["members", "invite_only", "public_safe"] as const;
 const addressVisibilities = ["rsvps", "members", "public", "hidden"] as const;
+const brackets = ["1", "2", "3", "4", "5"] as const;
 
 export async function createEventForPlaygroup(
   db: PlanningWriteDatabase,
@@ -563,6 +581,155 @@ export async function getScopedEventPlanningSummary(
   };
 }
 
+export async function listEventLifeCounterParticipantsForViewer(
+  db: PlanningDatabase,
+  input: {
+    eventId: string;
+    viewerUserId: string;
+  },
+): Promise<EventLifeCounterParticipantSummary[]> {
+  const [eventRow] = await db
+    .select({
+      id: events.id,
+      playgroupId: events.playgroupId,
+      status: events.status,
+    })
+    .from(events)
+    .where(eq(events.id, input.eventId))
+    .limit(1);
+
+  if (!eventRow || asEventStatus(eventRow.status) === "archived") {
+    return [];
+  }
+
+  const viewerRole = await getViewerRole(db, {
+    playgroupId: eventRow.playgroupId,
+    viewerUserId: input.viewerUserId,
+  });
+
+  if (!viewerRole || !canRsvpToEvent(viewerRole)) {
+    return [];
+  }
+
+  const [memberRows, guestRows, declarationRows] = await Promise.all([
+    db
+      .select({
+        rsvpId: eventRsvps.id,
+        userId: eventRsvps.userId,
+        status: eventRsvps.status,
+        displayName: playgroupMemberships.displayName,
+        userName: users.name,
+      })
+      .from(eventRsvps)
+      .innerJoin(users, eq(users.id, eventRsvps.userId))
+      .innerJoin(
+        playgroupMemberships,
+        and(
+          eq(playgroupMemberships.playgroupId, eventRow.playgroupId),
+          eq(playgroupMemberships.userId, eventRsvps.userId),
+        ),
+      )
+      .where(
+        and(
+          eq(eventRsvps.eventId, input.eventId),
+          sql`${eventRsvps.userId} is not null`,
+          sql`${eventRsvps.status} in ('yes', 'maybe')`,
+        ),
+      )
+      .orderBy(asc(playgroupMemberships.displayName), asc(eventRsvps.id)),
+    db
+      .select({
+        rsvpId: eventRsvps.id,
+        status: eventRsvps.status,
+        guestName: eventRsvps.guestName,
+      })
+      .from(eventRsvps)
+      .where(
+        and(
+          eq(eventRsvps.eventId, input.eventId),
+          sql`${eventRsvps.userId} is null`,
+          sql`${eventRsvps.status} in ('yes', 'maybe')`,
+          sql`${eventRsvps.guestName} is not null`,
+        ),
+      )
+      .orderBy(asc(eventRsvps.guestName), asc(eventRsvps.id)),
+    db
+      .select({
+        id: eventDeckDeclarations.id,
+        userId: eventDeckDeclarations.userId,
+        deckId: eventDeckDeclarations.deckId,
+        deckNameSnapshot: eventDeckDeclarations.deckNameSnapshot,
+        commanderSnapshot: eventDeckDeclarations.commanderSnapshot,
+        colorIdentitySnapshot: eventDeckDeclarations.colorIdentitySnapshot,
+        bracketSnapshot: eventDeckDeclarations.bracketSnapshot,
+        powerEstimateSnapshot: eventDeckDeclarations.powerEstimateSnapshot,
+        archetypeSnapshot: eventDeckDeclarations.archetypeSnapshot,
+      })
+      .from(eventDeckDeclarations)
+      .where(eq(eventDeckDeclarations.eventId, input.eventId))
+      .orderBy(
+        asc(eventDeckDeclarations.userId),
+        asc(eventDeckDeclarations.preference),
+        asc(eventDeckDeclarations.id),
+      ),
+  ]);
+  const declarationsByUserId = new Map<
+    string,
+    NonNullable<EventLifeCounterParticipantSummary["deck"]>
+  >();
+
+  for (const declaration of declarationRows) {
+    if (!declarationsByUserId.has(declaration.userId)) {
+      declarationsByUserId.set(declaration.userId, {
+        declarationId: declaration.id,
+        deckId: declaration.deckId,
+        deckNameSnapshot: declaration.deckNameSnapshot,
+        commanderSnapshot: declaration.commanderSnapshot,
+        colorIdentitySnapshot: declaration.colorIdentitySnapshot,
+        bracketSnapshot: asBracket(declaration.bracketSnapshot),
+        powerEstimateSnapshot: declaration.powerEstimateSnapshot,
+        archetypeSnapshot: declaration.archetypeSnapshot,
+      });
+    }
+  }
+
+  const members = memberRows
+    .map((row): EventLifeCounterParticipantSummary | null => {
+      const status = asEligibleRsvpStatus(row.status);
+
+      if (!row.userId || !status) {
+        return null;
+      }
+
+      return {
+        id: row.rsvpId,
+        participantName: row.displayName || row.userName || "Player",
+        rsvpStatus: status,
+        deck: declarationsByUserId.get(row.userId) ?? null,
+      };
+    })
+    .filter((participant) => participant !== null);
+  const guests = guestRows
+    .map((row): EventLifeCounterParticipantSummary | null => {
+      const status = asEligibleRsvpStatus(row.status);
+      const guestName = row.guestName?.trim();
+
+      if (!status || !guestName) {
+        return null;
+      }
+
+      return {
+        id: row.rsvpId,
+        participantName: "Guest RSVP",
+        rsvpStatus: status,
+        deck: null,
+      };
+    })
+    .filter((participant) => participant !== null);
+
+  return [...members, ...guests];
+}
+
 export async function listUpcomingEventsForViewer(
   db: PlanningDatabase,
   input: {
@@ -949,6 +1116,16 @@ function asEventVisibility(value: string): EventVisibility {
 
 function asAddressVisibility(value: string): AddressVisibility | null {
   return includesString(addressVisibilities, value) ? value : null;
+}
+
+function asEligibleRsvpStatus(
+  value: string,
+): Extract<RsvpStatus, "yes" | "maybe"> | null {
+  return value === "yes" || value === "maybe" ? value : null;
+}
+
+function asBracket(value: string | null): "1" | "2" | "3" | "4" | "5" | null {
+  return includesString(brackets, value) ? value : null;
 }
 
 function includesString<const T extends string>(

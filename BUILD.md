@@ -1,940 +1,411 @@
 # BUILD.md
 
-Future build plan for Pod Tracker. `README.md` describes the current
-product and `AGENTS.md` holds durable repo operating rules.
+Completion roadmap for Pod Tracker. `README.md` describes the product
+and `AGENTS.md` is the binding repo policy.
 
 Last reviewed: 2026-06-05.
 
----
-
-## Product Pivot
-
-Stephen's current direction is to simplify Pod Tracker around two primary
-Commander game-night jobs:
-
-1. The best life counter on the internet.
-2. Group, event, RSVP, deck declaration, pod, and game-night tracking.
-
-Everything else is supporting material. Decks exist so players can say
-what they are bringing, hosts can form fair pods, games can be logged,
-and the group can understand its meta over time. Pod Tracker should not
-become a full deckbuilder, collection manager, paid SaaS platform, native
-mobile app, or AI/card-search research project before these two primary
-jobs are excellent.
-
-The future application target is a TypeScript/Next.js rewrite. The
-current Rust application remains useful as a working V1 reference until
-the replacement covers the core flows and has a verified production
-cutover plan.
-
-Do not deploy, run production migrations, restart production services,
-change Caddy/Cloudflare, delete production data, or access production
-data without Stephen's explicit approval.
+This file is a forward plan, not a changelog. Keep it short enough that
+future agents can scan it, choose the next unfinished box, implement it,
+verify it, and update only the relevant checkbox.
 
 ---
 
-## North Star
+## Product Direction
 
-Pod Tracker should feel like the command center for Commander night:
+Pod Tracker is the self-hosted operating system and live life counter for
+Commander night. The TypeScript/Next.js app in `apps/web` is the
+replacement path. The Rust/Axum/Leptos/sqlx app remains production V1
+until the TypeScript app is verified and Stephen approves cutover.
 
-- A group can plan who is hosting, who is coming, what decks are being
-  played, and how pods should be seated.
-- A pod can open a beautiful, fast, reliable life counter before or
-  during a game with player names, commanders, life totals, commander
-  damage, poison, and the other counters Commander players actually use.
-- A completed game can become structured history for the group without
-  forcing a player through a heavyweight form.
-- Hosts keep control over private addresses, invite tokens, event notes,
-  guest details, and group-only information.
+Primary product pillars:
 
-Primary navigation in the rewritten app should make the priorities
-obvious:
+- Life Counter: fast, beautiful, offline-capable Commander tracking.
+- Game Night: playgroups, events, RSVPs, decks, pods, game logging,
+  history, and meta health.
 
-- Life Counter
-- Game Night
-- Groups
-- Decks
-- History
+Do not expand into full deckbuilding, collections, paid SaaS billing,
+native mobile, AI/RAG, pgvector, proxy printing, wishlists, or broad
+Scryfall exploration before the two primary pillars are complete.
 
-Avoid marketing-style pages as the main experience. Build the actual app
-surface first.
+Production actions still require Stephen's explicit approval:
+
+- Deploys, production migrations, restarts, or cutover.
+- Production data access, deletion, or export.
+- Caddy, Cloudflare, tunnel, DNS, email, SMS, or Discord writes.
 
 ---
 
 ## Target Stack
 
-Use this stack for new rewrite work unless Stephen explicitly changes it:
-
-- Next.js App Router for the public site and logged-in app.
-- React with TypeScript strict mode.
-- Tailwind CSS for styling.
-- shadcn/ui-compatible local components, Radix primitives, and
-  `lucide-react` for accessible components and icons.
-- Motion for focused transitions and microinteractions where useful.
-- Better Auth for self-hosted authentication.
+- Next.js App Router in `apps/web`.
+- React with strict TypeScript.
+- Tailwind CSS, local shadcn/ui-compatible components, Radix primitives,
+  and `lucide-react`.
+- Motion only for focused interaction clarity.
+- Better Auth.
 - PostgreSQL as source of truth.
-- Drizzle ORM and Drizzle Kit for schema and migrations.
-- Dexie over IndexedDB for offline app state.
-- MinIO for S3-compatible object storage when static assets are no
-  longer enough.
-- Valkey for cache, rate limiting, and later queues when needed.
-- Umami for respectful analytics.
-- GlitchTip or Sentry-compatible error reporting.
-- Docker Compose for local and self-hosted production services.
-- Caddy reverse proxy behind Cloudflare DNS/proxy or Cloudflare Tunnel.
-- Vitest, Testing Library, and Playwright for quality.
-
-Prefer a single Next.js application with clear module boundaries before
-splitting services. Keep Postgres as the product engine. Add MinIO,
-Valkey, analytics, and error reporting when the app has real integration
-points for them, not as empty infrastructure.
+- Drizzle ORM and Drizzle Kit migrations.
+- Dexie over IndexedDB for local/offline counter state.
+- Docker Compose for local and self-hosted services.
+- Caddy behind Cloudflare DNS/proxy or Cloudflare Tunnel.
+- Valkey, MinIO, Umami, and GlitchTip/Sentry only where real product
+  integration points exist.
+- Vitest, Testing Library, and Playwright.
 
 ---
 
-## Current Repo Inventory
+## Privacy And Product Boundaries
 
-The current repo is a Rust workspace:
+Sensitive data:
 
-- `crates/pod-web`: Axum/Leptos server-rendered web application.
-- `crates/pod-db`: SQLx repositories and canonical Rust-era migrations.
-- `crates/pod-core`: domain types and validation helpers.
-- `crates/pod-worker`: Scryfall import, email/reminder, and meta refresh
-  worker.
-- `deploy/`: Caddy, systemd, backup, restore, and deploy assets for the
-  current production shape.
-- `docs/`: Rust-era development, privacy, operations, localization, and
-  advanced-intelligence notes.
+- Host addresses and location notes.
+- Event notes, RSVP notes, guest names/details, emails, phone numbers,
+  invite tokens, token hashes, and private contact data.
+- Local life-counter notes and unsaved sessions.
 
-Current V1 surfaces to preserve conceptually:
+Rules:
 
-- Authentication and sessions.
-- Playgroups, memberships, roles, and invites.
-- Events, host locations, address visibility, RSVPs, guests, reminders,
-  and calendar output.
-- Lightweight deck registry and event deck declarations.
-- Pod generation, manual pod editing, locking, and publishing.
-- Game logging and basic meta summaries.
-- Health/readiness endpoints.
-- Backup and restore discipline.
-
-Current surfaces to simplify, remove, or defer during the rewrite:
-
-- Collections, wishlists, proxy print lists, and collection-aware deck
-  suggestions.
-- Optional pgvector and semantic search.
-- Natural-language meta query research.
-- Full decklist import/export and full deckbuilder behavior.
-- Broad Scryfall/card catalog exploration beyond commander/card lookup
-  needed for deck declarations and game records.
-- Rust worker/systemd deployment once the TypeScript app and Docker
-  Compose deployment are ready.
+- Public/tokenized routes must use public-safe projections.
+- Guests see only what their invite/event scope permits.
+- Guest names render as `Guest RSVP` in participant-facing shared views
+  unless a scoped private host/admin surface explicitly requires more.
+- Local counter state stays local unless a scoped authenticated user
+  explicitly saves or links it.
+- Never claim security/privacy guarantees not proven by implementation
+  and tests.
 
 ---
 
-## Life Counter Product Requirements
+## Completion Definition
 
-The life counter is a primary page, not a side widget.
+The TypeScript app can replace Rust V1 only when all of these are true:
 
-Core modes:
-
-- Standalone local counter at `/life` with no account required.
-- Event-linked counter at `/events/[eventId]/life`.
-- Pod-linked counter at `/events/[eventId]/pods/[podId]/life`.
-- Post-game save flow that converts a counter session into a group game
-  record when the user is authenticated and authorized.
-
-Core setup:
-
-- Support 2 to 8 players, with 4-player Commander optimized by default.
-- Player name, preferred short name, color, seat, and optional avatar.
-- One or more commanders per player for partners, backgrounds, friends
-  forever, doctor companions, or similar commander-pair cases.
-- Optional deck selection from the player's declared decks.
-- Starting life presets, with 40 as the Commander default.
-- Randomize first player and seating order.
-- Clone a recent pod or import players/decks from an event pod.
-
-Core live tracking:
-
-- Large life total controls that work on phone, tablet, and desktop.
-- Fast add/subtract by 1, 5, and 10 with accessible keyboard and pointer
-  behavior.
-- Commander damage tracked per defending player and per commander source,
-  not only per opposing player.
-- Poison counters.
-- Commander tax or cast count per commander.
-- Elimination state, winner selection, draw/no-contest support, and
-  reversible mistakes.
-- Undo/redo backed by an action log, not only mutable totals.
-- Game timer, turn timer, active player, turn order, and optional turn
-  count.
-- Monarch, initiative, city's blessing, day/night, experience, energy,
-  rad, storm, treasure, floating mana, and custom counters.
-- Per-player notes kept local unless explicitly saved with the game.
-- Reset, rematch, and new game flows that do not lose useful player/deck
-  setup.
-
-Core quality:
-
-- Offline-first behavior with Dexie and IndexedDB.
-- No network required for a local life counter session after the page is
-  loaded.
-- Stable layout with no accidental shifts while tapping life controls.
-- Full-screen and table-display friendly views.
-- Responsive checks for small phones, tablets, laptops, and wide
-  desktop screens.
-- Accessible contrast, focus states, labels, and hit targets.
-- Motion used only to clarify state changes, not to slow down repeated
-  play.
-- Browser tests for setup, life changes, commander damage, poison,
-  undo/redo, reload persistence, and game save.
+- Core flows work end to end in Next.js: signup, login, group creation,
+  event creation, RSVP, guest RSVP, deck declaration, pod generation,
+  pod adjustment/publish, standalone life counter, event-linked counter,
+  pod-linked counter, game save, history, and meta health.
+- Auth, authorization, public-safe views, and sensitive-data redaction
+  are covered by tests.
+- Drizzle migrations run against real PostgreSQL in Docker Compose.
+- The app has production-ready environment examples, Caddy config,
+  backup/restore scripts, health/readiness checks, and observability
+  basics without committing secrets.
+- A migration/export/import plan for Rust production data is verified
+  against non-production data.
+- Playwright smoke coverage passes for the critical flows.
+- Stephen approves the cutover plan.
 
 ---
 
-## Game Night Product Requirements
+## Completed Foundation
 
-Planning and pod tracking are the other primary product pillar.
+These phases are accepted as complete enough for the rewrite foundation.
+Do not reopen them with old deferred wishlist items; move any newly
+discovered required work into the remaining completion passes below.
 
-Core group planning:
+## Phase 0 - Scope And Docs
 
-- Create and manage playgroups.
-- Manage members, roles, guests, and invite links.
-- Create events with date, time, host, location, and address visibility.
-- Collect RSVPs with yes, maybe, no, guest, and late-arrival notes.
-- Show host address only to viewers allowed by event visibility rules.
-- Let guests use tokenized scoped pages without seeing the whole group.
+- [x] Align repo policy around the TypeScript/Next.js replacement path.
+- [x] Document the two-pillar product thesis.
+- [x] Keep Rust V1 as production reference until cutover approval.
+- [x] Establish `apps/web` as the side-by-side rewrite location.
+- [x] Defer collection, full deckbuilder, billing, native mobile, AI/RAG,
+  and broad card-search work.
 
-Core deck declaration:
+## Phase 1 - TypeScript App Scaffold
 
-- Keep decks lightweight: name, commander or commanders, color identity,
-  bracket/power estimate, archetype/tags, visibility, owner, and optional
-  external deck URL.
-- Let players declare which deck or decks they may bring to an event.
-- Snapshot commander/deck metadata at declaration and game time so later
-  deck edits do not rewrite history.
-- Support manual commander entry first; add Scryfall lookup only where it
-  improves accuracy and speed.
-
-Core pods:
-
-- Generate pods from RSVPs and declared decks.
-- Prefer four-player pods while handling odd attendance cleanly.
-- Account for host overrides, locked seats, guests, late arrivals,
-  previous pairings, deck bracket spread, commander/deck variety, and
-  player preferences.
-- Let hosts manually move seats before publishing.
-- Publish pod assignments to event participants and guests within their
-  allowed scope.
-
-Core game logging:
-
-- Log a game from a pod or from a life counter session.
-- Store players, commanders, decks, winner or winners, result type,
-  finish order when known, eliminations, poison losses, commander-damage
-  losses, and notes.
-- Make quick logging possible in under a minute.
-- Keep meta insight focused on group health: attendance, variety,
-  matchup freshness, commander/deck spread, color/archetype distribution,
-  and repeat-pairing avoidance.
-
----
-
-## Data Model Direction
-
-Rebuild the schema with Drizzle migrations. Use the Rust SQL migrations
-as reference material, not as the long-term migration system.
-
-Core tables to design:
-
-- Better Auth tables for users, accounts, sessions, verification, and
-  any provider state.
-- `playgroups`, `playgroup_memberships`, `playgroup_invites`, and
-  `house_rules`.
-- `event_locations`, `events`, `event_hosts`, `event_rsvps`,
-  `event_guests`, and `event_reminders`.
-- `decks` and `event_deck_declarations`.
-- `pods` and `pod_seats`.
-- `games`, `game_players`, `game_results`, `game_notes`, and
-  `matchup_history`.
-- `life_counter_sessions`, `life_counter_players`,
-  `life_counter_commanders`, `life_counter_actions`, and
-  `life_counter_snapshots`.
-- Minimal `card_catalog` or `commander_catalog` tables only if needed
-  for fast commander lookup.
-- `audit_events` for sensitive or host-controlled changes.
-
-Schema rules:
-
-- Keep address, invite token, guest, RSVP note, email, and private event
-  details scoped by authorization.
-- Prefer explicit constraints for status values, visibility values, seat
-  uniqueness, positive counters, nonblank names, and valid commander
-  damage relationships.
-- Use public-safe views or equivalent scoped query functions for public
-  event and guest pages.
-- Use indexes for event lists, upcoming RSVPs, pod seats, game history,
-  commander lookup, and matchup summaries.
-- Do not claim database-enforced tenant isolation until RLS or equivalent
-  scoped-query tests prove it.
-
----
-
-## Working Rules For Future Agents
-
-- Read `AGENTS.md`, `README.md`, and this file before starting.
-- Run `git pull --ff-only origin main` or the current branch before code
-  changes.
-- Treat this file as the active build plan for future work.
-- Keep changes small enough to verify in one pass.
-- Update checkboxes only when the work is implemented and verified.
-- Do not delete the Rust app until the TypeScript replacement has passed
-  core flow tests and Stephen has approved the cutover.
-- Do not loosen privacy rules to make UI work easier.
-- Do not add full deckbuilder, collection, AI, billing, native mobile, or
-  SaaS features unless Stephen explicitly expands scope.
-- If a future pass discovers an undocumented gotcha, update `AGENTS.md`
-  or durable docs in the same session.
-
----
-
-## Phase 0 - Align Docs And Scope
-
-- [x] Update `AGENTS.md` so the durable repo stack rules match the
-  TypeScript/Next.js rewrite direction.
-- [x] Update `README.md` to describe the new product thesis: life counter
-  plus Commander game-night coordination.
-- [x] Update `docs/development.md` for the TypeScript, Docker Compose,
-  Drizzle, and Next.js workflow.
-- [x] Update `docs/operations.md` for the future Docker Compose, Caddy,
-  Cloudflare, Postgres, Valkey, MinIO, analytics, and error reporting
-  deployment shape.
-- [x] Update `docs/privacy.md` with life counter session data, offline
-  state, saved game records, and event-linked counter scopes.
-- [x] Mark `docs/advanced-intelligence.md` as deferred or archive its
-  contents into a clearly non-roadmap reference.
-- [x] Document which current Rust-era features are preserved,
-  simplified, removed, or deferred.
-- [x] Decide whether the first Next.js app lives at the repo root or in
-  `apps/web` during side-by-side migration.
-- [x] Define the minimum data migration strategy for existing production
-  data before any production cutover work begins.
-
-## Phase 1 - Scaffold The TypeScript App
-
-- [x] Create the Next.js App Router application in the agreed location.
-- [x] Enable TypeScript strict mode and fail builds on type errors.
-- [x] Add Tailwind CSS with a small token set for color, spacing,
-  radius, typography, and focus states.
-- [x] Add shadcn/ui-compatible local component structure.
-- [x] Add Radix primitives where accessibility needs them.
-- [x] Add `lucide-react` and use icons for primary actions.
-- [x] Add Motion and document when motion is allowed.
-- [x] Add Vitest, Testing Library, and Playwright.
-- [x] Add lint, format, typecheck, unit test, integration test, and
-  Playwright scripts.
-- [x] Add Docker Compose for local Postgres, Valkey, MinIO, Umami, and
-  GlitchTip or a Sentry-compatible endpoint.
-- [x] Keep optional services optional until they have working product
-  integrations.
-- [x] Add health and readiness routes for the Next.js app.
-- [x] Verify the scaffold with local tests and a browser smoke test.
+- [x] Create the Next.js App Router app in `apps/web`.
+- [x] Enable strict TypeScript, Tailwind, app shell styling, and local UI
+  components.
+- [x] Add Drizzle, Better Auth, Dexie, Vitest, Testing Library,
+  Playwright, and Docker Compose scaffolding.
+- [x] Add health/readiness routes and verification scripts.
 
 ## Phase 2 - Design System And App Shell
 
-- [x] Build the primary app shell with Life Counter and Game Night as the
-  first navigation items.
-- [x] Build responsive layouts for phone, tablet, laptop, and wide
-  desktop.
-- [x] Create reusable button, icon button, dialog, drawer, menu, tabs,
-  segmented control, toast, form field, and empty-state components.
-- [x] Create player color tokens that work for Commander seating without
-  becoming a one-note palette.
-- [x] Create dense planning views for hosts without marketing-page
-  styling.
-- [x] Create full-screen table-display styles for the life counter.
-- [ ] Add dark and light themes only if both are complete and verified.
-- [x] Verify text does not overflow controls on mobile or desktop.
-- [x] Add visual regression or screenshot checks for the app shell and
-  life counter layout.
+- [x] Build the primary app shell around Life Counter, Game Night,
+  Groups, Decks, and History.
+- [x] Provide reusable UI primitives used by the current app surfaces.
+- [x] Build responsive layouts for the life counter and planning views.
+- [x] Verify text fit and core responsive behavior on implemented
+  surfaces.
 
 ## Phase 3 - Auth And Authorization
 
-- [x] Integrate Better Auth with Postgres.
-- [ ] Implement signup, login, logout, password reset or equivalent
-  account recovery, and session refresh.
-- [ ] Define playgroup roles and permissions in TypeScript.
-- [x] Protect logged-in routes through server-side authorization.
-- [ ] Add CSRF, secure cookie, and rate-limit behavior appropriate for
-  the target deployment.
-- [ ] Add Valkey-backed rate limiting once Valkey is part of the running
-  app.
-- [ ] Add audit events for sensitive changes.
-- [ ] Verify auth with unit tests, integration tests, and Playwright
-  signup/login/logout smoke tests.
-
-Current Phase 3 foundation adds Better Auth dependencies, aligns the
-Drizzle identity tables with Better Auth's core user, account, session,
-and verification fields, mounts `/api/auth/*`, adds signup and login
-pages, and adds a protected `/account` route with logout. The current
-logged-in planning surfaces (`/game-night`, `/groups`, `/decks`, and
-`/history`) now use the same server-side session guard and redirect
-anonymous viewers to login with a scoped return path. PGlite integration
-tests exercise real Better Auth signup, cookie-backed session lookup,
-logout, login, and password hash persistence against migrated schema
-history. Playwright covers the signup and login form payloads with
-mocked auth endpoints plus anonymous redirect smoke tests for the
-protected planning routes. This does not yet complete account recovery,
-CSRF/rate-limit hardening, Valkey-backed limits, audit events,
-playgroup-role authorization, or authenticated group/event CRUD
-workflows.
+- [x] Integrate Better Auth with Postgres-backed identity tables.
+- [x] Implement signup, login, logout, session lookup, and protected
+  route redirects.
+- [x] Use scoped server-side authorization for logged-in app surfaces.
+- [x] Define and enforce playgroup roles in current group, event, deck,
+  pod, history, and game-save flows.
+- [x] Cover implemented auth behavior with unit, PGlite, and Playwright
+  tests.
 
 ## Phase 4 - Drizzle Schema And Core Persistence
 
-- [x] Translate the preserved Rust-era schema concepts into Drizzle
-  schema files.
-- [x] Generate Drizzle migrations for the new TypeScript schema.
-- [x] Add seed data with fake non-sensitive playgroups, events, decks,
-  pods, and games.
-- [x] Add database helpers for transactions, pagination, and scoped
-  queries.
-- [x] Add public-safe query paths for tokenized event and guest pages.
-- [x] Add schema tests for constraints, indexes, and cascade behavior.
-- [ ] Add migration smoke tests against real Postgres in Docker Compose.
-- [ ] Document how old SQLx migrations map to the new Drizzle schema.
-- [ ] Keep app runtime credentials separate from migration credentials.
+- [x] Model identity, playgroups, invites, events, RSVPs, locations,
+  decks, declarations, pods, games, matchup history, and life-counter
+  local/server persistence concepts.
+- [x] Generate Drizzle migrations and PGlite-backed migration tests.
+- [x] Add scoped database helpers, public-safe query paths, seed data,
+  constraints, indexes, and cascade tests.
+- [x] Keep sensitive fields out of public-safe and participant-facing
+  projections.
 
-Current Phase 4 groundwork defines the TypeScript rewrite schema in
-Drizzle and generates the first migration under `apps/web/src/db`. It
-covers Better Auth-shaped identity tables, groups, invites, events,
-RSVPs, locations, lightweight decks, deck declarations, pods, games,
-matchup history, and action-log-based life-counter persistence. It adds
-fake non-sensitive development seed data plus transaction, pagination,
-scoped event-planning query helpers, hashed fake event-token seed values,
-and token-scoped public-safe event and guest RSVP aggregate query paths.
-PGlite-backed integration tests cover migration application,
-representative constraints, indexes, cascade behavior, seed idempotency,
-scoped event counts, upcoming-event pagination, host-address redaction,
-token denial, and public-safe projections that omit host addresses,
-location notes, RSVP notes, user emails, invite tokens, and guest names.
-It does not yet wire runtime routes to Postgres, prove Docker/PostgreSQL
-migrations in this environment, implement public event or guest RSVP UI,
-or complete auth/server save behavior.
-
-## Phase 5 - Life Counter V1: Offline Standalone
+## Phase 5 - Life Counter V1: Standalone
 
 - [x] Build `/life` as a primary public route.
-- [x] Build player setup for 2 to 8 players.
-- [x] Add player names, colors, seats, commanders, starting life, and
-  optional deck labels.
-- [x] Support multiple commanders per player.
-- [x] Build the main counter board with large stable hit targets.
-- [x] Add life adjustments by 1, 5, and 10.
-- [x] Add commander damage by defending player and commander source.
-- [x] Add poison counters.
-- [x] Add commander tax or cast count per commander.
-- [x] Add monarch, initiative, city's blessing, day/night, experience,
-  energy, rad, storm, treasure, floating mana, and custom counters.
-- [x] Add elimination, winner, draw, and no-contest states.
-- [x] Add game timer, turn timer, active player, turn order, and turn
-  count.
-- [x] Store counter state and action history in Dexie.
-- [x] Add undo and redo from the action log.
-- [x] Add reset, rematch, and new game flows.
-- [x] Add keyboard behavior for desktop play.
-- [x] Add accessible labels, focus management, and screen-reader
-  friendly state changes.
-- [x] Verify refresh recovery and post-load local counter behavior with
-  network requests blocked. Full offline launch remains Phase 12.
-- [x] Verify mobile, tablet, desktop, and wide desktop layouts with
-  Playwright screenshots.
+- [x] Support 2 to 8 players, names, colors, seats, commanders, life,
+  commander damage, poison, commander tax, game counters, timers,
+  active player, elimination, winner/draw/no-contest, reset, rematch,
+  undo, and redo.
+- [x] Store local state and action history in Dexie.
+- [x] Verify reload recovery, blocked-network behavior after load,
+  accessibility basics, and responsive layouts.
 
 ## Phase 6 - Life Counter V2: Event And Pod Integration
 
-- [x] Build `/events/[eventId]/life`.
-- [x] Build `/events/[eventId]/pods/[podId]/life`.
-- [x] Import event participants and declared decks into a counter setup.
-- [x] Import published pod seats into a counter setup.
-- [x] Allow a standalone local session to be attached to an event when
-  the user logs in and has permission.
-- [ ] Save counter snapshots to Postgres when explicitly linked to an
-  event or pod.
-- [x] Convert a completed pod-linked counter session into a structured
-  game log through explicit result selection.
-- [x] Convert event-linked counter sessions into structured game logs
-  when scoped and explicitly saved.
-- [x] Convert standalone counter sessions into structured game logs when
-  scoped and explicitly saved.
-- [ ] Preserve local Dexie history after server save.
-- [ ] Handle offline edits and later sync without overwriting newer
-  server state silently.
-- [ ] Add a read-only table display or spectator view if it can be
-  scoped safely.
-- [x] Verify linked counter setup, reload, and post-load local behavior
-  with network requests blocked using Playwright.
-- [ ] Verify linked game save with Playwright once Postgres save and
-  game-log conversion exist.
-
-Current Phase 6 originally used deterministic local fixture data in the
-TypeScript app to prove linked route shape, setup import, and local Dexie
-session separation. The standalone `/life` route remains public and local
-by default, while authenticated users can now attach the counter to a
-scoped scheduled event by importing that event's eligible yes/maybe RSVP
-roster and preferred declaration snapshots before saving. This avoids
-fake identity matching from arbitrary local player names. Saving a
-completed standalone attached result uses the event-only game writer and
-creates `games`, `game_players`, `game_results`, and `matchup_history`
-rows with `games.pod_id = null` and `game_players.pod_seat_id = null`.
-The event-linked route `/events/[eventId]/life` uses authenticated scoped
-Postgres access for yes/maybe event RSVPs, imports safe participant names
-plus each member's preferred event deck declaration snapshot into the
-local counter, and exposes an explicit save form when at least two
-eligible event participants are available. Saving a completed
-event-linked counter result creates event-only game history with
-`games.pod_id = null`, `game_players.pod_seat_id = null`, valid
-`game_results`, and `matchup_history` rows. The pod-linked route
-`/events/[eventId]/pods/[podId]/life` uses authenticated scoped Postgres
-access for published pod seats, imports safe participant names and
-deck/commander snapshots into the local counter, and exposes an explicit
-save form for locked published pods. Saving a completed pod-linked
-counter result creates structured game history through the same
-transactional `games`, `game_players`, `game_results`, and
-`matchup_history` writer used by pod quick logging. Guest names remain
-internal and render as `Guest RSVP`; local counter notes and unsaved
-session state are not submitted. This does not implement Postgres
-counter snapshot save, server sync, conflict handling, arbitrary local
-player-to-event identity matching, finish order beyond winner marking,
-elimination detail, poison/commander-damage loss detail, or Playwright
-coverage for the save flow.
+- [x] Build event-linked and pod-linked life-counter routes.
+- [x] Import scoped event participants, declared decks, and published
+  pod seats.
+- [x] Attach standalone sessions to scoped events when authenticated.
+- [x] Save completed standalone-attached, event-linked, and pod-linked
+  counter results into structured game history.
+- [x] Redact guest data and keep unsaved local notes/session state local.
 
 ## Phase 7 - Groups And Events
 
-- [x] Build authenticated group creation and scoped group list.
-- [x] Build member list with scoped membership visibility.
-- [x] Build scoped group invite creation, listing, revocation, and
-  authenticated token join.
-- [x] Build scoped group role management and member removal.
-- [ ] Build group edit and group archive/delete flows.
-- [x] Build authenticated event creation for hostable groups.
-- [x] Build event edit, cancel, and archive flows.
-- [ ] Build host location management with address visibility controls.
-- [x] Build RSVP flows for authenticated members.
-- [x] Build tokenized guest RSVP pages.
-- [x] Build public-safe event pages for tokenized links.
-- [ ] Add calendar export only after address visibility rules are
-  verified.
-- [ ] Add reminder jobs only after the job runner shape is chosen for the
-  TypeScript app.
-- [ ] Verify signup, group creation, event creation, RSVP, guest RSVP,
-  and address visibility with Playwright.
-
-Current Phase 7 public invite work adds a
-`/invites/events/[inviteToken]` route backed by
-`/api/public-events/[inviteToken]`, which uses the token-scoped
-public-safe Drizzle query paths. The page shows event title, playgroup
-name, date/time, public location name, aggregate RSVP counts, guest
-counts, deck declaration counts, pod counts, and logged-game counts.
-Tokenized guests can now submit a name and RSVP status through a
-public-safe form that writes a guest RSVP row and refreshes only aggregate
-public counts. Unit, PGlite integration, and Playwright tests verify that
-the rendered view, service payload, and post-submit refreshed page omit
-host addresses, location notes, RSVP notes, emails, raw invite tokens,
-token hashes, existing guest names, and newly submitted guest names.
-Authenticated users can now create a playgroup from `/groups` and see a
-Postgres-backed list scoped by their membership, with owner membership
-creation, unique slug generation, validation, PGlite integration tests,
-and a Playwright signup-to-group-create smoke test. Group cards now show
-a safe member directory for owner, admin, host, and member roles only,
-backed by role-aware helpers and PGlite tests proving non-members,
-guests, and viewers cannot read member-directory details; the projection
-omits emails, invite data, host addresses, notes, and guest details.
-Owners and admins can now create group invite links from `/groups`, see
-only invite metadata in normal list views, revoke invites, and let an
-authenticated user join through a tokenized group invite page. Invite
-tokens are generated with Node crypto, stored only as SHA-256 hashes,
-returned raw only in the create action's transient client state, and
-omitted from normal invite metadata projections. PGlite tests prove
-hosts, members, guests, viewers, and non-members cannot create, list, or
-revoke group invites, and Playwright covers signup to group invite
-create, list, and revoke. Owners can now change owner/admin/host/member
-roles and remove memberships from `/groups`; admins can manage only
-host/member roles. Member removal deletes only the membership, never the
-user account, and last-owner protection blocks demoting or removing the
-final owner. PGlite tests cover authorized changes, admin limits,
-host/member/non-member denial, last-owner protection, and membership-only
-removal. Playwright covers signup, group creation, invite join, role
-change, and member removal through the UI.
-Logged-in owners, admins, and hosts can now create events for their
-hostable groups from `/game-night`, with server-action validation,
-scoped Postgres writes, hidden-address host rows, member-scoped upcoming
-event lists, PGlite authorization coverage, and a Playwright
-signup-to-group-to-event smoke test. Authenticated playgroup owners,
-admins, hosts, and members can now RSVP yes, maybe, no, or waitlist to
-scoped upcoming events from `/game-night`, with optional arrival/leaving
-times, server-action validation, PGlite tests for member upsert and
-non-member denial, and a Playwright signup-to-group-to-event-to-RSVP
-smoke test. Owners, admins, and hosts can now edit event title, start,
-visibility, and description, cancel events with a visible cancelled
-status, and archive events out of upcoming lists; PGlite tests prove
-plain members and non-members cannot edit, cancel, or archive, while
-Playwright covers signup, group creation, event creation, RSVP, edit,
-cancel, and archive. This does not yet implement group editing, group
-archive/delete flows, guest RSVP editing/deletion, RSVP notes, host
-address disclosure, or public calendar export.
+- [x] Build authenticated group creation, scoped group list, member
+  directory, invite create/list/revoke/join, role management, and member
+  removal.
+- [x] Build authenticated event creation, edit, cancel, archive, RSVP,
+  tokenized guest RSVP, and public-safe event pages.
+- [x] Enforce scoped authorization and public-safe projections for the
+  implemented group/event workflows.
+- [x] Cover implemented group/event behavior with focused tests and
+  Playwright smoke flows.
 
 ## Phase 8 - Deck Declarations
 
-- [x] Build lightweight deck create/list/update and non-destructive retire
-  flows for commander-night planning.
-- [x] Support name, commander or commanders, colors, bracket/power,
-  archetype/tags, visibility, owner, and optional external URL.
-- [x] Build event deck declaration and undeclaration flows.
-- [x] Preserve event deck declaration snapshots when later deck edits occur.
-- [ ] Snapshot declaration metadata for events and game records.
-- [ ] Add commander lookup where it makes entry faster and more accurate.
-- [x] Avoid full deckbuilder, collection tracking, and card inventory
-  behavior.
-- [x] Verify deck creation, deck update/retire, event deck declaration, and
-  event snapshot preservation with tests and Playwright.
-
-Current Phase 8 adds authenticated lightweight deck management in
-`/decks` for planning metadata only: deck name, one or more manually
-entered commanders, color identity, bracket, power estimate, archetype,
-tags, visibility, owner, optional playgroup scope, and optional external
-URL. Owners can create, list, update, and non-destructively retire active
-decks; retired decks leave existing declaration history intact and are
-hidden from active owner/declaration selection lists. `/game-night`
-supports scoped event deck declaration and undeclaration for authenticated
-event participants, with owner-only deck selection and declaration-time
-snapshots for deck name, commanders, colors, bracket, power estimate,
-archetype, tags, visibility, and external URL. PGlite integration tests
-cover owner-scoped deck lists, owner-only updates, playgroup visibility
-authorization, retirement, declaration authorization, duplicate
-protection, undeclaration, and immutable event snapshots after later deck
-edits. Unit/component tests cover validation, update/retire controls, and
-public-safe rendering, and Playwright covers signup -> group -> deck
-create -> deck edit -> event create -> deck declaration -> later deck edit
-snapshot preservation -> undeclaration -> RSVP. Destructive deck delete,
-commander lookup, game-record snapshot integration, full deckbuilder,
-collection tracking, and card inventory remain unimplemented.
+- [x] Build lightweight deck create/list/update/retire flows.
+- [x] Support commander names, color identity, bracket/power, archetype,
+  tags, visibility, ownership, playgroup scope, and external URLs.
+- [x] Build event declaration and undeclaration flows.
+- [x] Snapshot declaration metadata so later deck edits do not rewrite
+  event/game history.
+- [x] Keep full deckbuilder, collection, and inventory behavior out.
 
 ## Phase 9 - Pod Generation And Pod Management
 
-- [x] Build event pod dashboard for hosts.
-- [x] Generate pods from yes/maybe RSVPs and declared decks.
-- [x] Prefer four-player pods while handling 3-player and 5-player edge
-  cases clearly.
-- [ ] Score pods for repeat-pairing avoidance, deck variety, bracket
-  spread, guest placement, late arrivals, and host overrides.
-- [x] Support locked seats and manual seat movement.
-- [x] Publish and unpublish pod assignments.
-- [x] Show participants only the pod data they are allowed to see.
-- [x] Let a published pod launch a linked life counter session.
-- [x] Verify generation, manual edits, locking, publishing, and launch to
-  life counter with tests and Playwright.
+- [x] Build event pod dashboards for hosts/managers.
+- [x] Generate pods from RSVPs and declared decks, including odd-size
+  attendance.
+- [x] Score pods for size, bracket spread, repeat-player pairs,
+  repeat-deck pairs, commander/deck variety, availability, and guest
+  distribution.
+- [x] Support manual seat movement, locked seats, publishing,
+  unpublishing, participant visibility, and launch links to linked life
+  counters.
+- [x] Keep guest data redacted in participant-facing pod projections.
 
-Current Phase 9 start adds a draft pod panel to `/game-night` for event
-owners, admins, and hosts. Managers can generate proposed pods from
-authenticated yes/maybe RSVPs, using the RSVP member display name and the
-player's preferred event deck declaration snapshot for seating display.
-Generation is deterministic, prefers four-player pods, handles 3-player,
-5-player, 6-player, 7-player, and larger odd attendance without isolated
-single-player leftovers, and persists `pods` plus `pod_seats` rows with
-size, bracket, and availability scores. Regeneration replaces only
-unlocked proposed draft pods and refuses to overwrite locked draft seats,
-locked published pods, active pods, completed pods, or cancelled pods.
-Managers can manually move unlocked seats between proposed pods and seat
-positions from `/game-night`; movement is transactional, compacts source
-and target seat order, preserves deck declaration snapshot references,
-refuses non-manager access, and refuses locked seats or non-proposed pods.
-Managers can now lock and unlock individual proposed seats from
-`/game-night`; locked seats persist, display a locked-seat badge, hide
-manual movement controls until unlocked, block movement, and block
-regeneration until explicitly unlocked. Managers can publish proposed pod
-assignments to event participants, which transitions the event pods to
-locked published assignments with `published_at`; managers can unpublish
-back to proposed only before any active/completed pod state, game record,
-or saved pod-linked counter exists. Authenticated event participants can
-see generated and published pod seats through the scoped Game Night
-surface, while non-members cannot. Published pod cards now expose
-participant-scoped launch links to `/events/[eventId]/pods/[podId]/life`;
-draft/proposed pods do not show launch controls. This is only a launch
-affordance into the existing linked local counter route and does not
-claim Postgres counter save, server sync, game-log conversion, or
-offline/PWA launch. Draft generation now uses a deterministic optimizer
-that scores candidate assignments by pod size, bracket spread,
-repeat-player pair history, repeat-deck matchup history, deck variety
-through color identity/archetype/commander repetition, RSVP maybe status,
-late arrivals, early leaving times, and shared availability windows.
-Generation reads scoped `matchup_history` rows for the event playgroup
-and persists the resulting size, bracket, repeat-pair, repeat-deck,
-availability, total-score, and scoring-detail values on `pods`; the
-score now affects assignments instead of only describing them.
-Generation now also seats event-scoped guest RSVP rows as guest-backed
-participants, persists `pod_seats.guest_name` only for those guest seats,
-and scores guest placement by preferring to distribute guest RSVPs across
-pods with authenticated players instead of clumping or isolating guests.
-Participant-facing pod summaries continue to redact guest names/details
-as `Guest RSVP`. This guest support seats one guest RSVP per RSVP row;
-named plus-ones in `event_guests` and member RSVP `guest_count` values
-are not yet modeled as separate pod-seat identities. Host overrides also
-remain unimplemented because there is no override model yet. The
-projection omits emails, invite tokens, token hashes, host addresses,
-private notes, guest names/details, and private contact fields. Unit,
-PGlite integration, component rendering, Playwright, and database gates
-cover draft generation, scoring-driven repeat-pair avoidance, guest RSVP
-distribution and redaction, display, manual movement, locking,
-unlocking, publishing, unpublishing, scoped participant visibility,
-launch-link visibility, and non-member denial. Host overrides, plus-one
-guest seating, and life-counter-to-game logging remain unimplemented.
+---
 
-## Phase 10 - Game Logging And Meta Health
+## Remaining Completion Passes
 
-- [x] Build quick game logging from an event pod.
-- [x] Build game logging from a completed pod-linked life counter session
-  with explicit result selection.
-- [x] Build game logging from event-linked life counter sessions.
-- [x] Build game logging from standalone life counter sessions.
-- [ ] Store result type, winner or winners, participants, commanders,
-  decks, finish order, eliminations, commander-damage losses, poison
-  losses, and notes.
-- [x] Build event history and group history views.
-- [ ] Build meta health summaries for attendance, variety, matchup
-  freshness, commander/deck spread, color/archetype distribution, and
-  repeat pairings.
-- [ ] Keep competitive leaderboards optional and secondary.
-- [ ] Add materialized views or cached summaries only after query shape
-  and freshness needs are clear.
-- [ ] Verify game logging and meta summaries with database tests and
-  Playwright.
+Work these in order unless Stephen explicitly reprioritizes. Each pass
+should be small enough to implement, verify, commit, and push in one
+agent session.
 
-Current Phase 10 start adds schema-backed quick logging from a published
-locked pod in the TypeScript rewrite. Event managers and authenticated
-user-backed seats in the scoped pod can log a published pod game;
-non-members are denied. Logging creates `games`, `game_players`, and
-`game_results` rows, snapshots participant names, guest names internally,
-deck names, commanders, color identity, bracket, power estimate, and
-archetype from the published pod seats and declaration snapshots, trims
-safe notes into the game/result rows, marks selected winner seats in
-`game_players`, stores the single user-backed winner in `game_results`
-when exactly one is known, writes `matchup_history` rows for logged
-user/deck pairs, and transitions the pod to `completed` so it cannot be
-quick-logged again or unpublished as a live assignment. Quick logging now
-validates result semantics in both the form/domain layer and the
-data-access layer: normal, combat, combo, concession, and archenemy wins
-require exactly one winner seat; draw, time-called, and unfinished
-results persist with no winners; team wins require at least two winner
-seats and use the existing `game_players.team` and
-`game_results.winning_team` fields without a schema change. Winner seat
-IDs outside the logged pod are rejected. The `/game-night` published pod
-card now has a manager-facing quick-log form for the full quick-log
-result set, multiple winner-seat selection, and optional notes. Guest
-names remain internal; the quick-log response, participant pod summaries,
-and logged history projections redact guest seats as `Guest RSVP`,
-including guest winner display.
+## Pass 1 - Production Auth And Abuse Hardening
 
-The TypeScript rewrite now also has a scoped logged-game history
-data-access surface, a protected `/history` page, and compact
-event-specific history sections on `/game-night` event cards. Owners,
-admins, hosts, and members can list recent logged games across
-playgroups where they hold one of those roles and can see recent logged
-games for a specific scoped event; non-members and outsider users
-receive no rows. History summaries include event title/start time,
-playgroup name, completed time, result type, linked pod name when
-present, safe winner display, participant-safe names, deck/commander/
-color/bracket/power/archetype snapshots, and game notes for
-authenticated scoped members. Multiple safe winners and draw/no-winner
-results render in history summaries. `/history` summaries and
-event-card history summaries now link to a scoped `/history/[gameId]`
-detail route for authenticated members, showing event/playgroup context,
-completed time, pod context when present, result semantics, winners, all
-players, deck/commander/color/bracket/power/archetype snapshots, and
-notes. The projection omits emails, invite tokens, token hashes, host
-addresses, RSVP notes, private guest names/details, and private contact
-data. Focused unit, PGlite, and component tests cover published-pod
-logging, result semantic validation, multi-winner team wins,
-draw/no-winner persistence, participant authorization, non-member
-denial, logged history listing and detail reads for scoped members and
-managers, event-scoped history filtering, immutable history snapshots
-after later deck edits, guest redaction in history projections, pod
-context for completed pod games, and matchup-history writes. Focused
-component tests cover the `/game-night` quick-log controls, event-card
-history display and empty state, `/history` game list and detail views,
-multiple-winner display, draw/no-winner display, route links, and empty
-state.
+- [ ] Decide and implement password reset or explicitly document the
+  self-hosted account recovery policy.
+- [ ] Audit Better Auth cookie/session settings for the production
+  Docker/Caddy/Cloudflare shape.
+- [ ] Add CSRF coverage where Better Auth does not already cover the
+  app's server actions/forms.
+- [ ] Add Valkey-backed rate limiting for auth, invite, public RSVP, and
+  write-heavy routes.
+- [ ] Add audit events for sensitive changes: invite creation/revocation,
+  member role changes/removal, event visibility/location changes, and
+  production-relevant auth events.
+- [ ] Verify with focused unit/integration tests plus signup/login/logout
+  Playwright smoke.
 
-The first scoped meta-health summary now appears on `/history` for
-authenticated owners, admins, hosts, and members. It is source-backed by
-visible `games`, `game_players`, and `matchup_history` rows and reports
-total logged games, events with games, distinct known players, guest seat
-count, distinct deck snapshots, distinct commander snapshots,
-color-identity spread, archetype spread, repeat known-player pairs, and
-repeat known-deck pairs. Pair summaries use latest safe game-player
-snapshots for labels, exclude guest seats from repeat-pair names, and
-omit emails, invite tokens/token hashes, host addresses, RSVP notes,
-private guest names/details, and contact data. Focused PGlite tests
-cover scoped access, non-member denial, metric correctness, event
-scoping, repeat-pair summaries, and private-data redaction. Component
-tests cover the populated summary, full empty state, partial spread empty
-states, repeat-pair empty states, and redaction.
+## Pass 2 - Host Locations And Event Operations
 
-Standalone `/life` counters can now be attached to a scoped scheduled
-event by an authenticated authorized user, import the eligible event
-roster into the local counter, and save an explicit result to group
-history using the same event-only game writer as event-linked counters.
-Completed event-linked life counters can now save an explicit result to
-group history from `/events/[eventId]/life` for authenticated scoped
-event participants and event managers. The route imports eligible
-yes/maybe RSVPs and preferred event deck declaration snapshots from
-Postgres instead of demo fixtures, keeps the counter session local in
-Dexie, and submits only event ID, result type, winner event participant
-IDs, and optional notes when the player chooses to save. The save path
-persists coherent event-only `games`, `game_players`, `game_results`,
-and `matchup_history` rows without reusing pod-only APIs. Completed
-pod-linked life counters can save an explicit result to group history
-from `/events/[eventId]/pods/[podId]/life` for authenticated scoped
-viewers who can log that pod. The route imports published pod seats from
-Postgres instead of demo fixtures, keeps the counter session local in
-Dexie, and submits only event ID, pod ID, result type, winner seat IDs,
-and optional notes when the player chooses to save. The save path reuses
-the same transactional game writer as quick-logging, so it persists
-coherent `games`, `game_players`, `game_results`, and `matchup_history`
-rows, updates the pod to completed, applies the same result semantics,
-and keeps guest names, emails, invite tokens/token hashes, host
-addresses, RSVP notes, private guest details, and contact data out of
-UI/action projections. Focused unit, component, and PGlite tests cover
-event-linked and pod-linked counter import, save validation, save forms,
-scoped save persistence, team/no-winner semantics, non-member denial,
-guest redaction, and matchup-history writes. Standalone counter game
-saves through event attachment exist, but Postgres counter snapshot sync,
-finish order beyond winner marking, elimination detail,
-poison/commander-damage loss detail, dedicated event history pages,
-public history views, richer meta-health dashboards/materialized summary
-views, arbitrary local-player identity matching for standalone saves, and
-Playwright coverage for the quick-log/history/life-save UI remain
-unimplemented.
+- [ ] Build host location create/edit/archive flows with address
+  visibility controls.
+- [ ] Wire event host/location selection into event create/edit.
+- [ ] Prove host-address disclosure rules for owner/admin/host/member,
+  RSVP, guest, public-safe, and non-member viewers.
+- [ ] Add group edit and group archive/delete flows with safe ownership
+  and last-owner behavior.
+- [ ] Add guest RSVP edit/cancel behavior if needed for real event use.
+- [ ] Add calendar export only after address visibility is tested.
+- [ ] Defer reminder jobs unless a TypeScript job-runner path is chosen.
 
-## Phase 11 - Simplification And Removal
+## Pass 3 - Game Logging Completeness
 
-- [ ] Remove or archive collection, wishlist, proxy-list, and
-  collection-aware recommendation UI from the future app.
-- [ ] Remove or archive optional pgvector and semantic-search paths from
-  the active roadmap.
-- [ ] Remove or archive natural-language meta query research from the
-  active roadmap.
-- [ ] Remove or archive full decklist import/export unless Stephen
-  explicitly keeps it as lightweight metadata support.
-- [ ] Remove old Rust routes only after equivalent core TypeScript flows
-  are working or deliberately dropped.
-- [ ] Keep any historical data export needed before deleting old tables
-  or code.
-- [ ] Document each removed feature and why it is outside the two primary
-  product pillars.
+- [ ] Add finish order beyond winner marking.
+- [ ] Add elimination detail, eliminated turn, and loss reason capture.
+- [ ] Add poison-loss and commander-damage-loss details.
+- [ ] Add result editing/correction rules for managers and scoped
+  participants, including audit behavior.
+- [ ] Update quick-log, event-linked save, pod-linked save, standalone
+  attach save, history list, and detail projections for the new fields.
+- [ ] Preserve guest redaction and immutable deck/commander snapshots.
+- [ ] Add focused PGlite, component, and Playwright coverage for actual
+  game-save submissions.
 
-## Phase 12 - Offline, Sync, And PWA Polish
+## Pass 4 - Meta Health And History
 
-- [ ] Define the Dexie schema for local counter sessions and pending
-  sync actions.
-- [x] Add clear local-only versus saved-to-group state indicators.
-- [ ] Add conflict handling for event-linked counter sessions.
-- [ ] Add PWA manifest and install behavior if it improves live play.
-- [ ] Verify offline launch for previously loaded life counter assets.
-- [ ] Verify recovery after browser refresh, tab close, and reconnect.
+- [ ] Expand `/history` into the final scoped history and meta-health
+  surface without competitive leaderboards as the default emphasis.
+- [ ] Add scoped playgroup and event filters.
+- [ ] Add attendance, deck/commander variety, color/archetype spread,
+  repeat-pairing freshness, pod-size quality, and event participation
+  trends from real tables only.
+- [ ] Add charts only where they improve scanning and are tested.
+- [ ] Add public history views only if backed by public-safe projections
+  and explicit scope decisions.
+- [ ] Decide whether materialized views are needed after query shape and
+  freshness needs are proven.
+- [ ] Verify with PGlite metric tests, component tests, and Playwright
+  smoke for history/meta.
+
+## Pass 5 - Offline, Sync, And PWA Polish
+
+- [ ] Persist explicitly linked counter snapshots to Postgres when useful
+  for recovery or cross-device continuation.
+- [ ] Preserve local Dexie action history after successful game save.
+- [ ] Add conflict handling for linked sessions so reconnects never
+  silently overwrite newer server state.
 - [ ] Add storage cleanup controls that do not surprise-delete active
   games.
+- [ ] Decide whether `/life` ships as an installable PWA for cutover; if
+  yes, add manifest/service-worker behavior and verify offline launch for
+  previously loaded assets.
+- [ ] Add a read-only table/spectator view only if it can be scoped and
+  kept fast.
 
-## Phase 13 - Observability And Operations
+## Pass 6 - Commander Lookup And Lightweight Data
 
-- [ ] Add structured application logging without sensitive values.
-- [ ] Add GlitchTip or Sentry-compatible error reporting.
+- [ ] Decide whether manual commander entry is enough for cutover.
+- [ ] If lookup is required, add a narrow commander lookup path without
+  importing a full card research product.
+- [ ] If Scryfall data is stored locally, normalize only needed fields,
+  retain raw payloads in JSONB, and version Commander Brackets/Game
+  Changers data.
+- [ ] Verify lookup performance, privacy, and failure behavior.
+
+## Pass 7 - Observability And Operations
+
+- [ ] Add structured logging without sensitive payloads.
+- [ ] Add GlitchTip/Sentry-compatible error reporting.
 - [ ] Add Umami analytics with respectful event names and no private
   payloads.
-- [ ] Add health and readiness checks for database, Valkey, and object
-  storage when those services are required.
-- [ ] Add backup and restore scripts for the Docker Compose/Postgres
-  production shape.
+- [ ] Add database-aware `/healthz` and `/readyz` checks for production
+  dependencies actually required at cutover.
+- [ ] Add production `.env.example` files with placeholders only.
 - [ ] Add Caddy config for the Next.js service.
-- [ ] Add Cloudflare DNS/proxy or Tunnel notes without committing
-  secrets.
-- [ ] Add production environment examples with placeholders only.
-- [ ] Validate compose, Caddy, backup, restore, health, and readiness
-  flows locally before any production plan.
+- [ ] Add Docker Compose production profile or deployment docs for
+  Postgres, app, optional Valkey, optional MinIO, analytics, and error
+  reporting.
+- [ ] Add backup and restore scripts for the TypeScript/Postgres shape.
+- [ ] Run and document a local backup/restore drill.
 
-## Phase 14 - Cutover From Rust To TypeScript
+## Pass 8 - Migration From Rust V1
 
-- [ ] Freeze Rust feature development except for urgent production fixes.
-- [ ] Build a data migration or export/import plan for current production
-  data.
-- [ ] Run the TypeScript app against a migrated non-production database.
-- [ ] Verify signup, login, group creation, event creation, RSVP, deck
-  declaration, pod generation, linked life counter, game logging, and
-  meta history end to end.
-- [ ] Run load and interaction checks for live life-counter tapping.
-- [ ] Run backup and restore drill on the TypeScript deployment shape.
-- [ ] Prepare rollback steps before production cutover.
+- [ ] Inventory Rust production tables and TypeScript target tables.
+- [ ] Decide table-by-table migration versus typed export/import for each
+  domain.
+- [ ] Build idempotent migration/export/import scripts that avoid
+  secrets, production logs, invite tokens, and private dumps in git.
+- [ ] Verify against a non-production copy or synthetic Rust-shaped data.
+- [ ] Reconcile identity/user mapping and historical game/deck/event
+  snapshots.
+- [ ] Produce a rollback plan before any production migration.
+
+## Pass 9 - End-To-End Release Candidate
+
+- [ ] Run full TypeScript unit, integration, lint, typecheck, migration,
+  and Playwright suites.
+- [ ] Run critical browser smoke flows: signup, login, logout, group
+  create/edit, invite, event create/edit, RSVP, guest RSVP, deck create,
+  deck declaration, pod generation/manual adjustment/lock/publish,
+  standalone life counter, event-linked counter, pod-linked counter, game
+  save, history, and meta health.
+- [ ] Run responsive checks for small phone, tablet, laptop, and wide
+  desktop.
+- [ ] Run load/interaction checks for repeated live-counter tapping.
+- [ ] Run production-like Docker Compose startup, health/readiness,
+  backup, restore, and restart checks.
+- [ ] Freeze Rust feature work except urgent production fixes.
 - [ ] Get Stephen's explicit approval for production migration and
-  deployment.
-- [ ] Cut over production only after approval.
+  cutover.
+
+## Pass 10 - Cutover And Rust Retirement
+
+- [ ] Execute approved production migration and deployment only after
+  Stephen approval.
+- [ ] Validate production signup/login, event planning, public invite,
+  life counter, game save, history, and backup immediately after cutover.
+- [ ] Keep rollback available until Stephen accepts the new production
+  app.
 - [ ] Archive or remove Rust deployment files only after the TypeScript
   production app is stable.
+- [ ] Remove or archive Rust code only with explicit approval and after
+  needed historical export paths are preserved.
+- [ ] Update `README.md`, `AGENTS.md`, and operations docs to reflect the
+  new production reality.
 
 ---
 
 ## Verification Gates
 
-Docs-only work:
+Docs-only changes:
 
 ```sh
 git diff --check
 ```
 
-Future TypeScript normal gate once scripts exist:
+Normal TypeScript gate:
 
 ```sh
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:e2e
+pnpm --dir apps/web lint
+pnpm --dir apps/web typecheck
+pnpm --dir apps/web test
 ```
 
-Future database gate once Drizzle exists:
+Database gate:
 
 ```sh
-pnpm db:check
+pnpm --dir apps/web db:check
 docker compose up -d postgres
-pnpm db:migrate
-pnpm db:test
+pnpm --dir apps/web db:migrate
+pnpm --dir apps/web db:test
 ```
 
-The Docker Compose PostgreSQL service publishes to `localhost:55432` so
-local host databases or SSH tunnels on `5432` do not intercept migration
-commands.
+Browser gate:
 
-Future browser smoke coverage:
+```sh
+pnpm --dir apps/web test:e2e
+```
 
-- Signup, login, logout.
-- Group creation and member invite.
-- Event creation and RSVP.
-- Guest RSVP through tokenized link.
-- Deck creation and event declaration.
-- Pod generation, manual adjustment, lock, and publish.
-- Standalone life counter setup.
-- Life, commander damage, poison, custom counters, undo, redo, reload,
-  and rematch.
-- Launch life counter from a published pod.
-- Save completed counter session as a game.
-- View game history and meta health.
+Use focused tests while developing. Run broader gates as blast radius
+increases and before release-candidate/cutover work.
 
 ---
 
-## Open Decisions
+## Roadmap Maintenance Rules
 
-- [x] Whether the TypeScript app starts in `apps/web` for side-by-side
-  migration or replaces the repo root immediately.
-- [ ] Whether standalone `/life` should be installable as a PWA in the
-  first life-counter release.
-- [ ] Whether event-linked life counter sessions should support real-time
-  multi-device sync in the first release or only save on completion.
-- [ ] Whether Scryfall data should be imported locally in the TypeScript
-  app or replaced initially with lightweight commander lookup.
-- [x] Whether existing production data should be migrated table-by-table
-  or exported/imported through typed application-level scripts.
+- Do not add changelog paragraphs.
+- Do not add completed-work narratives after each pass.
+- Keep checkboxes actionable and verifiable.
+- Move deferred work into the correct future pass instead of reopening
+  completed foundation phases.
+- Mark a box complete only after implementation and verification.
+- If a task is intentionally dropped, remove it or replace it with the
+  actual decision and where that decision is documented.

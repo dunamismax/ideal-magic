@@ -3,7 +3,7 @@
 Future build plan for Pod Tracker. `README.md` describes the current
 product and `AGENTS.md` holds durable repo operating rules.
 
-Last reviewed: 2026-06-04.
+Last reviewed: 2026-06-05.
 
 ---
 
@@ -554,31 +554,37 @@ address disclosure, or public calendar export.
 
 ## Phase 8 - Deck Declarations
 
-- [ ] Build lightweight deck CRUD for commander-night planning.
+- [x] Build lightweight deck create/list/update and non-destructive retire
+  flows for commander-night planning.
 - [x] Support name, commander or commanders, colors, bracket/power,
   archetype/tags, visibility, owner, and optional external URL.
 - [x] Build event deck declaration and undeclaration flows.
+- [x] Preserve event deck declaration snapshots when later deck edits occur.
 - [ ] Snapshot declaration metadata for events and game records.
 - [ ] Add commander lookup where it makes entry faster and more accurate.
 - [x] Avoid full deckbuilder, collection tracking, and card inventory
   behavior.
-- [x] Verify deck creation and event deck declaration with tests and
-  Playwright.
+- [x] Verify deck creation, deck update/retire, event deck declaration, and
+  event snapshot preservation with tests and Playwright.
 
-Current Phase 8 foundation adds authenticated lightweight deck create/list
-in `/decks` for planning metadata only: deck name, one or more manually
+Current Phase 8 adds authenticated lightweight deck management in
+`/decks` for planning metadata only: deck name, one or more manually
 entered commanders, color identity, bracket, power estimate, archetype,
 tags, visibility, owner, optional playgroup scope, and optional external
-URL. It adds scoped event deck declaration and undeclaration controls to
-`/game-night` for authenticated event participants, with owner-only deck
-selection and declaration-time snapshots for deck name, commanders,
-colors, bracket, power estimate, archetype, tags, visibility, and external
-URL. PGlite integration tests cover owner-scoped deck lists, playgroup
-visibility authorization, declaration authorization, duplicate
-protection, undeclaration, and immutable snapshots after later deck edits.
-Unit/component tests cover validation and public-safe rendering, and
-Playwright covers signup -> group -> deck create -> event create -> deck
-declaration -> undeclaration -> RSVP. Full deck update/delete UI,
+URL. Owners can create, list, update, and non-destructively retire active
+decks; retired decks leave existing declaration history intact and are
+hidden from active owner/declaration selection lists. `/game-night`
+supports scoped event deck declaration and undeclaration for authenticated
+event participants, with owner-only deck selection and declaration-time
+snapshots for deck name, commanders, colors, bracket, power estimate,
+archetype, tags, visibility, and external URL. PGlite integration tests
+cover owner-scoped deck lists, owner-only updates, playgroup visibility
+authorization, retirement, declaration authorization, duplicate
+protection, undeclaration, and immutable event snapshots after later deck
+edits. Unit/component tests cover validation, update/retire controls, and
+public-safe rendering, and Playwright covers signup -> group -> deck
+create -> deck edit -> event create -> deck declaration -> later deck edit
+snapshot preservation -> undeclaration -> RSVP. Destructive deck delete,
 commander lookup, game-record snapshot integration, full deckbuilder,
 collection tracking, and card inventory remain unimplemented.
 

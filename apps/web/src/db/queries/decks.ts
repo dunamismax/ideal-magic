@@ -14,7 +14,7 @@ import { canRsvpToEvent, type PlaygroupRole } from "../scopes";
 type DeckReadDatabase = Pick<AppDatabase, "select">;
 type DeckWriteDatabase = Pick<
   AppDatabase,
-  "select" | "insert" | "delete" | "transaction"
+  "select" | "insert" | "update" | "delete" | "transaction"
 >;
 
 export type DeckVisibility = "private" | "playgroup" | "public";
@@ -61,6 +61,13 @@ export class DeckPlaygroupAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot scope a deck to that playgroup.");
     this.name = "DeckPlaygroupAuthorizationError";
+  }
+}
+
+export class DeckOwnershipAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot manage that deck.");
+    this.name = "DeckOwnershipAuthorizationError";
   }
 }
 
@@ -153,6 +160,111 @@ export async function createDeckForUser(
 
     return created;
   });
+}
+
+export async function updateDeckForUser(
+  db: DeckWriteDatabase,
+  input: {
+    ownerUserId: string;
+    deckId: string;
+    name: string;
+    commanders: string[];
+    colorIdentity: string;
+    bracket: "1" | "2" | "3" | "4" | "5" | null;
+    powerEstimate: number | null;
+    archetype: string;
+    tags: string[];
+    visibility: DeckVisibility;
+    playgroupId: string | null;
+    externalUrl: string | null;
+  },
+): Promise<ViewerDeck> {
+  return runInTransaction(db, async (tx) => {
+    if (input.visibility === "playgroup") {
+      const role = input.playgroupId
+        ? await getViewerPlaygroupRole(tx, {
+            viewerUserId: input.ownerUserId,
+            playgroupId: input.playgroupId,
+          })
+        : null;
+
+      if (!role || !canRsvpToEvent(role)) {
+        throw new DeckPlaygroupAuthorizationError();
+      }
+    }
+
+    const [updated] = await tx
+      .update(decks)
+      .set({
+        playgroupId: input.playgroupId,
+        name: input.name,
+        commanders: input.commanders,
+        colorIdentity: input.colorIdentity,
+        bracket: input.bracket,
+        powerEstimate: input.powerEstimate,
+        archetype: input.archetype,
+        tags: input.tags,
+        visibility: input.visibility,
+        externalUrl: input.externalUrl,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(decks.id, input.deckId),
+          eq(decks.ownerUserId, input.ownerUserId),
+          eq(decks.status, "active"),
+        ),
+      )
+      .returning({
+        id: decks.id,
+      });
+
+    if (!updated) {
+      throw new DeckOwnershipAuthorizationError();
+    }
+
+    const deck = await getDeckForOwner(tx, {
+      deckId: updated.id,
+      ownerUserId: input.ownerUserId,
+    });
+
+    if (!deck) {
+      throw new Error("Expected updated deck to be visible to owner.");
+    }
+
+    return deck;
+  });
+}
+
+export async function retireDeckForUser(
+  db: DeckWriteDatabase,
+  input: {
+    ownerUserId: string;
+    deckId: string;
+  },
+) {
+  const [retired] = await db
+    .update(decks)
+    .set({
+      status: "retired",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(decks.id, input.deckId),
+        eq(decks.ownerUserId, input.ownerUserId),
+        eq(decks.status, "active"),
+      ),
+    )
+    .returning({
+      id: decks.id,
+    });
+
+  if (!retired) {
+    throw new DeckOwnershipAuthorizationError();
+  }
+
+  return retired;
 }
 
 export async function listDecksForOwner(

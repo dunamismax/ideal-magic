@@ -13,6 +13,14 @@ export type CreateDeckInput = {
   externalUrl: string;
 };
 
+export type UpdateDeckInput = CreateDeckInput & {
+  deckId: string;
+};
+
+export type RetireDeckInput = {
+  deckId: string;
+};
+
 export type DeckDeclarationInput = {
   eventId: string;
   deckId: string;
@@ -26,23 +34,38 @@ export type UndeclareDeckInput = {
 export type CreateDeckValidationResult =
   | {
       ok: true;
-      input: {
-        name: string;
-        commanders: string[];
-        colorIdentity: string;
-        bracket: "1" | "2" | "3" | "4" | "5" | null;
-        powerEstimate: number | null;
-        archetype: string;
-        tags: string[];
-        visibility: DeckVisibility;
-        playgroupId: string | null;
-        externalUrl: string | null;
-      };
+      input: ValidDeckMetadataInput;
     }
   | {
       ok: false;
       fieldErrors: Partial<Record<keyof CreateDeckInput, string>>;
       fields: CreateDeckInput;
+    };
+
+export type UpdateDeckValidationResult =
+  | {
+      ok: true;
+      input: ValidDeckMetadataInput & {
+        deckId: string;
+      };
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof UpdateDeckInput, string>>;
+      fields: UpdateDeckInput;
+    };
+
+export type RetireDeckValidationResult =
+  | {
+      ok: true;
+      input: {
+        deckId: string;
+      };
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof RetireDeckInput, string>>;
+      fields: RetireDeckInput;
     };
 
 export type DeckDeclarationValidationResult =
@@ -81,7 +104,95 @@ const maxTagLength = 32;
 const deckVisibilities = ["private", "playgroup", "public"] as const;
 const brackets = ["1", "2", "3", "4", "5"] as const;
 
+type ValidDeckMetadataInput = {
+  name: string;
+  commanders: string[];
+  colorIdentity: string;
+  bracket: "1" | "2" | "3" | "4" | "5" | null;
+  powerEstimate: number | null;
+  archetype: string;
+  tags: string[];
+  visibility: DeckVisibility;
+  playgroupId: string | null;
+  externalUrl: string | null;
+};
+
 export function validateCreateDeckInput(
+  rawInput: Partial<Record<keyof CreateDeckInput, FormDataEntryValue | string>>,
+): CreateDeckValidationResult {
+  return validateDeckMetadataInput(rawInput);
+}
+
+export function validateUpdateDeckInput(
+  rawInput: Partial<Record<keyof UpdateDeckInput, FormDataEntryValue | string>>,
+): UpdateDeckValidationResult {
+  const deckId = normalizeText(rawInput.deckId);
+  const validation = validateDeckMetadataInput(rawInput);
+
+  if (validation.ok) {
+    if (!isUuid(deckId)) {
+      return {
+        ok: false,
+        fieldErrors: {
+          deckId: "Choose a deck to update.",
+        },
+        fields: {
+          ...toUpdateFieldsFromValidInput(validation.input),
+          deckId,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      input: {
+        ...validation.input,
+        deckId,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    fieldErrors: {
+      ...validation.fieldErrors,
+      ...(!isUuid(deckId)
+        ? {
+            deckId: "Choose a deck to update.",
+          }
+        : {}),
+    },
+    fields: {
+      ...validation.fields,
+      deckId,
+    },
+  };
+}
+
+export function validateRetireDeckInput(
+  rawInput: Partial<Record<keyof RetireDeckInput, FormDataEntryValue | string>>,
+): RetireDeckValidationResult {
+  const fields: RetireDeckInput = {
+    deckId: normalizeText(rawInput.deckId),
+  };
+
+  if (!isUuid(fields.deckId)) {
+    return {
+      ok: false,
+      fieldErrors: {
+        deckId: "Choose a deck to retire.",
+      },
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
+  };
+}
+
+function validateDeckMetadataInput(
   rawInput: Partial<Record<keyof CreateDeckInput, FormDataEntryValue | string>>,
 ): CreateDeckValidationResult {
   const fields: CreateDeckInput = {
@@ -181,6 +292,24 @@ export function validateCreateDeckInput(
         fields.visibility === "playgroup" ? fields.playgroupId : null,
       externalUrl,
     },
+  };
+}
+
+function toUpdateFieldsFromValidInput(
+  input: ValidDeckMetadataInput,
+): UpdateDeckInput {
+  return {
+    name: input.name,
+    commanders: input.commanders.join("\n"),
+    colorIdentity: input.colorIdentity,
+    bracket: input.bracket ?? "",
+    powerEstimate: input.powerEstimate?.toString() ?? "",
+    archetype: input.archetype,
+    tags: input.tags.join(", "),
+    visibility: input.visibility,
+    playgroupId: input.playgroupId ?? "",
+    externalUrl: input.externalUrl ?? "",
+    deckId: "",
   };
 }
 

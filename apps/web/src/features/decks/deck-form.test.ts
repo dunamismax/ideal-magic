@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import {
   validateCreateDeckInput,
   validateDeckDeclarationInput,
+  validateRetireDeckInput,
+  validateUpdateDeckInput,
   validateUndeclareDeckInput,
 } from "./deck-form";
 
@@ -39,6 +41,39 @@ describe("deck form validation", () => {
         visibility: "playgroup",
         playgroupId,
         externalUrl: "https://example.test/decks/atraxa",
+      },
+    });
+  });
+
+  test("normalizes deck update metadata with owner deck identity", () => {
+    expect(
+      validateUpdateDeckInput({
+        deckId,
+        name: "  Krenko   Tokens  ",
+        commanders: " Krenko, Mob Boss ",
+        colorIdentity: "r",
+        bracket: "2",
+        powerEstimate: "5",
+        archetype: "  Goblin tokens ",
+        tags: "Tokens, Aggro",
+        visibility: "private",
+        playgroupId,
+        externalUrl: "",
+      }),
+    ).toEqual({
+      ok: true,
+      input: {
+        deckId,
+        name: "Krenko Tokens",
+        commanders: ["Krenko, Mob Boss"],
+        colorIdentity: "R",
+        bracket: "2",
+        powerEstimate: 5,
+        archetype: "Goblin tokens",
+        tags: ["tokens", "aggro"],
+        visibility: "private",
+        playgroupId: null,
+        externalUrl: null,
       },
     });
   });
@@ -81,6 +116,48 @@ describe("deck form validation", () => {
         tags: "Use up to 8 tags, 32 characters each.",
         playgroupId: "Choose a playgroup for playgroup visibility.",
         externalUrl: "Use a valid http or https deck URL.",
+      },
+    });
+  });
+
+  test("rejects invalid deck update and retire identities", () => {
+    const update = validateUpdateDeckInput({
+      deckId: "not-a-deck",
+      name: "Valid Deck",
+      commanders: "Atraxa, Grand Unifier",
+      colorIdentity: "WUBG",
+      bracket: "3",
+      powerEstimate: "7",
+      archetype: "Counters",
+      tags: "midrange",
+      visibility: "private",
+      playgroupId: "",
+      externalUrl: "",
+    });
+
+    expect(update).toMatchObject({
+      ok: false,
+      fieldErrors: {
+        deckId: "Choose a deck to update.",
+      },
+      fields: {
+        deckId: "not-a-deck",
+      },
+    });
+
+    expect(validateRetireDeckInput({ deckId })).toEqual({
+      ok: true,
+      input: {
+        deckId,
+      },
+    });
+    expect(validateRetireDeckInput({ deckId: "bad" })).toEqual({
+      ok: false,
+      fields: {
+        deckId: "bad",
+      },
+      fieldErrors: {
+        deckId: "Choose a deck to retire.",
       },
     });
   });

@@ -1023,6 +1023,8 @@ test("authenticated group owners can create an event and RSVP", async ({
   const email = `event-smoke-${suffix}@example.test`;
   const groupName = `Saturday Hosts ${suffix}`;
   const deckName = `Atraxa Counters ${suffix}`;
+  const editedDeckName = `Atraxa Midrange ${suffix}`;
+  const postDeclarationDeckName = `Atraxa Updated Later ${suffix}`;
   const eventTitle = `Saturday Commander ${suffix}`;
   const editedEventTitle = `Sunday Commander ${suffix}`;
 
@@ -1063,8 +1065,40 @@ test("authenticated group owners can create an event and RSVP", async ({
   const deckCard = page.locator("article").filter({ hasText: deckName });
 
   await expect(deckCard.getByRole("heading", { name: deckName })).toBeVisible();
-  await expect(deckCard.getByText("Atraxa, Grand Unifier")).toBeVisible();
+  await expect(
+    deckCard.getByText("Atraxa, Grand Unifier / Tekuthal, Inquiry Dominus"),
+  ).toBeVisible();
   await expect(deckCard.getByText("WUBG")).toBeVisible();
+
+  await deckCard.getByText("Edit Deck", { exact: true }).click();
+  await deckCard.getByLabel("Edit Deck Name").fill(editedDeckName);
+  await deckCard
+    .getByLabel("Edit Commanders")
+    .fill("Atraxa, Grand Unifier\nTekuthal, Inquiry Dominus");
+  await deckCard.getByLabel("Edit Colors").fill("wubg");
+  await deckCard.getByLabel("Edit Bracket").selectOption("4");
+  await deckCard.getByLabel("Edit Power").fill("8");
+  await deckCard.getByLabel("Edit Archetype").fill("Counters midrange");
+  await deckCard.getByLabel("Edit Tags").fill("midrange, proliferate, tuned");
+  await deckCard.getByLabel("Edit Visibility").selectOption("playgroup");
+  await deckCard
+    .locator('select[name="playgroupId"]')
+    .selectOption({ label: groupName });
+  await deckCard
+    .getByLabel("Edit External URL")
+    .fill("https://example.test/decks/atraxa-edited");
+  await deckCard.getByRole("button", { name: "Update Deck" }).click();
+
+  const editedDeckCard = page.locator("article").filter({
+    hasText: editedDeckName,
+  });
+
+  await expect(editedDeckCard.getByText("Deck updated.")).toBeVisible();
+  await expect(
+    editedDeckCard.getByRole("heading", { name: editedDeckName }),
+  ).toBeVisible();
+  await expect(editedDeckCard.getByText("Counters midrange")).toBeVisible();
+  await expect(editedDeckCard.getByText("tuned")).toBeVisible();
 
   await page.goto("/game-night");
   await expect(
@@ -1092,33 +1126,78 @@ test("authenticated group owners can create an event and RSVP", async ({
 
   await eventCard
     .locator('select[name="deckId"]')
-    .selectOption({ label: deckName });
+    .selectOption({ label: editedDeckName });
   await eventCard.locator('select[name="preference"]').selectOption("2");
   await eventCard.getByRole("button", { name: "Declare Deck" }).click();
   await expect(eventCard.getByText("Deck declared.")).toBeVisible();
-  await expect(eventCard.getByText(deckName).first()).toBeVisible();
-  await expect(eventCard.getByText("Bracket 3")).toBeVisible();
-  await expect(eventCard.getByText("Power 7")).toBeVisible();
+  await expect(eventCard.getByText(editedDeckName).first()).toBeVisible();
+  await expect(eventCard.getByText("Bracket 4")).toBeVisible();
+  await expect(eventCard.getByText("Power 8")).toBeVisible();
 
-  await eventCard
-    .getByRole("button", { name: `Undeclare ${deckName}` })
+  await page.goto("/decks");
+  const declaredDeckCard = page.locator("article").filter({
+    hasText: editedDeckName,
+  });
+  await declaredDeckCard.getByText("Edit Deck", { exact: true }).click();
+  await declaredDeckCard
+    .getByLabel("Edit Deck Name")
+    .fill(postDeclarationDeckName);
+  await declaredDeckCard.getByLabel("Edit Bracket").selectOption("2");
+  await declaredDeckCard.getByLabel("Edit Power").fill("5");
+  await declaredDeckCard.getByRole("button", { name: "Update Deck" }).click();
+  await expect(
+    page.locator("article").filter({ hasText: postDeclarationDeckName }),
+  ).toBeVisible();
+
+  await page.goto("/game-night");
+  const eventCardAfterDeckEdit = page
+    .locator("article")
+    .filter({ hasText: eventTitle });
+
+  await expect(
+    eventCardAfterDeckEdit.getByText(editedDeckName).first(),
+  ).toBeVisible();
+  await expect(eventCardAfterDeckEdit.getByText("Bracket 4")).toBeVisible();
+  await expect(eventCardAfterDeckEdit.getByText("Power 8")).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText(postDeclarationDeckName),
+  ).toHaveCount(0);
+
+  await eventCardAfterDeckEdit
+    .getByRole("button", { name: `Undeclare ${editedDeckName}` })
     .click();
-  await expect(eventCard.getByText("Deck undeclared.")).toBeVisible();
-  await expect(eventCard.getByText("No decks declared.")).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText("Deck undeclared."),
+  ).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText("No decks declared."),
+  ).toBeVisible();
 
-  await eventCard.getByLabel("RSVP Status").selectOption("maybe");
-  await eventCard.getByLabel("Arrival").fill("2030-06-14T19:30");
-  await eventCard.getByLabel("Leaving").fill("2030-06-14T23:00");
-  await eventCard.getByRole("button", { name: "Save RSVP" }).click();
+  await eventCardAfterDeckEdit.getByLabel("RSVP Status").selectOption("maybe");
+  await eventCardAfterDeckEdit.getByLabel("Arrival").fill("2030-06-14T19:30");
+  await eventCardAfterDeckEdit.getByLabel("Leaving").fill("2030-06-14T23:00");
+  await eventCardAfterDeckEdit
+    .getByRole("button", { name: "Save RSVP" })
+    .click();
 
-  await expect(eventCard.getByText("RSVP saved.")).toBeVisible();
-  await expect(eventCard.getByText("RSVP: Maybe")).toBeVisible();
+  await expect(eventCardAfterDeckEdit.getByText("RSVP saved.")).toBeVisible();
+  await expect(eventCardAfterDeckEdit.getByText("RSVP: Maybe")).toBeVisible();
 
-  await eventCard.getByLabel("Edit Event Title").fill(editedEventTitle);
-  await eventCard.getByLabel("Edit Start").fill("2030-06-15T18:30");
-  await eventCard.getByLabel("Edit Visibility").selectOption("invite_only");
-  await eventCard.getByLabel("Edit Description").fill("Shifted to Sunday.");
-  await eventCard.getByRole("button", { name: "Update Event" }).click();
+  await eventCardAfterDeckEdit
+    .getByLabel("Edit Event Title")
+    .fill(editedEventTitle);
+  await eventCardAfterDeckEdit
+    .getByLabel("Edit Start")
+    .fill("2030-06-15T18:30");
+  await eventCardAfterDeckEdit
+    .getByLabel("Edit Visibility")
+    .selectOption("invite_only");
+  await eventCardAfterDeckEdit
+    .getByLabel("Edit Description")
+    .fill("Shifted to Sunday.");
+  await eventCardAfterDeckEdit
+    .getByRole("button", { name: "Update Event" })
+    .click();
 
   const editedEventCard = page
     .locator("article")

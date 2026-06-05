@@ -12,7 +12,8 @@ import { createDatabase } from "@/db/client";
 import { listDecksForOwner, type ViewerDeck } from "@/db/queries/decks";
 import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
-import { CreateDeckForm } from "./create-deck-form";
+import { CreateDeckForm, type DeckFormPlaygroup } from "./create-deck-form";
+import { UpdateDeckForm } from "./update-deck-form";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,13 @@ export default async function DecksPage() {
 
         <section className="grid gap-3">
           {decks.length > 0 ? (
-            decks.map((deck) => <DeckCard deck={deck} key={deck.id} />)
+            decks.map((deck) => (
+              <DeckCard
+                deck={deck}
+                key={deck.id}
+                playgroups={deckFormPlaygroups}
+              />
+            ))
           ) : (
             <EmptyState icon={LibraryBig} title="No decks created" />
           )}
@@ -71,7 +78,13 @@ export default async function DecksPage() {
   );
 }
 
-export function DeckCard({ deck }: { deck: ViewerDeck }) {
+export function DeckCard({
+  deck,
+  playgroups = [],
+}: {
+  deck: ViewerDeck;
+  playgroups?: DeckFormPlaygroup[];
+}) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -116,6 +129,8 @@ export function DeckCard({ deck }: { deck: ViewerDeck }) {
           Deck Link
         </a>
       ) : null}
+
+      <UpdateDeckForm deck={deck} playgroups={playgroups} />
     </article>
   );
 }

@@ -26,7 +26,17 @@ const deck: ViewerDeck = {
 
 describe("deck card", () => {
   test("renders lightweight planning metadata without private fields", () => {
-    render(<DeckCard deck={deck} />);
+    render(
+      <DeckCard
+        deck={deck}
+        playgroups={[
+          {
+            id: deck.playgroup?.id ?? "",
+            name: deck.playgroup?.name ?? "",
+          },
+        ]}
+      />,
+    );
 
     expect(
       screen.getByRole("heading", { name: "Atraxa Counters" }),
@@ -34,8 +44,8 @@ describe("deck card", () => {
     expect(
       screen.getByText("Atraxa, Grand Unifier / Tekuthal, Inquiry Dominus"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Playgroup")).toBeInTheDocument();
-    expect(screen.getByText("Friday Pods")).toBeInTheDocument();
+    expect(screen.getAllByText("Playgroup").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Friday Pods").length).toBeGreaterThan(0);
     expect(screen.getByText("WUBG")).toBeInTheDocument();
     expect(screen.getByText("Counters")).toBeInTheDocument();
     expect(screen.getByText("midrange")).toBeInTheDocument();
@@ -43,6 +53,16 @@ describe("deck card", () => {
       "href",
       "https://example.test/decks/atraxa",
     );
+    expect(screen.getByText("Edit Deck")).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit Deck Name")).toHaveValue(
+      "Atraxa Counters",
+    );
+    expect(
+      screen.getByRole("button", { name: "Update Deck" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retire Atraxa Counters" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/example\.test.*@/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/invite/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument();

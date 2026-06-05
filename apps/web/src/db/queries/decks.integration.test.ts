@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db/client";
 import {
-  decks,
   eventDeckDeclarations,
   playgroupMemberships,
   users,
@@ -15,11 +14,14 @@ import {
   createDeckForUser,
   DeckDeclarationAuthorizationError,
   DeckDeclarationDuplicateError,
+  DeckOwnershipAuthorizationError,
   DeckPlaygroupAuthorizationError,
   declareDeckForEvent,
   listDecksForOwner,
   listEventDeckDeclarationsForViewer,
+  retireDeckForUser,
   undeclareDeckForEvent,
+  updateDeckForUser,
 } from "./decks";
 
 describe("deck data access", () => {
@@ -110,6 +112,114 @@ describe("deck data access", () => {
     ).rejects.toBeInstanceOf(DeckPlaygroupAuthorizationError);
   });
 
+  test("updates and retires only active decks owned by the viewer", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "30000000-0000-4000-8000-000000000008",
+      email: "deck-manager@example.test",
+      name: "Deck Manager",
+    });
+    await insertUser(db, {
+      id: "30000000-0000-4000-8000-000000000009",
+      email: "other-manager@example.test",
+      name: "Other Manager",
+    });
+    const group = await createPlaygroupForUser(db, {
+      userId: "30000000-0000-4000-8000-000000000008",
+      ownerDisplayName: "Deck Manager",
+      name: "Managed Deck Pods",
+      slugBase: "managed-deck-pods",
+      description: "",
+    });
+    const deck = await createDeckForUser(db, {
+      ownerUserId: "30000000-0000-4000-8000-000000000008",
+      name: "Krenko Tokens",
+      commanders: ["Krenko, Mob Boss"],
+      colorIdentity: "R",
+      bracket: "2",
+      powerEstimate: 5,
+      archetype: "Tokens",
+      tags: ["aggro"],
+      visibility: "private",
+      playgroupId: null,
+      externalUrl: null,
+    });
+
+    await expect(
+      updateDeckForUser(db, {
+        ownerUserId: "30000000-0000-4000-8000-000000000009",
+        deckId: deck.id,
+        name: "Stolen Deck",
+        commanders: ["Slicer, Hired Muscle"],
+        colorIdentity: "R",
+        bracket: "4",
+        powerEstimate: 8,
+        archetype: "Voltron",
+        tags: [],
+        visibility: "private",
+        playgroupId: null,
+        externalUrl: null,
+      }),
+    ).rejects.toBeInstanceOf(DeckOwnershipAuthorizationError);
+
+    const updated = await updateDeckForUser(db, {
+      ownerUserId: "30000000-0000-4000-8000-000000000008",
+      deckId: deck.id,
+      name: "Krenko Mob Night",
+      commanders: ["Krenko, Mob Boss"],
+      colorIdentity: "R",
+      bracket: "3",
+      powerEstimate: 6,
+      archetype: "Token pressure",
+      tags: ["tokens", "combat"],
+      visibility: "playgroup",
+      playgroupId: group.id,
+      externalUrl: "https://example.test/decks/krenko",
+    });
+
+    expect(updated).toMatchObject({
+      id: deck.id,
+      name: "Krenko Mob Night",
+      bracket: "3",
+      powerEstimate: 6,
+      archetype: "Token pressure",
+      tags: ["tokens", "combat"],
+      visibility: "playgroup",
+      playgroup: {
+        id: group.id,
+        name: "Managed Deck Pods",
+      },
+      externalUrl: "https://example.test/decks/krenko",
+    });
+
+    await retireDeckForUser(db, {
+      ownerUserId: "30000000-0000-4000-8000-000000000008",
+      deckId: deck.id,
+    });
+
+    await expect(
+      listDecksForOwner(db, {
+        ownerUserId: "30000000-0000-4000-8000-000000000008",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      updateDeckForUser(db, {
+        ownerUserId: "30000000-0000-4000-8000-000000000008",
+        deckId: deck.id,
+        name: "Retired Edit",
+        commanders: ["Krenko, Mob Boss"],
+        colorIdentity: "R",
+        bracket: "2",
+        powerEstimate: 5,
+        archetype: "Tokens",
+        tags: [],
+        visibility: "private",
+        playgroupId: null,
+        externalUrl: null,
+      }),
+    ).rejects.toBeInstanceOf(DeckOwnershipAuthorizationError);
+  });
+
   test("declares and undeclares own decks for scoped events with immutable snapshots", async () => {
     const { db } = await createMigratedPgliteDatabase();
     await insertUser(db, {
@@ -185,19 +295,20 @@ describe("deck data access", () => {
       externalUrlSnapshot: "https://example.test/decks/muldrotha",
     });
 
-    await db
-      .update(decks)
-      .set({
-        name: "Edited Muldrotha",
-        commanders: ["Muldrotha, the Gravetide", "Kodama of the East Tree"],
-        colorIdentity: "G",
-        bracket: "4",
-        powerEstimate: 8,
-        archetype: "Combo",
-        tags: ["combo"],
-        externalUrl: "https://example.test/decks/edited",
-      })
-      .where(eq(decks.id, deck.id));
+    await updateDeckForUser(db, {
+      ownerUserId: "30000000-0000-4000-8000-000000000006",
+      deckId: deck.id,
+      name: "Edited Muldrotha",
+      commanders: ["Muldrotha, the Gravetide", "Kodama of the East Tree"],
+      colorIdentity: "G",
+      bracket: "4",
+      powerEstimate: 8,
+      archetype: "Combo",
+      tags: ["combo"],
+      visibility: "playgroup",
+      playgroupId: group.id,
+      externalUrl: "https://example.test/decks/edited",
+    });
 
     await expect(
       listEventDeckDeclarationsForViewer(db, {

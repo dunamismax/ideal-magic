@@ -4,10 +4,12 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   Lock,
+  PlayCircle,
   Shuffle,
   Unlock,
   UsersRound,
 } from "lucide-react";
+import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -236,6 +238,8 @@ function PodBlock({
   pod: EventPodSummary;
   pods: EventPodSummary[];
 }) {
+  const canLaunchLifeCounter = pod.state === "locked" && pod.publishedAt;
+
   return (
     <div
       aria-label={`${pod.name} pod assignment`}
@@ -253,6 +257,17 @@ function PodBlock({
           <Badge value={`Size ${pod.sizeFitScore}`} />
           <Badge value={`Bracket ${pod.bracketCompatibilityScore}`} />
           <Badge value={`Availability ${pod.availabilityWindowScore}`} />
+          {canLaunchLifeCounter ? (
+            <Button asChild size="sm" variant="primary">
+              <Link
+                aria-label={`Launch ${pod.name} life counter`}
+                href={`/events/${eventId}/pods/${pod.id}/life`}
+              >
+                <PlayCircle className="size-4" aria-hidden="true" />
+                Launch Counter
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </div>
 

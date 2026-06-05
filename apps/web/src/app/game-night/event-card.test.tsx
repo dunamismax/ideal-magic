@@ -208,6 +208,9 @@ describe("event card", () => {
     expect(
       screen.getByRole("button", { name: "Publish Pods" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Launch Pod 1 life counter" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pod 1" })).toBeInTheDocument();
     expect(screen.getByText("Riley Chen")).toBeInTheDocument();
     expect(
@@ -316,6 +319,12 @@ describe("event card", () => {
       screen.getByText(/Locked - 1 seats - Score 215/),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
+    ).toHaveAttribute(
+      "href",
+      `/events/${baseEvent.id}/pods/${pod.id}/life`,
+    );
+    expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
     expect(
@@ -329,5 +338,45 @@ describe("event card", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();
+  });
+
+  test("renders published pod launch controls for scoped participants", () => {
+    render(
+      <EventCard
+        declarations={[declaration]}
+        event={{
+          ...baseEvent,
+          viewer: {
+            ...baseEvent.viewer,
+            role: "member",
+            canManageEvent: false,
+          },
+        }}
+        pods={[
+          {
+            ...pod,
+            state: "locked",
+            publishedAt: new Date("2030-06-14T22:00:00.000Z"),
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Published Pods")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
+    ).toHaveAttribute(
+      "href",
+      `/events/${baseEvent.id}/pods/${pod.id}/life`,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Publish Pods" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Unpublish Pods" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Move Riley Chen to pod"),
+    ).not.toBeInTheDocument();
   });
 });

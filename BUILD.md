@@ -599,8 +599,8 @@ collection tracking, and card inventory remain unimplemented.
 - [x] Support locked seats and manual seat movement.
 - [x] Publish and unpublish pod assignments.
 - [x] Show participants only the pod data they are allowed to see.
-- [ ] Let a published pod launch a linked life counter session.
-- [ ] Verify generation, manual edits, locking, publishing, and launch to
+- [x] Let a published pod launch a linked life counter session.
+- [x] Verify generation, manual edits, locking, publishing, and launch to
   life counter with tests and Playwright.
 
 Current Phase 9 start adds a draft pod panel to `/game-night` for event
@@ -626,15 +626,20 @@ locked published assignments with `published_at`; managers can unpublish
 back to proposed only before any active/completed pod state, game record,
 or saved pod-linked counter exists. Authenticated event participants can
 see generated and published pod seats through the scoped Game Night
-surface, while non-members cannot. The projection omits emails, invite
-tokens, token hashes, host addresses, private notes, guest names/details,
-and private contact fields. Unit, PGlite integration, component
-rendering, Playwright, and database gates cover draft generation,
-display, manual movement, locking, unlocking, publishing, unpublishing,
-scoped participant visibility, and non-member denial. Repeat-pairing
-history, deck-variety optimization, guest placement, late-arrival scoring
-beyond simple maybe availability, host overrides, published-pod
-life-counter launch, and game logging remain unimplemented.
+surface, while non-members cannot. Published pod cards now expose
+participant-scoped launch links to `/events/[eventId]/pods/[podId]/life`;
+draft/proposed pods do not show launch controls. This is only a launch
+affordance into the existing linked local counter route and does not
+claim Postgres counter save, server sync, game-log conversion, or
+offline/PWA launch. The projection omits emails, invite tokens, token
+hashes, host addresses, private notes, guest names/details, and private
+contact fields. Unit, PGlite integration, component rendering,
+Playwright, and database gates cover draft generation, display, manual
+movement, locking, unlocking, publishing, unpublishing, scoped
+participant visibility, launch-link visibility, and non-member denial.
+Repeat-pairing history, deck-variety optimization, guest placement,
+late-arrival scoring beyond simple maybe availability, host overrides,
+and game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 

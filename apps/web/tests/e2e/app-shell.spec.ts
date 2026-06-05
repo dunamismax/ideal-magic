@@ -1026,6 +1026,8 @@ test("event managers can move and publish pod assignments", async ({
   const outsiderEmail = `pod-outsider-${suffix}@example.test`;
   const groupName = `Move Pods ${suffix}`;
   const eventTitle = `Manual Pod Move ${suffix}`;
+  const podLifeHrefPattern =
+    /\/events\/[0-9a-f-]+\/pods\/[0-9a-f-]+\/life$/;
 
   await page.goto("/signup?next=/groups");
   await page.getByLabel("Name").fill("Player A");
@@ -1113,6 +1115,9 @@ test("event managers can move and publish pod assignments", async ({
   await expect(
     podTwo.locator("li").filter({ hasText: "Player B" }),
   ).toBeVisible();
+  await expect(
+    eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
+  ).toHaveCount(0);
 
   let playerBSeat = podTwo.locator("li").filter({ hasText: "Player B" });
 
@@ -1164,6 +1169,12 @@ test("event managers can move and publish pod assignments", async ({
     eventCard.getByRole("button", { name: "Unpublish Pods" }),
   ).toBeVisible();
   await expect(eventCard.getByLabel("Move Player B to pod")).toHaveCount(0);
+  await expect(
+    eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
+  ).toHaveAttribute("href", podLifeHrefPattern);
+  await expect(
+    eventCard.getByRole("link", { name: "Launch Pod 2 life counter" }),
+  ).toHaveAttribute("href", podLifeHrefPattern);
 
   await page.reload();
   eventCard = page.locator("article").filter({ hasText: eventTitle });
@@ -1176,6 +1187,9 @@ test("event managers can move and publish pod assignments", async ({
       .locator("li")
       .filter({ hasText: "Player B" }),
   ).toBeVisible();
+  await expect(
+    eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
+  ).toHaveAttribute("href", podLifeHrefPattern);
 
   const observerContext = await browser.newContext();
   const observerPage = await observerContext.newPage();
@@ -1209,6 +1223,11 @@ test("event managers can move and publish pod assignments", async ({
   await expect(
     observerEventCard.getByRole("button", { name: "Publish Pods" }),
   ).toHaveCount(0);
+  await expect(
+    observerEventCard.getByRole("link", {
+      name: "Launch Pod 1 life counter",
+    }),
+  ).toHaveAttribute("href", podLifeHrefPattern);
   await observerContext.close();
 
   const outsiderContext = await browser.newContext();

@@ -91,6 +91,7 @@ const pod: EventPodSummary = {
   scoringDetails: {
     method: "draft-rsvp-declaration-v1",
   },
+  publishedAt: null,
   seats: [
     {
       id: "20000000-0000-4000-8000-000000000008",
@@ -204,6 +205,9 @@ describe("event card", () => {
     expect(
       screen.getByRole("button", { name: "Generate Draft Pods" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Publish Pods" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pod 1" })).toBeInTheDocument();
     expect(screen.getByText("Riley Chen")).toBeInTheDocument();
     expect(
@@ -239,10 +243,45 @@ describe("event card", () => {
 
     expect(screen.getByText("Draft Pods")).toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "Publish Pods" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Move Riley Chen" }),
     ).not.toBeInTheDocument();
+  });
+
+  test("renders published pod display without movement controls", () => {
+    render(
+      <EventCard
+        declarations={[declaration]}
+        event={baseEvent}
+        pods={[
+          {
+            ...pod,
+            state: "locked",
+            publishedAt: new Date("2030-06-14T22:00:00.000Z"),
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Published Pods")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Unpublish Pods" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Locked - 1 seats - Score 215/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Move Riley Chen to pod"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Move Riley Chen" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();
   });
 });

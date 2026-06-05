@@ -14,8 +14,10 @@ import type { EventPodSummary } from "@/db/queries/pods";
 import {
   generatePodsAction,
   movePodSeatAction,
+  updatePodPublicationAction,
   type GeneratePodsActionState,
   type MovePodSeatActionState,
+  type PodPublicationActionState,
 } from "./actions";
 
 type EventPodsPanelProps = {
@@ -35,6 +37,20 @@ function createInitialState(eventId: string): GeneratePodsActionState {
   };
 }
 
+function createPublicationInitialState(
+  eventId: string,
+): PodPublicationActionState {
+  return {
+    message: null,
+    saved: false,
+    fieldErrors: {},
+    fields: {
+      eventId,
+      intent: "publish",
+    },
+  };
+}
+
 export function EventPodsPanel({
   eventId,
   canManageEvent,
@@ -44,6 +60,18 @@ export function EventPodsPanel({
     generatePodsAction,
     createInitialState(eventId),
   );
+  const [publicationState, publicationFormAction] = useActionState(
+    updatePodPublicationAction,
+    createPublicationInitialState(eventId),
+  );
+  const hasPublishedPods = pods.some(
+    (pod) => pod.state === "locked" && pod.publishedAt,
+  );
+  const allPodsProposed =
+    pods.length > 0 && pods.every((pod) => pod.state === "proposed");
+  const allPodsPublished =
+    pods.length > 0 &&
+    pods.every((pod) => pod.state === "locked" && pod.publishedAt);
 
   if (!canManageEvent && pods.length === 0) {
     return null;
@@ -55,20 +83,39 @@ export function EventPodsPanel({
         <div>
           <h3 className="flex items-center gap-2 text-sm font-black uppercase text-foreground">
             <UsersRound className="size-4 text-accent" aria-hidden="true" />
-            Draft Pods
+            {hasPublishedPods ? "Published Pods" : "Draft Pods"}
           </h3>
           <p className="mt-1 text-sm font-semibold text-muted">
             {pods.length > 0
-              ? `${pods.length} draft pod${pods.length === 1 ? "" : "s"} ready`
+              ? `${pods.length} ${hasPublishedPods ? "published" : "draft"} pod${pods.length === 1 ? "" : "s"} ready`
               : "No draft pods generated."}
           </p>
         </div>
 
         {canManageEvent ? (
-          <form action={formAction}>
-            <input name="eventId" type="hidden" value={state.fields.eventId} />
-            <GeneratePodsButton />
-          </form>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <form action={formAction}>
+              <input
+                name="eventId"
+                type="hidden"
+                value={state.fields.eventId}
+              />
+              <GeneratePodsButton />
+            </form>
+            {pods.length > 0 ? (
+              <form action={publicationFormAction}>
+                <input
+                  name="eventId"
+                  type="hidden"
+                  value={publicationState.fields.eventId}
+                />
+                <PodPublicationButton
+                  disabled={!allPodsProposed && !allPodsPublished}
+                  intent={allPodsPublished ? "unpublish" : "publish"}
+                />
+              </form>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -89,6 +136,28 @@ export function EventPodsPanel({
       {state.fieldErrors.eventId ? (
         <p className="text-sm font-semibold text-danger">
           {state.fieldErrors.eventId}
+        </p>
+      ) : null}
+
+      {publicationState.message ? (
+        <div
+          className={
+            publicationState.saved
+              ? "flex items-start gap-2 rounded-control border border-accent/40 bg-accent/10 p-3 text-sm font-semibold text-accent"
+              : "flex items-start gap-2 rounded-control border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger"
+          }
+          role="status"
+        >
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>{publicationState.message}</span>
+        </div>
+      ) : null}
+
+      {publicationState.fieldErrors.eventId ||
+      publicationState.fieldErrors.intent ? (
+        <p className="text-sm font-semibold text-danger">
+          {publicationState.fieldErrors.eventId ??
+            publicationState.fieldErrors.intent}
         </p>
       ) : null}
 
@@ -117,6 +186,38 @@ function GeneratePodsButton() {
       <Shuffle className="size-4" aria-hidden="true" />
       {pending ? "Generating" : "Generate Draft Pods"}
     </Button>
+  );
+}
+
+function PodPublicationButton({
+  disabled,
+  intent,
+}: {
+  disabled: boolean;
+  intent: "publish" | "unpublish";
+}) {
+  const { pending } = useFormStatus();
+  const isUnpublish = intent === "unpublish";
+
+  return (
+    <>
+      <input name="intent" type="hidden" value={intent} />
+      <Button
+        className="w-full sm:w-auto"
+        disabled={disabled || pending}
+        type="submit"
+        variant={isUnpublish ? "secondary" : "primary"}
+      >
+        <CheckCircle2 className="size-4" aria-hidden="true" />
+        {pending
+          ? isUnpublish
+            ? "Unpublishing"
+            : "Publishing"
+          : isUnpublish
+            ? "Unpublish Pods"
+            : "Publish Pods"}
+      </Button>
+    </>
   );
 }
 
@@ -180,7 +281,7 @@ function PodBlock({
                 <Badge value={`Power ${seat.deck.powerEstimateSnapshot}`} />
               ) : null}
             </div>
-            {canManageEvent ? (
+            {canManageEvent && pod.state === "proposed" ? (
               <MoveSeatForm
                 eventId={eventId}
                 pods={pods}

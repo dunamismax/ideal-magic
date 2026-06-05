@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   validateGeneratePodsInput,
   validateMovePodSeatInput,
+  validatePodPublicationInput,
 } from "./pod-form";
 
 describe("pod form validation", () => {
@@ -51,6 +52,38 @@ describe("pod form validation", () => {
         seatId: "Choose a seat.",
         targetPodId: "Choose a target pod.",
         targetSeatPosition: "Choose a positive seat position.",
+      },
+    });
+  });
+
+  test("validates pod publication input", () => {
+    expect(
+      validatePodPublicationInput({
+        eventId: "20000000-0000-4000-8000-000000000001",
+        intent: "publish",
+      }),
+    ).toEqual({
+      ok: true,
+      input: {
+        eventId: "20000000-0000-4000-8000-000000000001",
+        intent: "publish",
+      },
+    });
+
+    expect(
+      validatePodPublicationInput({
+        eventId: "not-an-event",
+        intent: "archive",
+      }),
+    ).toEqual({
+      ok: false,
+      fieldErrors: {
+        eventId: "Choose an event.",
+        intent: "Choose publish or unpublish.",
+      },
+      fields: {
+        eventId: "not-an-event",
+        intent: "publish",
       },
     });
   });

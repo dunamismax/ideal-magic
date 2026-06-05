@@ -6,6 +6,8 @@ import {
   eventDeckDeclarations,
   eventRsvps,
   events,
+  games,
+  lifeCounterSessions,
   playgroupMemberships,
   podSeats,
   pods,
@@ -60,6 +62,7 @@ export type EventPodSummary = {
   availabilityWindowScore: number;
   totalScore: number;
   scoringDetails: Record<string, unknown>;
+  publishedAt: Date | null;
   seats: EventPodSeatSummary[];
 };
 
@@ -88,6 +91,20 @@ export class PodSeatMoveBlockedError extends Error {
   constructor(message = "Pod seat cannot be moved.") {
     super(message);
     this.name = "PodSeatMoveBlockedError";
+  }
+}
+
+export class PodPublicationAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot publish pods for this event.");
+    this.name = "PodPublicationAuthorizationError";
+  }
+}
+
+export class PodPublicationBlockedError extends Error {
+  constructor(message = "Pod assignments cannot be published.") {
+    super(message);
+    this.name = "PodPublicationBlockedError";
   }
 }
 
@@ -239,6 +256,7 @@ export async function listPodsForEventViewer(
       availabilityWindowScore: pods.availabilityWindowScore,
       totalScore: pods.totalScore,
       scoringDetails: pods.scoringDetails,
+      publishedAt: pods.publishedAt,
       seatId: podSeats.id,
       seatPosition: podSeats.seatPosition,
       seatLocked: podSeats.locked,
@@ -289,6 +307,7 @@ export async function listPodsForEventViewer(
         availabilityWindowScore: row.availabilityWindowScore,
         totalScore: row.totalScore,
         scoringDetails: row.scoringDetails,
+        publishedAt: row.publishedAt,
         seats: [],
       } satisfies EventPodSummary);
 
@@ -318,6 +337,104 @@ export async function listPodsForEventViewer(
   }
 
   return [...podsById.values()];
+}
+
+export async function publishPodsForEventManager(
+  db: PodWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+  },
+): Promise<EventPodSummary[]> {
+  return runInTransaction(db, async (tx) => {
+    const eventRow = await authorizePodPublication(tx, input);
+    const eventPods = await listPodStateRows(tx, input.eventId);
+
+    if (eventPods.length === 0) {
+      throw new PodPublicationBlockedError(
+        "Generate draft pods before publishing.",
+      );
+    }
+
+    if (eventPods.some((pod) => pod.state !== "proposed")) {
+      throw new PodPublicationBlockedError(
+        "Only proposed pods can be published.",
+      );
+    }
+
+    const now = new Date();
+
+    await tx
+      .update(pods)
+      .set({
+        state: "locked",
+        publishedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(pods.eventId, input.eventId));
+
+    return listPodsForEventViewer(tx, {
+      viewerUserId: input.viewerUserId,
+      eventId: eventRow.id,
+    });
+  });
+}
+
+export async function unpublishPodsForEventManager(
+  db: PodWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+  },
+): Promise<EventPodSummary[]> {
+  return runInTransaction(db, async (tx) => {
+    const eventRow = await authorizePodPublication(tx, input);
+    const eventPods = await listPodStateRows(tx, input.eventId);
+
+    if (eventPods.length === 0) {
+      throw new PodPublicationBlockedError(
+        "There are no published pods to unpublish.",
+      );
+    }
+
+    if (
+      eventPods.some(
+        (pod) => pod.state === "active" || pod.state === "completed",
+      )
+    ) {
+      throw new PodPublicationBlockedError(
+        "Active or completed pods cannot be unpublished.",
+      );
+    }
+
+    if (eventPods.some((pod) => pod.state !== "locked" || !pod.publishedAt)) {
+      throw new PodPublicationBlockedError(
+        "Only published pods can be unpublished.",
+      );
+    }
+
+    if (await hasLinkedPodRecords(tx, input.eventId)) {
+      throw new PodPublicationBlockedError(
+        "Pods linked to games or saved counters cannot be unpublished.",
+      );
+    }
+
+    const now = new Date();
+
+    await tx
+      .update(pods)
+      .set({
+        state: "proposed",
+        publishedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(pods.eventId, input.eventId));
+
+    return listPodsForEventViewer(tx, {
+      viewerUserId: input.viewerUserId,
+      eventId: eventRow.id,
+    });
+  });
 }
 
 export async function movePodSeatForEventManager(
@@ -461,6 +578,72 @@ export async function movePodSeatForEventManager(
 
     return listPodsForEventViewer(tx, input);
   });
+}
+
+async function authorizePodPublication(
+  db: PodReadDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+  },
+) {
+  const eventRow = await getEventForPodAccess(db, input.eventId);
+
+  if (!eventRow || eventRow.status !== "scheduled") {
+    throw new PodPublicationAuthorizationError();
+  }
+
+  const viewerRole = await getViewerRole(db, {
+    playgroupId: eventRow.playgroupId,
+    viewerUserId: input.viewerUserId,
+  });
+
+  if (!viewerRole || !canManageEvent(viewerRole)) {
+    throw new PodPublicationAuthorizationError();
+  }
+
+  return eventRow;
+}
+
+async function listPodStateRows(db: PodReadDatabase, eventId: string) {
+  return db
+    .select({
+      id: pods.id,
+      state: pods.state,
+      publishedAt: pods.publishedAt,
+    })
+    .from(pods)
+    .where(eq(pods.eventId, eventId))
+    .orderBy(asc(pods.position));
+}
+
+async function hasLinkedPodRecords(db: PodReadDatabase, eventId: string) {
+  const [gameRow] = await db
+    .select({
+      id: games.id,
+    })
+    .from(games)
+    .where(and(eq(games.eventId, eventId), sql`${games.podId} is not null`))
+    .limit(1);
+
+  if (gameRow) {
+    return true;
+  }
+
+  const [counterRow] = await db
+    .select({
+      id: lifeCounterSessions.id,
+    })
+    .from(lifeCounterSessions)
+    .where(
+      and(
+        eq(lifeCounterSessions.eventId, eventId),
+        sql`${lifeCounterSessions.podId} is not null`,
+      ),
+    )
+    .limit(1);
+
+  return Boolean(counterRow);
 }
 
 async function listEligiblePodParticipants(

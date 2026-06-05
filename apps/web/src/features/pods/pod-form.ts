@@ -9,6 +9,11 @@ export type MovePodSeatInput = {
   targetSeatPosition: number;
 };
 
+export type PodPublicationInput = {
+  eventId: string;
+  intent: "publish" | "unpublish";
+};
+
 export type GeneratePodsValidationResult =
   | {
       ok: true;
@@ -29,6 +34,17 @@ export type MovePodSeatValidationResult =
       ok: false;
       fieldErrors: Partial<Record<keyof MovePodSeatInput, string>>;
       fields: MovePodSeatInput;
+    };
+
+export type PodPublicationValidationResult =
+  | {
+      ok: true;
+      input: PodPublicationInput;
+    }
+  | {
+      ok: false;
+      fieldErrors: Partial<Record<keyof PodPublicationInput, string>>;
+      fields: PodPublicationInput;
     };
 
 export function validateGeneratePodsInput(
@@ -86,6 +102,40 @@ export function validateMovePodSeatInput(
     fields.targetSeatPosition < 1
   ) {
     fieldErrors.targetSeatPosition = "Choose a positive seat position.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      fieldErrors,
+      fields,
+    };
+  }
+
+  return {
+    ok: true,
+    input: fields,
+  };
+}
+
+export function validatePodPublicationInput(
+  rawInput: Partial<
+    Record<keyof PodPublicationInput, FormDataEntryValue | string>
+  >,
+): PodPublicationValidationResult {
+  const intent = normalizeText(rawInput.intent);
+  const fields: PodPublicationInput = {
+    eventId: normalizeText(rawInput.eventId),
+    intent: intent === "unpublish" ? "unpublish" : "publish",
+  };
+  const fieldErrors: Partial<Record<keyof PodPublicationInput, string>> = {};
+
+  if (!isUuid(fields.eventId)) {
+    fieldErrors.eventId = "Choose an event.";
+  }
+
+  if (intent !== "publish" && intent !== "unpublish") {
+    fieldErrors.intent = "Choose publish or unpublish.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {

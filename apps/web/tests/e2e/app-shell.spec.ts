@@ -1016,12 +1016,14 @@ test("group owners can update member roles and remove memberships", async ({
   ).toHaveCount(0);
 });
 
-test("event managers can manually move draft pod seats", async ({
+test("event managers can move and publish pod assignments", async ({
   browser,
   page,
 }, testInfo) => {
   const suffix = `${Date.now()}-${testInfo.workerIndex}`;
   const ownerEmail = `pod-move-owner-${suffix}@example.test`;
+  const observerEmail = `pod-observer-${suffix}@example.test`;
+  const outsiderEmail = `pod-outsider-${suffix}@example.test`;
   const groupName = `Move Pods ${suffix}`;
   const eventTitle = `Manual Pod Move ${suffix}`;
 
@@ -1138,6 +1140,83 @@ test("event managers can manually move draft pod seats", async ({
       .locator("li")
       .filter({ hasText: "Player B" }),
   ).toHaveCount(0);
+
+  await eventCard.getByRole("button", { name: "Publish Pods" }).click();
+  await expect(eventCard.getByText("Pod assignments published.")).toBeVisible();
+  await expect(
+    eventCard.getByRole("heading", { name: "Published Pods" }),
+  ).toBeVisible();
+  await expect(
+    eventCard.getByRole("button", { name: "Unpublish Pods" }),
+  ).toBeVisible();
+  await expect(eventCard.getByLabel("Move Player B to pod")).toHaveCount(0);
+
+  await page.reload();
+  eventCard = page.locator("article").filter({ hasText: eventTitle });
+  await expect(
+    eventCard.getByRole("heading", { name: "Published Pods" }),
+  ).toBeVisible();
+  await expect(
+    eventCard
+      .getByLabel("Pod 1 pod assignment")
+      .locator("li")
+      .filter({ hasText: "Player B" }),
+  ).toBeVisible();
+
+  const observerContext = await browser.newContext();
+  const observerPage = await observerContext.newPage();
+
+  await observerPage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
+  await observerPage.getByLabel("Name").fill("Observer H");
+  await observerPage.getByLabel("Email").fill(observerEmail);
+  await observerPage.getByLabel("Password").fill("correct-horse-battery");
+  await observerPage.getByRole("button", { name: "Create Account" }).click();
+  await expect(observerPage).toHaveURL(invitePath);
+  await observerPage.getByRole("button", { name: "Join Group" }).click();
+  await expect(observerPage).toHaveURL("/groups");
+  await observerPage.goto("/game-night");
+
+  const observerEventCard = observerPage
+    .locator("article")
+    .filter({ hasText: eventTitle });
+
+  await expect(
+    observerEventCard.getByRole("heading", { name: "Published Pods" }),
+  ).toBeVisible();
+  await expect(
+    observerEventCard
+      .getByLabel("Pod 1 pod assignment")
+      .locator("li")
+      .filter({ hasText: "Player B" }),
+  ).toBeVisible();
+  await expect(
+    observerEventCard.getByRole("button", { name: "Unpublish Pods" }),
+  ).toHaveCount(0);
+  await expect(
+    observerEventCard.getByRole("button", { name: "Publish Pods" }),
+  ).toHaveCount(0);
+  await observerContext.close();
+
+  const outsiderContext = await browser.newContext();
+  const outsiderPage = await outsiderContext.newPage();
+
+  await outsiderPage.goto("/signup?next=/game-night");
+  await outsiderPage.getByLabel("Name").fill("Outsider");
+  await outsiderPage.getByLabel("Email").fill(outsiderEmail);
+  await outsiderPage.getByLabel("Password").fill("correct-horse-battery");
+  await outsiderPage.getByRole("button", { name: "Create Account" }).click();
+  await expect(outsiderPage).toHaveURL("/game-night");
+  await expect(outsiderPage.getByText(eventTitle)).toHaveCount(0);
+  await outsiderContext.close();
+
+  await eventCard.getByRole("button", { name: "Unpublish Pods" }).click();
+  await expect(
+    eventCard.getByText("Pod assignments returned to draft."),
+  ).toBeVisible();
+  await expect(
+    eventCard.getByRole("heading", { name: "Draft Pods" }),
+  ).toBeVisible();
+  await expect(eventCard.getByLabel("Move Player B to pod")).toBeVisible();
 });
 
 test("authenticated group owners can create an event and RSVP", async ({

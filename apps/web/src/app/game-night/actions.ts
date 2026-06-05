@@ -40,17 +40,23 @@ import {
 } from "@/features/decks/deck-form";
 import {
   generateDraftPodsForEvent,
+  publishPodsForEventManager,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
+  PodPublicationAuthorizationError,
+  PodPublicationBlockedError,
   movePodSeatForEventManager,
   PodSeatMoveAuthorizationError,
   PodSeatMoveBlockedError,
+  unpublishPodsForEventManager,
 } from "@/db/queries/pods";
 import {
   type GeneratePodsInput,
   type MovePodSeatInput,
+  type PodPublicationInput,
   validateGeneratePodsInput,
   validateMovePodSeatInput,
+  validatePodPublicationInput,
 } from "@/features/pods/pod-form";
 
 export type CreateEventActionState = {
@@ -106,6 +112,13 @@ export type MovePodSeatActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof MovePodSeatInput, string>>;
   fields: MovePodSeatInput;
+};
+
+export type PodPublicationActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof PodPublicationInput, string>>;
+  fields: PodPublicationInput;
 };
 
 export async function createEventAction(
@@ -619,6 +632,88 @@ export async function movePodSeatAction(
       saved: false,
       fieldErrors: {},
       fields,
+    };
+  }
+}
+
+export async function updatePodPublicationAction(
+  _previousState: PodPublicationActionState,
+  formData: FormData,
+): Promise<PodPublicationActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: PodPublicationInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+    intent:
+      String(formData.get("intent") ?? "") === "unpublish"
+        ? "unpublish"
+        : "publish",
+  };
+  const validation = validatePodPublicationInput({
+    eventId: fields.eventId,
+    intent: String(formData.get("intent") ?? ""),
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid pod publication action.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    if (validation.input.intent === "publish") {
+      await publishPodsForEventManager(createDatabase(), {
+        viewerUserId: session.user.id,
+        eventId: validation.input.eventId,
+      });
+    } else {
+      await unpublishPodsForEventManager(createDatabase(), {
+        viewerUserId: session.user.id,
+        eventId: validation.input.eventId,
+      });
+    }
+
+    revalidatePath("/game-night");
+
+    return {
+      message:
+        validation.input.intent === "publish"
+          ? "Pod assignments published."
+          : "Pod assignments returned to draft.",
+      saved: true,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  } catch (error) {
+    if (error instanceof PodPublicationAuthorizationError) {
+      return {
+        message: "You cannot publish pods for that event.",
+        saved: false,
+        fieldErrors: {
+          eventId: "Choose one of your managed events.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    if (error instanceof PodPublicationBlockedError) {
+      return {
+        message: error.message,
+        saved: false,
+        fieldErrors: {},
+        fields: validation.input,
+      };
+    }
+
+    console.error("Pod publication failed", error);
+
+    return {
+      message: "Could not update pod publication. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
     };
   }
 }

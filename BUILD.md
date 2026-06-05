@@ -597,7 +597,7 @@ collection tracking, and card inventory remain unimplemented.
 - [ ] Score pods for repeat-pairing avoidance, deck variety, bracket
   spread, guest placement, late arrivals, and host overrides.
 - [ ] Support locked seats and manual seat movement.
-- [ ] Publish and unpublish pod assignments.
+- [x] Publish and unpublish pod assignments.
 - [x] Show participants only the pod data they are allowed to see.
 - [ ] Let a published pod launch a linked life counter session.
 - [ ] Verify generation, manual edits, locking, publishing, and launch to
@@ -612,20 +612,26 @@ Generation is deterministic, prefers four-player pods, handles 3-player,
 single-player leftovers, and persists `pods` plus `pod_seats` rows with
 size, bracket, and availability scores. Regeneration replaces only
 proposed draft pods and refuses to overwrite locked, active, completed,
-or cancelled pods. Managers can now manually move unlocked seats between
+or cancelled pods. Managers can manually move unlocked seats between
 proposed pods and seat positions from `/game-night`; movement is
 transactional, compacts source and target seat order, preserves deck
 declaration snapshot references, refuses non-manager access, and refuses
-locked seats or non-proposed pods. Authenticated event participants can
-see generated pod seats through the scoped Game Night surface, while
-non-members cannot. The projection omits emails, invite tokens, token
-hashes, host addresses, private notes, guest names/details, and private
-contact fields. Unit, PGlite integration, component rendering,
-Playwright, and database gates cover draft generation, display, and
-manual movement. Repeat-pairing history, deck-variety optimization,
-guest placement, late-arrival scoring beyond simple maybe availability,
-host overrides, manager locking/unlocking controls, publishing,
-published-pod life-counter launch, and game logging remain unimplemented.
+locked seats or non-proposed pods. Managers can now publish proposed pod
+assignments to event participants, which transitions the event pods to
+locked published assignments with `published_at`; managers can unpublish
+back to proposed only before any active/completed pod state, game record,
+or saved pod-linked counter exists. Authenticated event participants can
+see generated and published pod seats through the scoped Game Night
+surface, while non-members cannot. The projection omits emails, invite
+tokens, token hashes, host addresses, private notes, guest names/details,
+and private contact fields. Unit, PGlite integration, component
+rendering, Playwright, and database gates cover draft generation,
+display, manual movement, publishing, unpublishing, scoped participant
+visibility, and non-member denial. Repeat-pairing history, deck-variety
+optimization, guest placement, late-arrival scoring beyond simple maybe
+availability, host overrides, manager locking/unlocking controls,
+published-pod life-counter launch, and game logging remain
+unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 

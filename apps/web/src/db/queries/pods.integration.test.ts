@@ -4,6 +4,8 @@ import { describe, expect, test } from "vitest";
 import type { AppDatabase } from "@/db/client";
 import {
   eventRsvps,
+  games,
+  lifeCounterSessions,
   playgroupMemberships,
   podSeats,
   pods,
@@ -24,10 +26,14 @@ import {
   generateDraftPodsForEvent,
   listPodsForEventViewer,
   movePodSeatForEventManager,
+  PodPublicationAuthorizationError,
+  PodPublicationBlockedError,
+  publishPodsForEventManager,
   PodGenerationAuthorizationError,
   PodGenerationBlockedByExistingPodsError,
   PodSeatMoveAuthorizationError,
   PodSeatMoveBlockedError,
+  unpublishPodsForEventManager,
 } from "./pods";
 
 describe("pod data access", () => {
@@ -52,6 +58,7 @@ describe("pod data access", () => {
     expect(generated[0]).toMatchObject({
       name: "Pod 1",
       state: "proposed",
+      publishedAt: null,
       sizeFitScore: 100,
     });
     expect(generated[0]?.seats[0]).toMatchObject({
@@ -141,6 +148,139 @@ describe("pod data access", () => {
         eventId: fixture.eventId,
       }),
     ).rejects.toBeInstanceOf(PodGenerationBlockedByExistingPodsError);
+  });
+
+  test("publishes and unpublishes pods only for event managers", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    await expect(
+      publishPodsForEventManager(db, {
+        viewerUserId: fixture.memberIds[0] ?? fixture.outsiderId,
+        eventId: fixture.eventId,
+      }),
+    ).rejects.toBeInstanceOf(PodPublicationAuthorizationError);
+
+    const published = await publishPodsForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    expect(published.map((pod) => pod.state)).toEqual(["locked", "locked"]);
+    expect(published.every((pod) => pod.publishedAt instanceof Date)).toBe(
+      true,
+    );
+    expect(published.map((pod) => pod.seats.length)).toEqual([4, 3]);
+
+    const memberPublishedPods = await listPodsForEventViewer(db, {
+      viewerUserId: fixture.memberIds[1] ?? fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const serializedPods = JSON.stringify(memberPublishedPods);
+
+    expect(memberPublishedPods.map((pod) => pod.state)).toEqual([
+      "locked",
+      "locked",
+    ]);
+    expect(serializedPods).toContain("Owner Deck");
+    expect(serializedPods).not.toContain("@example.test");
+    expect(serializedPods).not.toContain("Private RSVP note");
+
+    await expect(
+      movePodSeatForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        seatId: generated[0]?.seats[0]?.id ?? "",
+        targetPodId: generated[1]?.id ?? "",
+        targetSeatPosition: 1,
+      }),
+    ).rejects.toBeInstanceOf(PodSeatMoveBlockedError);
+
+    const unpublished = await unpublishPodsForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    expect(unpublished.map((pod) => pod.state)).toEqual([
+      "proposed",
+      "proposed",
+    ]);
+    expect(unpublished.every((pod) => pod.publishedAt === null)).toBe(true);
+  });
+
+  test("blocks unpublish after active or linked pod state exists", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const generated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const [firstPod] = generated;
+
+    if (!firstPod) {
+      throw new Error("Expected a generated pod fixture.");
+    }
+
+    await publishPodsForEventManager(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+
+    await db
+      .update(pods)
+      .set({
+        state: "active",
+      })
+      .where(eq(pods.id, firstPod.id));
+
+    await expect(
+      unpublishPodsForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+      }),
+    ).rejects.toBeInstanceOf(PodPublicationBlockedError);
+
+    await db
+      .update(pods)
+      .set({
+        state: "locked",
+      })
+      .where(eq(pods.id, firstPod.id));
+
+    await db.insert(games).values({
+      eventId: fixture.eventId,
+      podId: firstPod.id,
+      loggedByUserId: fixture.ownerId,
+      resultType: "normal_win",
+    });
+
+    await expect(
+      unpublishPodsForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+      }),
+    ).rejects.toBeInstanceOf(PodPublicationBlockedError);
+
+    await db.delete(games).where(eq(games.podId, firstPod.id));
+    await db.insert(lifeCounterSessions).values({
+      ownerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: firstPod.id,
+      localSessionKey: "linked-pod-counter",
+      mode: "pod",
+      saveState: "saved_to_group",
+    });
+
+    await expect(
+      unpublishPodsForEventManager(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+      }),
+    ).rejects.toBeInstanceOf(PodPublicationBlockedError);
   });
 
   test("moves unlocked draft seats between proposed pods for event managers", async () => {

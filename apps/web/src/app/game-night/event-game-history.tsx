@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Trophy } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import type { LoggedGameHistorySummary } from "@/db/queries/games";
 
 export function EventGameHistory({
@@ -38,13 +40,18 @@ export function EventGameHistory({
                     {game.pod ? ` - ${game.pod.name}` : ""}
                   </p>
                 </div>
-                {game.winners.length > 0 ? (
-                  <Badge
-                    value={`${game.winners.length === 1 ? "Winner" : "Winners"}: ${formatWinners(game.winners)}`}
-                  />
-                ) : (
-                  <Badge value="No winners" />
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {game.winners.length > 0 ? (
+                    <Badge
+                      value={`${game.winners.length === 1 ? "Winner" : "Winners"}: ${formatWinners(game.winners)}`}
+                    />
+                  ) : (
+                    <Badge value="No winners" />
+                  )}
+                  <Button asChild size="sm">
+                    <Link href={`/history/${game.id}`}>View game</Link>
+                  </Button>
+                </div>
               </div>
 
               <ol className="mt-3 grid gap-2 sm:grid-cols-2">

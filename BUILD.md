@@ -743,18 +743,24 @@ playgroup name, completed time, result type, linked pod name when
 present, safe winner display, participant-safe names, deck/commander/
 color/bracket/power/archetype snapshots, and game notes for
 authenticated scoped members. Multiple safe winners and draw/no-winner
-results render in history summaries. The projection omits emails, invite
-tokens, token hashes, host addresses, RSVP notes, private guest
-names/details, and private contact data. Focused unit, PGlite, and
-component tests cover published-pod logging, result semantic validation,
-multi-winner team wins, draw/no-winner persistence, participant
-authorization, non-member denial, logged history listing for scoped
-members and managers, event-scoped history filtering, immutable history
-snapshots after later deck edits, guest redaction in history projections,
-pod context for completed pod games, and matchup-history writes. Focused
-component tests cover the `/game-night` quick-log controls,
-event-card history display and empty state, `/history` game list,
-multiple-winner display, and empty state.
+results render in history summaries. `/history` summaries and
+event-card history summaries now link to a scoped `/history/[gameId]`
+detail route for authenticated members, showing event/playgroup context,
+completed time, pod context when present, result semantics, winners, all
+players, deck/commander/color/bracket/power/archetype snapshots, and
+notes. The projection omits emails, invite tokens, token hashes, host
+addresses, RSVP notes, private guest names/details, and private contact
+data. Focused unit, PGlite, and component tests cover published-pod
+logging, result semantic validation, multi-winner team wins,
+draw/no-winner persistence, participant authorization, non-member
+denial, logged history listing and detail reads for scoped members and
+managers, event-scoped history filtering, immutable history snapshots
+after later deck edits, guest redaction in history projections, pod
+context for completed pod games, and matchup-history writes. Focused
+component tests cover the `/game-night` quick-log controls, event-card
+history display and empty state, `/history` game list and detail views,
+multiple-winner display, draw/no-winner display, route links, and empty
+state.
 
 Standalone `/life` counters can now be attached to a scoped scheduled
 event by an authenticated authorized user, import the eligible event

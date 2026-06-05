@@ -210,11 +210,30 @@ export async function listLoggedGamesForEventViewer(
   return listScopedLoggedGames(db, input);
 }
 
+export async function getLoggedGameForViewer(
+  db: GameReadDatabase,
+  input: {
+    gameId: string;
+    viewerUserId: string;
+  },
+): Promise<LoggedGameHistorySummary | null> {
+  const [game] = await listScopedLoggedGames(db, {
+    gameId: input.gameId,
+    viewerUserId: input.viewerUserId,
+    page: {
+      pageSize: 1,
+    },
+  });
+
+  return game ?? null;
+}
+
 async function listScopedLoggedGames(
   db: GameReadDatabase,
   input: {
     viewerUserId: string;
     eventId?: string;
+    gameId?: string;
     page?: PageRequest;
   },
 ): Promise<LoggedGameHistorySummary[]> {
@@ -249,6 +268,7 @@ async function listScopedLoggedGames(
       and(
         inArray(playgroupMemberships.role, loggedGameViewerRoles),
         input.eventId ? eq(games.eventId, input.eventId) : undefined,
+        input.gameId ? eq(games.id, input.gameId) : undefined,
       ),
     )
     .orderBy(desc(games.completedAt), desc(games.id))

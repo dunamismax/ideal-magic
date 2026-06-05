@@ -465,6 +465,10 @@ describe("event card", () => {
     expect(
       screen.getByText("Winners: Riley Chen, Guest RSVP"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View game" })).toHaveAttribute(
+      "href",
+      `/history/${loggedGame.id}`,
+    );
     expect(screen.getByText(/Pod 1/)).toBeInTheDocument();
     expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
     expect(screen.getByText("Atraxa, Grand Unifier")).toBeInTheDocument();

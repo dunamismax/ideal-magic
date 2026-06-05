@@ -29,6 +29,7 @@ import {
   listLoggedGamesForViewer,
   EventGameLoggingAuthorizationError,
   EventGameLoggingBlockedError,
+  getLoggedGameForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
   PodGameLoggingBlockedError,
@@ -569,6 +570,137 @@ describe("game logging data access", () => {
     expect(payload).not.toContain("Private Guest");
     expect(payload).not.toContain("Private guest RSVP note");
     expect(payload).not.toContain("@example.test");
+  });
+
+  test("gets scoped logged game detail with immutable snapshots and guest redaction", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+    const guestSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Guest RSVP",
+    );
+
+    if (!ownerSeat || !guestSeat) {
+      throw new Error("Expected owner and guest seats in published pod.");
+    }
+
+    const logged = await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "team_win",
+      winnerSeatIds: [ownerSeat.id, guestSeat.id],
+      notes: "Scoped detail note",
+      completedAt: new Date("2030-06-15T03:50:00.000Z"),
+    });
+
+    await updateDeckForUser(db, {
+      ownerUserId: fixture.ownerId,
+      deckId: fixture.ownerDeckId,
+      name: "Edited After Detail",
+      commanders: ["Edited Detail Commander"],
+      colorIdentity: "WUBRG",
+      bracket: "5",
+      powerEstimate: 10,
+      archetype: "Edited",
+      tags: ["edited"],
+      visibility: "playgroup",
+      playgroupId: fixture.playgroupId,
+      externalUrl: null,
+    });
+
+    const detail = await getLoggedGameForViewer(db, {
+      gameId: logged.id,
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const outsiderDetail = await getLoggedGameForViewer(db, {
+      gameId: logged.id,
+      viewerUserId: fixture.outsiderId,
+    });
+    const missingDetail = await getLoggedGameForViewer(db, {
+      gameId: "40000000-0000-4000-8000-000000000999",
+      viewerUserId: fixture.ownerId,
+    });
+    const payload = JSON.stringify(detail);
+
+    expect(detail).toMatchObject({
+      id: logged.id,
+      event: {
+        id: fixture.eventId,
+        title: "Published Pod Game Night",
+      },
+      playgroup: {
+        id: fixture.playgroupId,
+        name: "Game Log Group",
+      },
+      pod: {
+        id: fixture.publishedPod.id,
+        name: fixture.publishedPod.name,
+      },
+      resultType: "team_win",
+      notes: "Scoped detail note",
+    });
+    expect(
+      detail?.winners.map((winner) => winner.participantName),
+    ).toEqual(["Owner Player", "Guest RSVP"]);
+    expect(detail?.players).toHaveLength(4);
+    expect(
+      detail?.players.find((player) => player.participantName === "Owner Player")
+        ?.deck,
+    ).toMatchObject({
+      deckNameSnapshot: "Owner Deck",
+      commanderSnapshot: ["Owner Commander"],
+      colorIdentitySnapshot: "WUB",
+      bracketSnapshot: "2",
+      powerEstimateSnapshot: 7,
+      archetypeSnapshot: "Control",
+    });
+    expect(outsiderDetail).toBeNull();
+    expect(missingDetail).toBeNull();
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).toContain("Scoped detail note");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
+    expect(payload).not.toContain("Edited After Detail");
+    expect(payload).not.toContain("Edited Detail Commander");
+  });
+
+  test("gets event-only draw detail without winners for scoped members", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    const logged = await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "Detail draw.",
+      completedAt: new Date("2030-06-15T04:50:00.000Z"),
+    });
+
+    const detail = await getLoggedGameForViewer(db, {
+      gameId: logged.id,
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const payload = JSON.stringify(detail);
+
+    expect(detail).toMatchObject({
+      id: logged.id,
+      pod: null,
+      resultType: "draw",
+      notes: "Detail draw.",
+      winners: [],
+    });
+    expect(detail?.players.every((player) => !player.isWinner)).toBe(true);
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
   });
 
   test("lists event-scoped history only for scoped members with safe team winner data", async () => {

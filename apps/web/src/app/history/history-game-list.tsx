@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Trophy } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { LoggedGameHistorySummary } from "@/db/queries/games";
 
@@ -37,6 +39,9 @@ export function HistoryGameList({
                   value={`${game.winners.length === 1 ? "Winner" : "Winners"}: ${formatWinners(game.winners)}`}
                 />
               ) : null}
+              <Button asChild size="sm">
+                <Link href={`/history/${game.id}`}>View game</Link>
+              </Button>
             </div>
           </div>
 

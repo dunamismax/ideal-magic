@@ -73,6 +73,10 @@ describe("history game list", () => {
     expect(screen.getByText(/Pod 1/)).toBeInTheDocument();
     expect(screen.getByText("Combat Win")).toBeInTheDocument();
     expect(screen.getByText("Winner: Riley Chen")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View game" })).toHaveAttribute(
+      "href",
+      `/history/${loggedGame.id}`,
+    );
     expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
     expect(screen.getByText("Atraxa, Grand Unifier")).toBeInTheDocument();
     expect(

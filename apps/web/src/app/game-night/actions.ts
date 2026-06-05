@@ -38,6 +38,15 @@ import {
   validateDeckDeclarationInput,
   validateUndeclareDeckInput,
 } from "@/features/decks/deck-form";
+import {
+  generateDraftPodsForEvent,
+  PodGenerationAuthorizationError,
+  PodGenerationBlockedByExistingPodsError,
+} from "@/db/queries/pods";
+import {
+  type GeneratePodsInput,
+  validateGeneratePodsInput,
+} from "@/features/pods/pod-form";
 
 export type CreateEventActionState = {
   message: string | null;
@@ -78,6 +87,13 @@ export type UndeclareDeckActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof UndeclareDeckInput, string>>;
   fields: UndeclareDeckInput;
+};
+
+export type GeneratePodsActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof GeneratePodsInput, string>>;
+  fields: GeneratePodsInput;
 };
 
 export async function createEventAction(
@@ -445,4 +461,72 @@ export async function undeclareDeckAction(
     fieldErrors: {},
     fields,
   };
+}
+
+export async function generatePodsAction(
+  _previousState: GeneratePodsActionState,
+  formData: FormData,
+): Promise<GeneratePodsActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: GeneratePodsInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+  };
+  const validation = validateGeneratePodsInput(fields);
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid event.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    const generatedPods = await generateDraftPodsForEvent(createDatabase(), {
+      viewerUserId: session.user.id,
+      eventId: validation.input.eventId,
+    });
+
+    revalidatePath("/game-night");
+
+    return {
+      message:
+        generatedPods.length > 0
+          ? `Generated ${generatedPods.length} draft pod${generatedPods.length === 1 ? "" : "s"}.`
+          : "No eligible yes or maybe RSVPs to seat.",
+      saved: true,
+      fieldErrors: {},
+      fields,
+    };
+  } catch (error) {
+    if (error instanceof PodGenerationAuthorizationError) {
+      return {
+        message: "You cannot generate pods for that event.",
+        saved: false,
+        fieldErrors: {
+          eventId: "Choose one of your hostable group events.",
+        },
+        fields,
+      };
+    }
+
+    if (error instanceof PodGenerationBlockedByExistingPodsError) {
+      return {
+        message: "Existing non-draft pods must be managed before regenerating.",
+        saved: false,
+        fieldErrors: {},
+        fields,
+      };
+    }
+
+    console.error("Pod generation failed", error);
+
+    return {
+      message: "Could not generate pods. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields,
+    };
+  }
 }

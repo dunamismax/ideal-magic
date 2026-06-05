@@ -6,6 +6,7 @@ import postgres from "postgres";
 import * as schema from "./schema";
 
 type DrizzleConnection = ReturnType<typeof createDrizzleConnection>;
+const sharedConnections = new Map<string, DrizzleConnection>();
 
 export type AppDatabase<
   TQueryResult extends PgQueryResultHKT = PgQueryResultHKT,
@@ -31,7 +32,14 @@ export function getDatabaseUrl() {
 }
 
 export function createDatabase(databaseUrl = getDatabaseUrl()) {
-  return createDrizzleConnection(databaseUrl).db;
+  let connection = sharedConnections.get(databaseUrl);
+
+  if (!connection) {
+    connection = createDrizzleConnection(databaseUrl);
+    sharedConnections.set(databaseUrl, connection);
+  }
+
+  return connection.db;
 }
 
 export function createDatabaseConnection(

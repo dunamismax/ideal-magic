@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import type { EventDeckDeclaration, ViewerDeck } from "@/db/queries/decks";
 import type { EventPlanningSummary } from "@/db/queries/event-planning";
+import type { EventPodSummary } from "@/db/queries/pods";
 import { EventCard } from "./page";
 
 const baseEvent: EventPlanningSummary = {
@@ -75,6 +76,40 @@ const declaration: EventDeckDeclaration = {
   visibilitySnapshot: "private",
   externalUrlSnapshot: null,
   createdAt: new Date("2026-06-04T00:00:00.000Z"),
+};
+
+const pod: EventPodSummary = {
+  id: "20000000-0000-4000-8000-000000000007",
+  eventId: baseEvent.id,
+  name: "Pod 1",
+  state: "proposed",
+  position: 1,
+  sizeFitScore: 100,
+  bracketCompatibilityScore: 85,
+  availabilityWindowScore: 30,
+  totalScore: 215,
+  scoringDetails: {
+    method: "draft-rsvp-declaration-v1",
+  },
+  seats: [
+    {
+      id: "20000000-0000-4000-8000-000000000008",
+      seatPosition: 1,
+      participantName: "Riley Chen",
+      rsvpStatus: "yes",
+      locked: false,
+      deck: {
+        declarationId: declaration.id,
+        deckId: declaration.deckId,
+        deckNameSnapshot: declaration.deckNameSnapshot,
+        commanderSnapshot: declaration.commanderSnapshot,
+        colorIdentitySnapshot: declaration.colorIdentitySnapshot,
+        bracketSnapshot: declaration.bracketSnapshot,
+        powerEstimateSnapshot: declaration.powerEstimateSnapshot,
+        archetypeSnapshot: declaration.archetypeSnapshot,
+      },
+    },
+  ],
 };
 
 describe("event card", () => {
@@ -158,5 +193,24 @@ describe("event card", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/token hash/i)).not.toBeInTheDocument();
+  });
+
+  test("renders draft pod seats from safe snapshot metadata", () => {
+    render(
+      <EventCard declarations={[declaration]} event={baseEvent} pods={[pod]} />,
+    );
+
+    expect(screen.getByText("Draft Pods")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Generate Draft Pods" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Pod 1")).toBeInTheDocument();
+    expect(screen.getByText("Riley Chen")).toBeInTheDocument();
+    expect(
+      screen.getByText("Atraxa Counters - Atraxa, Grand Unifier"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Power 7").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Private RSVP note/i)).not.toBeInTheDocument();
   });
 });

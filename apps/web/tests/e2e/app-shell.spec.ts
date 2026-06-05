@@ -1134,6 +1134,23 @@ test("authenticated group owners can create an event and RSVP", async ({
   await expect(eventCard.getByText("Bracket 4")).toBeVisible();
   await expect(eventCard.getByText("Power 8")).toBeVisible();
 
+  await eventCard.getByLabel("RSVP Status").selectOption("yes");
+  await eventCard.getByLabel("Arrival").fill("2030-06-14T19:30");
+  await eventCard.getByLabel("Leaving").fill("2030-06-14T23:00");
+  await eventCard.getByRole("button", { name: "Save RSVP" }).click();
+  await expect(eventCard.getByText("RSVP saved.")).toBeVisible();
+  await expect(eventCard.getByText("RSVP: Yes")).toBeVisible();
+
+  await eventCard.getByRole("button", { name: "Generate Draft Pods" }).click();
+  await expect(eventCard.getByText("Generated 1 draft pod.")).toBeVisible();
+  await expect(eventCard.getByText("Pod 1")).toBeVisible();
+  await expect(eventCard.getByText("Riley Chen")).toBeVisible();
+  await expect(
+    eventCard.getByText(
+      `${editedDeckName} - Atraxa, Grand Unifier / Tekuthal, Inquiry Dominus`,
+    ),
+  ).toBeVisible();
+
   await page.goto("/decks");
   const declaredDeckCard = page.locator("article").filter({
     hasText: editedDeckName,
@@ -1157,8 +1174,17 @@ test("authenticated group owners can create an event and RSVP", async ({
   await expect(
     eventCardAfterDeckEdit.getByText(editedDeckName).first(),
   ).toBeVisible();
-  await expect(eventCardAfterDeckEdit.getByText("Bracket 4")).toBeVisible();
-  await expect(eventCardAfterDeckEdit.getByText("Power 8")).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText("Bracket 4").first(),
+  ).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText("Power 8").first(),
+  ).toBeVisible();
+  await expect(
+    eventCardAfterDeckEdit.getByText(
+      `${editedDeckName} - Atraxa, Grand Unifier / Tekuthal, Inquiry Dominus`,
+    ),
+  ).toBeVisible();
   await expect(
     eventCardAfterDeckEdit.getByText(postDeclarationDeckName),
   ).toHaveCount(0);

@@ -20,12 +20,17 @@ import {
   getScopedEventPlanningSummary,
   listUpcomingEventsForViewer,
 } from "@/db/queries/event-planning";
+import {
+  listPodsForEventViewer,
+  type EventPodSummary,
+} from "@/db/queries/pods";
 import { listPlaygroupsForViewer } from "@/db/queries/playgroups";
 import { canManageEvent } from "@/db/scopes";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateEventForm } from "./create-event-form";
 import { EventDeckDeclarationForm } from "./event-deck-declaration-form";
 import { EventManagementForm } from "./event-management-form";
+import { EventPodsPanel } from "./event-pods-panel";
 import { MemberRsvpForm } from "./member-rsvp-form";
 
 export const dynamic = "force-dynamic";
@@ -66,9 +71,19 @@ export default async function GameNightPage() {
       }),
     ]),
   );
+  const podEntries = await Promise.all(
+    eventSummaries.map(async (event) => [
+      event.id,
+      await listPodsForEventViewer(db, {
+        eventId: event.id,
+        viewerUserId: session.user.id,
+      }),
+    ]),
+  );
   const declarationsByEventId = new Map(
     declarationEntries as [string, EventDeckDeclaration[]][],
   );
+  const podsByEventId = new Map(podEntries as [string, EventPodSummary[]][]);
   const eventCreatableGroups = groups
     .filter((group) => canManageEvent(group.role))
     .map((group) => ({
@@ -120,6 +135,7 @@ export default async function GameNightPage() {
                   declarations={declarationsByEventId.get(event.id) ?? []}
                   event={event}
                   key={event.id}
+                  pods={podsByEventId.get(event.id) ?? []}
                 />
               ))}
             </div>
@@ -136,10 +152,12 @@ export function EventCard({
   event,
   decks = [],
   declarations = [],
+  pods = [],
 }: {
   event: EventPlanningSummary;
   decks?: ViewerDeck[];
   declarations?: EventDeckDeclaration[];
+  pods?: EventPodSummary[];
 }) {
   return (
     <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
@@ -199,6 +217,14 @@ export function EventCard({
             </p>
           </div>
         )}
+
+        {event.viewer.canRsvp || event.viewer.canManageEvent ? (
+          <EventPodsPanel
+            canManageEvent={event.viewer.canManageEvent}
+            eventId={event.id}
+            pods={pods}
+          />
+        ) : null}
 
         {event.viewer.canManageEvent ? (
           <EventManagementForm event={event} />

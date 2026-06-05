@@ -590,18 +590,37 @@ collection tracking, and card inventory remain unimplemented.
 
 ## Phase 9 - Pod Generation And Pod Management
 
-- [ ] Build event pod dashboard for hosts.
-- [ ] Generate pods from yes/maybe RSVPs and declared decks.
-- [ ] Prefer four-player pods while handling 3-player and 5-player edge
+- [x] Build event pod dashboard for hosts.
+- [x] Generate pods from yes/maybe RSVPs and declared decks.
+- [x] Prefer four-player pods while handling 3-player and 5-player edge
   cases clearly.
 - [ ] Score pods for repeat-pairing avoidance, deck variety, bracket
   spread, guest placement, late arrivals, and host overrides.
 - [ ] Support locked seats and manual seat movement.
 - [ ] Publish and unpublish pod assignments.
-- [ ] Show participants only the pod data they are allowed to see.
+- [x] Show participants only the pod data they are allowed to see.
 - [ ] Let a published pod launch a linked life counter session.
 - [ ] Verify generation, manual edits, locking, publishing, and launch to
   life counter with tests and Playwright.
+
+Current Phase 9 start adds a draft pod panel to `/game-night` for event
+owners, admins, and hosts. Managers can generate proposed pods from
+authenticated yes/maybe RSVPs, using the RSVP member display name and the
+player's preferred event deck declaration snapshot for seating display.
+Generation is deterministic, prefers four-player pods, handles 3-player,
+5-player, 6-player, 7-player, and larger odd attendance without isolated
+single-player leftovers, and persists `pods` plus `pod_seats` rows with
+size, bracket, and availability scores. Regeneration replaces only
+proposed draft pods and refuses to overwrite locked, active, completed,
+or cancelled pods. Authenticated event participants can see generated pod
+seats through the scoped Game Night surface, while non-members cannot.
+The projection omits emails, invite tokens, token hashes, host addresses,
+private notes, guest names/details, and private contact fields. Unit,
+PGlite integration, component rendering, Playwright, and database gates
+cover draft generation and display. Repeat-pairing history, deck-variety
+optimization, guest placement, late-arrival scoring beyond simple maybe
+availability, host overrides, manual movement, locking, publishing,
+published-pod life-counter launch, and game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 

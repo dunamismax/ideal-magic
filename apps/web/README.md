@@ -57,12 +57,16 @@ server actions or Better Auth requests through additional trusted
 hostnames. Better Auth cookies are host-only, `HttpOnly`, `SameSite=Lax`,
 and `Secure` in production.
 
-Password reset is intentionally not enabled until the TypeScript app has
-an approved email delivery path. Self-hosted recovery before then is an
-operator task: verify the account owner out of band, perform the change
-through a maintenance procedure, and record the action without exposing
-passwords, reset tokens, email contents, or private user data in git or
-logs.
+SMTP2GO is the approved transactional email provider for auth email. Set
+`SMTP2GO_API_KEY` and `POD_TRACKER_EMAIL_FROM` only in ignored local or
+production environment files. `POD_TRACKER_EMAIL_REPLY_TO` is optional.
+Better Auth uses SMTP2GO for account verification, password reset,
+verification resend during unverified login, and confirmed email-change
+flows. Tests use fakes and must not send real mail by default.
+
+Do not commit API keys, reset tokens, email contents, or private user
+data. Password reset is enabled only through Better Auth's tokenized
+email flow.
 
 The database query layer includes scoped event-planning reads and
 token-scoped public-safe event reads and guest RSVP writes. The public

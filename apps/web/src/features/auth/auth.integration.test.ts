@@ -1,111 +1,388 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { accounts, users } from "@/db/schema";
+import { accounts, users, verifications } from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
+import type { TransactionalEmail } from "@/features/email/smtp2go";
 import { createPodTrackerAuth } from "./server";
+
+const pgliteAuthTestTimeout = 10_000;
 
 describe("Better Auth integration", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  test("signs up, reads a cookie session, logs out, and logs back in", async () => {
+  test(
+    "signs up, sends verification email, verifies, logs out, and logs back in",
+    async () => {
+      const { db } = await createMigratedPgliteDatabase();
+      const sentEmail = createFakeEmailDelivery();
+      const auth = createPodTrackerAuth(db, {
+        baseURL: "http://127.0.0.1:3100",
+        emailDelivery: sentEmail.delivery,
+        secret: "pod-tracker-integration-test-secret",
+      });
+      const email = "riley@example.test";
+      const password = "correct-horse-battery";
+
+      const signupResponse = await auth.handler(
+        authRequest("/api/auth/sign-up/email", {
+          email,
+          password,
+          name: "Riley Chen",
+        }),
+      );
+      const signupCookie = getCookieHeader(signupResponse);
+
+      expect(signupResponse.status).toBe(200);
+      expect(signupCookie).not.toContain("pod-tracker.session_token=");
+      expect(sentEmail.messages).toHaveLength(1);
+      expect(sentEmail.messages[0]).toMatchObject({
+        to: email,
+        subject: "Verify your Pod Tracker account",
+      });
+
+      const signupSession = await auth.api.getSession({
+        headers: new Headers({ cookie: signupCookie }),
+      });
+
+      expect(signupSession).toBeNull();
+
+      const [userRow] = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          emailVerified: users.emailVerified,
+        })
+        .from(users)
+        .where(eq(users.email, email));
+
+      expect(userRow).toBeDefined();
+      if (!userRow) {
+        throw new Error("Expected signup to create a user row.");
+      }
+
+      const [accountRow] = await db
+        .select({
+          userId: accounts.userId,
+          providerId: accounts.providerId,
+          password: accounts.password,
+        })
+        .from(accounts)
+        .where(eq(accounts.userId, userRow.id));
+
+      expect(userRow).toMatchObject({
+        email,
+        emailVerified: false,
+      });
+      expect(accountRow).toMatchObject({
+        userId: userRow.id,
+        providerId: "credential",
+      });
+      expect(accountRow.password).toBeTruthy();
+      expect(accountRow.password).not.toContain(password);
+
+      const verificationResponse = await auth.handler(
+        authGetRequest(getEmailLink(sentEmail.messages[0])),
+      );
+      const verifiedCookie = getCookieHeader(verificationResponse);
+      const verifiedSession = await auth.api.getSession({
+        headers: new Headers({ cookie: verifiedCookie }),
+      });
+      const [verifiedUserRow] = await db
+        .select({
+          emailVerified: users.emailVerified,
+        })
+        .from(users)
+        .where(eq(users.email, email));
+
+      expect(verificationResponse.status).toBe(302);
+      expect(verifiedCookie).toContain("pod-tracker.session_token=");
+      expect(verifiedSession?.user).toMatchObject({
+        email,
+        name: "Riley Chen",
+      });
+      expect(verifiedUserRow?.emailVerified).toBe(true);
+
+      const signoutResponse = await auth.handler(
+        authRequest("/api/auth/sign-out", undefined, verifiedCookie),
+      );
+      const signedOutCookie = getCookieHeader(signoutResponse);
+
+      expect(signoutResponse.status).toBe(200);
+      expect(
+        await auth.api.getSession({
+          headers: new Headers({ cookie: signedOutCookie }),
+        }),
+      ).toBeNull();
+
+      const loginResponse = await auth.handler(
+        authRequest("/api/auth/sign-in/email", {
+          email,
+          password,
+        }),
+      );
+      const loginCookie = getCookieHeader(loginResponse);
+      const loginSession = await auth.api.getSession({
+        headers: new Headers({ cookie: loginCookie }),
+      });
+
+      expect(loginResponse.status).toBe(200);
+      expect(loginSession?.user.email).toBe(email);
+    },
+    pgliteAuthTestTimeout,
+  );
+
+  test("resends verification email when an unverified user tries to log in", async () => {
     const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
     const auth = createPodTrackerAuth(db, {
       baseURL: "http://127.0.0.1:3100",
-      secret: "pod-tracker-integration-test-secret",
+      emailDelivery: sentEmail.delivery,
+      secret: "pod-tracker-unverified-login-test-secret",
     });
-    const email = "riley@example.test";
-    const password = "correct-horse-battery";
+    const email = "unverified-login@example.test";
 
-    const signupResponse = await auth.handler(
+    await auth.handler(
       authRequest("/api/auth/sign-up/email", {
         email,
-        password,
-        name: "Riley Chen",
+        password: "correct-horse-battery",
+        name: "Unverified Login",
       }),
     );
-    const signupCookie = getCookieHeader(signupResponse);
-
-    expect(signupResponse.status).toBe(200);
-    expect(signupCookie).toContain("pod-tracker.session_token=");
-
-    const signupSession = await auth.api.getSession({
-      headers: new Headers({ cookie: signupCookie }),
-    });
-
-    expect(signupSession?.user).toMatchObject({
-      email,
-      name: "Riley Chen",
-    });
-
-    const [userRow] = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        emailVerified: users.emailVerified,
-      })
-      .from(users)
-      .where(eq(users.email, email));
-
-    expect(userRow).toBeDefined();
-    if (!userRow) {
-      throw new Error("Expected signup to create a user row.");
-    }
-
-    const [accountRow] = await db
-      .select({
-        userId: accounts.userId,
-        providerId: accounts.providerId,
-        password: accounts.password,
-      })
-      .from(accounts)
-      .where(eq(accounts.userId, userRow.id));
-
-    expect(userRow).toMatchObject({
-      email,
-      emailVerified: false,
-    });
-    expect(accountRow).toMatchObject({
-      userId: userRow.id,
-      providerId: "credential",
-    });
-    expect(accountRow.password).toBeTruthy();
-    expect(accountRow.password).not.toContain(password);
-
-    const signoutResponse = await auth.handler(
-      authRequest("/api/auth/sign-out", undefined, signupCookie),
-    );
-    const signedOutCookie = getCookieHeader(signoutResponse);
-
-    expect(signoutResponse.status).toBe(200);
-    expect(
-      await auth.api.getSession({
-        headers: new Headers({ cookie: signedOutCookie }),
-      }),
-    ).toBeNull();
 
     const loginResponse = await auth.handler(
       authRequest("/api/auth/sign-in/email", {
         email,
-        password,
+        password: "correct-horse-battery",
       }),
     );
-    const loginCookie = getCookieHeader(loginResponse);
-    const loginSession = await auth.api.getSession({
-      headers: new Headers({ cookie: loginCookie }),
+
+    expect(loginResponse.status).not.toBe(200);
+    expect(sentEmail.messages).toHaveLength(2);
+    expect(sentEmail.messages[1]).toMatchObject({
+      to: email,
+      subject: "Verify your Pod Tracker account",
+    });
+  });
+
+  test("requests password reset without sending mail for unknown users", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
+    const auth = createPodTrackerAuth(db, {
+      baseURL: "http://127.0.0.1:3100",
+      emailDelivery: sentEmail.delivery,
+      secret: "pod-tracker-reset-unknown-test-secret",
     });
 
-    expect(loginResponse.status).toBe(200);
-    expect(loginSession?.user.email).toBe(email);
+    const response = await auth.handler(
+      authRequest("/api/auth/request-password-reset", {
+        email: "missing@example.test",
+        redirectTo: "/reset-password",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: true });
+    expect(sentEmail.messages).toHaveLength(0);
+  });
+
+  test("sends password reset email and accepts the reset token", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
+    const auth = createPodTrackerAuth(db, {
+      baseURL: "http://127.0.0.1:3100",
+      emailDelivery: sentEmail.delivery,
+      secret: "pod-tracker-password-reset-test-secret",
+    });
+    const email = "reset@example.test";
+    const oldPassword = "correct-horse-battery";
+    const newPassword = "fresh-correct-horse-battery";
+
+    await auth.handler(
+      authRequest("/api/auth/sign-up/email", {
+        email,
+        password: oldPassword,
+        name: "Reset User",
+      }),
+    );
+    await auth.handler(authGetRequest(getEmailLink(sentEmail.messages[0])));
+
+    const resetResponse = await auth.handler(
+      authRequest("/api/auth/request-password-reset", {
+        email,
+        redirectTo: "/reset-password",
+      }),
+    );
+
+    expect(resetResponse.status).toBe(200);
+    expect(sentEmail.messages.at(-1)).toMatchObject({
+      to: email,
+      subject: "Reset your Pod Tracker password",
+    });
+
+    const resetCallbackResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages.at(-1))),
+    );
+    const resetCallbackLocation =
+      resetCallbackResponse.headers.get("location") ?? "";
+    const resetToken = new URL(resetCallbackLocation).searchParams.get("token");
+
+    expect(resetCallbackResponse.status).toBe(302);
+    expect(resetToken).toBeTruthy();
+    if (!resetToken) {
+      throw new Error("Expected reset callback to include a token.");
+    }
+
+    const passwordResponse = await auth.handler(
+      authRequest("/api/auth/reset-password", {
+        newPassword,
+        token: resetToken,
+      }),
+    );
+
+    expect(passwordResponse.status).toBe(200);
+
+    const oldLoginResponse = await auth.handler(
+      authRequest("/api/auth/sign-in/email", {
+        email,
+        password: oldPassword,
+      }),
+    );
+    const newLoginResponse = await auth.handler(
+      authRequest("/api/auth/sign-in/email", {
+        email,
+        password: newPassword,
+      }),
+    );
+
+    expect(oldLoginResponse.status).not.toBe(200);
+    expect(newLoginResponse.status).toBe(200);
+  });
+
+  test("confirms email changes before updating the account email", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
+    const auth = createPodTrackerAuth(db, {
+      baseURL: "http://127.0.0.1:3100",
+      emailDelivery: sentEmail.delivery,
+      secret: "pod-tracker-email-change-test-secret",
+    });
+    const currentEmail = "current-email@example.test";
+    const nextEmail = "next-email@example.test";
+
+    await auth.handler(
+      authRequest("/api/auth/sign-up/email", {
+        email: currentEmail,
+        password: "correct-horse-battery",
+        name: "Email Change",
+      }),
+    );
+    const verificationResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages[0])),
+    );
+    const sessionCookie = getCookieHeader(verificationResponse);
+
+    const changeResponse = await auth.handler(
+      authRequest(
+        "/api/auth/change-email",
+        {
+          newEmail: nextEmail,
+          callbackURL: "/account",
+        },
+        sessionCookie,
+      ),
+    );
+
+    expect(changeResponse.status).toBe(200);
+    expect(sentEmail.messages.at(-1)).toMatchObject({
+      to: currentEmail,
+      subject: "Confirm your Pod Tracker email change",
+    });
+
+    const currentConfirmationResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages.at(-1)), sessionCookie),
+    );
+
+    expect(currentConfirmationResponse.status).toBe(302);
+    expect(sentEmail.messages.at(-1)).toMatchObject({
+      to: nextEmail,
+      subject: "Verify your Pod Tracker account",
+    });
+
+    const newEmailVerificationResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages.at(-1)), sessionCookie),
+    );
+    const [updatedUser] = await db
+      .select({
+        email: users.email,
+        emailVerified: users.emailVerified,
+      })
+      .from(users)
+      .where(eq(users.email, nextEmail));
+
+    expect(newEmailVerificationResponse.status).toBe(302);
+    expect(updatedUser).toMatchObject({
+      email: nextEmail,
+      emailVerified: true,
+    });
+  });
+
+  test("does not leave reset verifications after password reset", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
+    const auth = createPodTrackerAuth(db, {
+      baseURL: "http://127.0.0.1:3100",
+      emailDelivery: sentEmail.delivery,
+      secret: "pod-tracker-reset-cleanup-test-secret",
+    });
+    const email = "reset-cleanup@example.test";
+
+    await auth.handler(
+      authRequest("/api/auth/sign-up/email", {
+        email,
+        password: "correct-horse-battery",
+        name: "Reset Cleanup",
+      }),
+    );
+    await auth.handler(authGetRequest(getEmailLink(sentEmail.messages[0])));
+    await auth.handler(
+      authRequest("/api/auth/request-password-reset", {
+        email,
+        redirectTo: "/reset-password",
+      }),
+    );
+    const resetCallbackResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages.at(-1))),
+    );
+    const resetToken = new URL(
+      resetCallbackResponse.headers.get("location") ?? "",
+    ).searchParams.get("token");
+
+    if (!resetToken) {
+      throw new Error("Expected reset callback to include a token.");
+    }
+
+    await auth.handler(
+      authRequest("/api/auth/reset-password", {
+        newPassword: "fresh-correct-horse-battery",
+        token: resetToken,
+      }),
+    );
+
+    const rows = await db.select().from(verifications);
+
+    expect(rows).toHaveLength(0);
   });
 
   test("sets hardened production session cookie attributes", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const { db } = await createMigratedPgliteDatabase();
+    const sentEmail = createFakeEmailDelivery();
     const auth = createPodTrackerAuth(db, {
       baseURL: "https://pod-tracker.example.test",
+      emailDelivery: sentEmail.delivery,
       secret: "pod-tracker-production-cookie-test-secret",
     });
 
@@ -121,11 +398,15 @@ describe("Better Auth integration", () => {
         "https://pod-tracker.example.test",
       ),
     );
-    const sessionCookie = getSetCookies(signupResponse).find((cookie) =>
-      cookie.startsWith("pod-tracker.session_token="),
+    const verificationResponse = await auth.handler(
+      authGetRequest(getEmailLink(sentEmail.messages[0])),
+    );
+    const sessionCookie = getSetCookies(verificationResponse).find((cookie) =>
+      cookie.includes("pod-tracker.session_token="),
     );
 
     expect(signupResponse.status).toBe(200);
+    expect(verificationResponse.status).toBe(302);
     expect(sessionCookie).toBeDefined();
     expect(sessionCookie).toContain("HttpOnly");
     expect(sessionCookie).toContain("SameSite=Lax");
@@ -148,6 +429,39 @@ function authRequest(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+}
+
+function authGetRequest(url: string, cookie?: string) {
+  return new Request(url, {
+    method: "GET",
+    headers: {
+      origin: new URL(url).origin,
+      ...(cookie ? { cookie } : {}),
+    },
+  });
+}
+
+function createFakeEmailDelivery() {
+  const messages: TransactionalEmail[] = [];
+
+  return {
+    messages,
+    delivery: {
+      async send(message: TransactionalEmail) {
+        messages.push(message);
+      },
+    },
+  };
+}
+
+function getEmailLink(message: TransactionalEmail | undefined) {
+  const match = message?.textBody.match(/https?:\/\/\S+/);
+
+  if (!match) {
+    throw new Error("Expected email message to contain a link.");
+  }
+
+  return match[0];
 }
 
 function getCookieHeader(response: Response) {

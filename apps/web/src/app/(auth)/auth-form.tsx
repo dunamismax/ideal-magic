@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, LogIn, UserPlus } from "lucide-react";
+import { AlertCircle, CheckCircle2, LogIn, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
@@ -15,6 +15,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const nextPath = useMemo(() => {
@@ -34,6 +35,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     const name = String(formData.get("name") ?? "").trim();
 
     setError(null);
+    setSuccess(null);
     setIsSubmitting(true);
 
     const result =
@@ -53,7 +55,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setIsSubmitting(false);
 
     if (result.error) {
-      setError(result.error.message ?? "Authentication failed.");
+      setError(getAuthErrorMessage(result.error.message));
+      return;
+    }
+
+    if (mode === "signup") {
+      setSuccess("Check your email to verify your account.");
       return;
     }
 
@@ -92,6 +99,19 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </div>
       ) : null}
 
+      {success ? (
+        <div
+          className="flex items-start gap-2 rounded-control border border-accent/40 bg-accent/10 p-3 text-sm font-semibold text-accent"
+          role="status"
+        >
+          <CheckCircle2
+            className="mt-0.5 size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{success}</span>
+        </div>
+      ) : null}
+
       {isSignup ? (
         <FormField label="Name">
           <input
@@ -120,7 +140,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           name="password"
           type="password"
           autoComplete={isSignup ? "new-password" : "current-password"}
-          minLength={8}
+          minLength={10}
           required
         />
       </FormField>
@@ -137,6 +157,25 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           {isSignup ? "Log in instead" : "Create an account"}
         </Link>
       </div>
+
+      {!isSignup ? (
+        <div className="flex flex-wrap gap-3 text-sm font-bold">
+          <Link className="text-accent hover:text-teal-800" href="/forgot-password">
+            Forgot password
+          </Link>
+          <Link className="text-accent hover:text-teal-800" href="/verify-email">
+            Resend verification
+          </Link>
+        </div>
+      ) : null}
     </form>
   );
+}
+
+function getAuthErrorMessage(message: string | undefined) {
+  if (message?.toLowerCase().includes("verified")) {
+    return "Check your email to verify your account before logging in.";
+  }
+
+  return message ?? "Authentication failed.";
 }

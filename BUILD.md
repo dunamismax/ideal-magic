@@ -223,6 +223,10 @@ agent session.
   self-hosted account recovery policy.
 - [x] Audit Better Auth cookie/session settings for the production
   Docker/Caddy/Cloudflare shape.
+- [x] Add SMTP2GO-backed transactional email for Better Auth account
+  verification, password reset, signup/login confirmation, and any
+  email-change flows, using env-only secrets and tests that never send
+  real mail by default.
 - [ ] Add CSRF coverage where Better Auth does not already cover the
   app's server actions/forms.
 - [ ] Add Valkey-backed rate limiting for auth, invite, public RSVP, and

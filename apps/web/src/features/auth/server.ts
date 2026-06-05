@@ -6,6 +6,13 @@ import { redirect } from "next/navigation";
 
 import { createDatabase, type AppDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
+import type { AuthEmailDelivery } from "@/features/auth/email";
+import {
+  sendAccountVerificationEmail,
+  sendChangeEmailConfirmation,
+  sendPasswordResetEmail,
+} from "@/features/auth/email";
+import { createSmtp2goEmailDeliveryFromEnv } from "@/features/email/smtp2go";
 import { getAppBaseUrl, getTrustedOrigins } from "@/features/security/origin";
 
 type AuthDatabase = Pick<
@@ -15,6 +22,7 @@ type AuthDatabase = Pick<
 
 type CreateAuthOptions = {
   baseURL?: string;
+  emailDelivery?: AuthEmailDelivery;
   secret?: string;
   useNextCookies?: boolean;
 };
@@ -25,6 +33,9 @@ export function createPodTrackerAuth(
   db: AuthDatabase,
   options: CreateAuthOptions = {},
 ) {
+  const getEmailDelivery = () =>
+    options.emailDelivery ?? createSmtp2goEmailDeliveryFromEnv();
+
   const authOptions = {
     appName: "Pod Tracker",
     baseURL: options.baseURL ?? getAppBaseUrl(),
@@ -43,10 +54,42 @@ export function createPodTrackerAuth(
     }),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: false,
+      requireEmailVerification: true,
       minPasswordLength: 10,
       maxPasswordLength: 128,
-      autoSignIn: true,
+      autoSignIn: false,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        await sendPasswordResetEmail(getEmailDelivery(), {
+          to: user.email,
+          url,
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 60 * 60 * 24,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendAccountVerificationEmail(getEmailDelivery(), {
+          to: user.email,
+          url,
+        });
+      },
+    },
+    user: {
+      changeEmail: {
+        enabled: true,
+        sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+          await sendChangeEmailConfirmation(getEmailDelivery(), {
+            to: user.email,
+            newEmail,
+            url,
+          });
+        },
+      },
     },
     session: {
       expiresIn: 60 * 60 * 24 * 7,

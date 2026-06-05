@@ -1,5 +1,6 @@
 import { PageFrame } from "@/components/page-frame";
 import { requireServerSession } from "@/features/auth/server";
+import { ChangeEmailForm } from "./change-email-form";
 import { LogoutButton } from "./logout-button";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export default async function AccountPage() {
         </div>
         <div className="rounded-control border border-border bg-background p-3 text-sm font-semibold">
           Session active
+        </div>
+        <div className="grid gap-3 rounded-control border border-border bg-background p-3">
+          <h3 className="text-base font-bold">Email</h3>
+          <ChangeEmailForm />
         </div>
         <div>
           <LogoutButton />

@@ -678,7 +678,7 @@ test("signup form posts Better Auth email credentials", async ({ page }) => {
     callbackURL: "/life",
   });
   await expect(
-    page.getByRole("heading", { name: "Life Counter" }),
+    page.getByText("Check your email to verify your account."),
   ).toBeVisible();
 });
 
@@ -719,6 +719,89 @@ test("login form posts Better Auth email credentials", async ({ page }) => {
   });
   await expect(
     page.getByRole("heading", { name: "Life Counter" }),
+  ).toBeVisible();
+});
+
+test("forgot password form requests a Better Auth reset email", async ({
+  page,
+}) => {
+  let postedResetRequest: unknown = null;
+
+  await page.route("**/api/auth/request-password-reset", async (route) => {
+    postedResetRequest = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true }),
+    });
+  });
+
+  await page.goto("/forgot-password");
+  await page.getByLabel("Email").fill("RILEY@EXAMPLE.TEST");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+
+  expect(postedResetRequest).toMatchObject({
+    email: "riley@example.test",
+    redirectTo: "/reset-password",
+  });
+  await expect(
+    page.getByText("If the account exists, check your email for the reset link."),
+  ).toBeVisible();
+});
+
+test("reset password form posts a Better Auth reset token", async ({
+  page,
+}, testInfo) => {
+  const token = `reset-${Date.now()}-${testInfo.workerIndex}`;
+  let postedReset: unknown = null;
+
+  await page.route("**/api/auth/reset-password", async (route) => {
+    postedReset = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true }),
+    });
+  });
+
+  await page.goto(`/reset-password?token=${encodeURIComponent(token)}`);
+  await page.getByLabel("New password").fill("fresh-correct-horse-battery");
+  await page.getByRole("button", { name: "Update password" }).click();
+
+  expect(postedReset).toMatchObject({
+    newPassword: "fresh-correct-horse-battery",
+    token,
+  });
+  await expect(page.getByText("Your password has been updated.")).toBeVisible();
+});
+
+test("verification form requests a Better Auth verification email", async ({
+  page,
+}) => {
+  let postedVerification: unknown = null;
+
+  await page.route("**/api/auth/send-verification-email", async (route) => {
+    postedVerification = route.request().postDataJSON();
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true }),
+    });
+  });
+
+  await page.goto("/verify-email");
+  await page.getByLabel("Email").fill("RILEY@EXAMPLE.TEST");
+  await page.getByRole("button", { name: "Send verification" }).click();
+
+  expect(postedVerification).toMatchObject({
+    email: "riley@example.test",
+    callbackURL: "/account",
+  });
+  await expect(
+    page.getByText("If verification is available, check your email."),
   ).toBeVisible();
 });
 

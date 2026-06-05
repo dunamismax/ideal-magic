@@ -29,6 +29,7 @@ import {
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
   PodGameLoggingBlockedError,
+  saveCompletedPodLifeCounterGame,
 } from "./games";
 import { createPlaygroupForUser } from "./playgroups";
 import {
@@ -717,6 +718,132 @@ describe("game logging data access", () => {
     });
     expect(JSON.stringify(logged)).not.toContain("Edited After History");
     expect(JSON.stringify(logged)).not.toContain("Edited History Commander");
+  });
+
+  test("saves a completed pod life counter result into scoped game history", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const memberSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Member 1",
+    );
+    const guestSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Guest RSVP",
+    );
+
+    if (!memberSeat || !guestSeat) {
+      throw new Error("Expected member and guest seats in published pod.");
+    }
+
+    const logged = await saveCompletedPodLifeCounterGame(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "team_win",
+      winnerSeatIds: [memberSeat.id, guestSeat.id],
+      notes: "  Saved from pod counter.  ",
+      completedAt: new Date("2030-06-15T05:00:00.000Z"),
+    });
+
+    expect(logged).toMatchObject({
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "team_win",
+      notes: "Saved from pod counter.",
+    });
+    expect(
+      logged.players
+        .filter((player) => player.isWinner)
+        .map((player) => player.participantName),
+    ).toEqual(["Member 1", "Guest RSVP"]);
+    expect(JSON.stringify(logged)).not.toContain("Private Guest");
+    expect(JSON.stringify(logged)).not.toContain("@example.test");
+
+    const [resultRow] = await db
+      .select({
+        resultType: gameResults.resultType,
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+        notes: gameResults.notes,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      resultType: "team_win",
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: "winning_team",
+      notes: "Saved from pod counter.",
+    });
+
+    const historyRows = await db
+      .select({
+        leftUserId: matchupHistory.leftUserId,
+        rightUserId: matchupHistory.rightUserId,
+        leftDeckId: matchupHistory.leftDeckId,
+        rightDeckId: matchupHistory.rightDeckId,
+      })
+      .from(matchupHistory)
+      .where(eq(matchupHistory.gameId, logged.id));
+
+    expect(historyRows).toHaveLength(3);
+    expect(
+      historyRows.every(
+        (row) =>
+          row.leftUserId &&
+          row.rightUserId &&
+          row.leftDeckId &&
+          row.rightDeckId,
+      ),
+    ).toBe(true);
+
+    const [eventHistory] = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const payload = JSON.stringify(eventHistory);
+
+    expect(eventHistory).toMatchObject({
+      id: logged.id,
+      resultType: "team_win",
+      notes: "Saved from pod counter.",
+    });
+    expect(
+      eventHistory?.winners.map((winner) => winner.participantName),
+    ).toEqual(["Member 1", "Guest RSVP"]);
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
+  });
+
+  test("denies completed pod life counter saves from non-members", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const winnerSeat = fixture.publishedPod.seats[0];
+
+    if (!winnerSeat) {
+      throw new Error("Expected winner seat.");
+    }
+
+    await expect(
+      saveCompletedPodLifeCounterGame(db, {
+        viewerUserId: fixture.outsiderId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "normal_win",
+        winnerSeatIds: [winnerSeat.id],
+      }),
+    ).rejects.toBeInstanceOf(PodGameLoggingAuthorizationError);
+
+    await expect(
+      listLoggedGamesForEventViewer(db, {
+        eventId: fixture.eventId,
+        viewerUserId: fixture.ownerId,
+      }),
+    ).resolves.toEqual([]);
   });
 });
 

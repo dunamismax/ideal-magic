@@ -522,6 +522,21 @@ export async function logGameFromPublishedPod(
   });
 }
 
+export async function saveCompletedPodLifeCounterGame(
+  db: GameWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    podId: string;
+    resultType: GameResultType;
+    winnerSeatIds?: readonly string[];
+    notes?: string;
+    completedAt?: Date;
+  },
+): Promise<LoggedPodGameSummary> {
+  return logGameFromPublishedPod(db, input);
+}
+
 async function getPublishedPodLoggingContext(
   db: GameReadDatabase,
   input: {

@@ -68,6 +68,7 @@ import { cn } from "@/lib/utils";
 
 type LifeCounterProps = {
   initialSession?: LifeCounterSession;
+  linkedSaveEnabled?: boolean;
   linkedStatusLabel?: string;
 };
 
@@ -176,6 +177,7 @@ function formatDuration(totalSeconds: number) {
 
 export function LifeCounter({
   initialSession,
+  linkedSaveEnabled = false,
   linkedStatusLabel,
 }: LifeCounterProps = {}) {
   const isLinkedSession = Boolean(linkedStatusLabel);
@@ -255,7 +257,9 @@ export function LifeCounter({
           ? "Local storage unavailable"
           : "Local save failed";
   const syncScopeLabel = isLinkedSession
-    ? "Local only - not saved to group"
+    ? linkedSaveEnabled
+      ? "Local until saved to group"
+      : "Local only - not saved to group"
     : "Local only";
 
   useEffect(() => {

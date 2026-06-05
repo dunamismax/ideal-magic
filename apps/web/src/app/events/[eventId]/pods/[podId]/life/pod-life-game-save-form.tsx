@@ -1,0 +1,178 @@
+"use client";
+
+import { CheckCircle2, Trophy } from "lucide-react";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+
+import { Button } from "@/components/ui/button";
+import type { EventPodSummary } from "@/db/queries/pods";
+import {
+  savePodLifeGameAction,
+  type SavePodLifeGameActionState,
+} from "./actions";
+
+type PodLifeGameSaveFormProps = {
+  eventId: string;
+  pod: Pick<EventPodSummary, "id" | "name" | "seats">;
+  action?: (
+    previousState: SavePodLifeGameActionState,
+    formData: FormData,
+  ) => Promise<SavePodLifeGameActionState>;
+};
+
+function createInitialState(input: {
+  eventId: string;
+  podId: string;
+}): SavePodLifeGameActionState {
+  return {
+    message: null,
+    saved: false,
+    fieldErrors: {},
+    fields: {
+      eventId: input.eventId,
+      podId: input.podId,
+      resultType: "normal_win",
+      winnerSeatIds: [],
+      notes: "",
+    },
+  };
+}
+
+export function PodLifeGameSaveForm({
+  eventId,
+  pod,
+  action = savePodLifeGameAction,
+}: PodLifeGameSaveFormProps) {
+  const [state, formAction] = useActionState(
+    action,
+    createInitialState({
+      eventId,
+      podId: pod.id,
+    }),
+  );
+
+  return (
+    <section className="mt-4 grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-bold">
+            <Trophy className="size-4 text-accent" aria-hidden="true" />
+            Save Game
+          </h2>
+          <p className="text-sm font-semibold text-muted">{pod.name}</p>
+        </div>
+      </div>
+
+      <form
+        action={formAction}
+        className="grid gap-3 lg:grid-cols-[12rem_1fr_1fr_auto] lg:items-start"
+      >
+        <input name="eventId" type="hidden" value={state.fields.eventId} />
+        <input name="podId" type="hidden" value={state.fields.podId} />
+        <select
+          aria-label={`Result for ${pod.name}`}
+          className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          defaultValue={state.fields.resultType}
+          name="resultType"
+        >
+          <option value="normal_win">Normal win</option>
+          <option value="combat_win">Combat win</option>
+          <option value="combo_win">Combo win</option>
+          <option value="concession">Concession</option>
+          <option value="archenemy_win">Archenemy win</option>
+          <option value="team_win">Team win</option>
+          <option value="draw">Draw</option>
+          <option value="time_called">Time called</option>
+          <option value="unfinished">Unfinished</option>
+        </select>
+
+        <fieldset className="grid gap-1 rounded-control border border-border bg-background px-3 py-2">
+          <legend className="sr-only">Winners for {pod.name}</legend>
+          <span
+            className="text-[0.7rem] font-black uppercase text-muted"
+            id={`${pod.id}-life-winner-seats-label`}
+          >
+            Winners
+          </span>
+          <div
+            aria-labelledby={`${pod.id}-life-winner-seats-label`}
+            className="flex flex-wrap gap-2"
+            role="group"
+          >
+            {pod.seats.map((seat) => (
+              <label
+                className="inline-flex items-center gap-1 text-xs font-bold text-foreground"
+                key={seat.id}
+              >
+                <input
+                  className="size-4 accent-current"
+                  defaultChecked={state.fields.winnerSeatIds.includes(seat.id)}
+                  name="winnerSeatIds"
+                  type="checkbox"
+                  value={seat.id}
+                />
+                Seat {seat.seatPosition}: {seat.participantName}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <input
+          aria-label={`Notes for ${pod.name}`}
+          className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          defaultValue={state.fields.notes}
+          name="notes"
+          placeholder="Notes"
+        />
+
+        <SavePodLifeGameButton podName={pod.name} />
+
+        {state.message ? (
+          <p
+            className={
+              state.saved
+                ? "flex items-center gap-2 text-xs font-bold text-accent lg:col-span-4"
+                : "text-xs font-bold text-danger lg:col-span-4"
+            }
+            role="status"
+          >
+            {state.saved ? (
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+            ) : null}
+            <span>{state.message}</span>
+          </p>
+        ) : null}
+
+        {state.fieldErrors.eventId ||
+        state.fieldErrors.podId ||
+        state.fieldErrors.resultType ||
+        state.fieldErrors.winnerSeatIds ? (
+          <p className="text-xs font-bold text-danger lg:col-span-4">
+            {state.fieldErrors.eventId ??
+              state.fieldErrors.podId ??
+              state.fieldErrors.resultType ??
+              state.fieldErrors.winnerSeatIds}
+          </p>
+        ) : null}
+      </form>
+    </section>
+  );
+}
+
+function SavePodLifeGameButton({ podName }: { podName: string }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      aria-label={`Save game for ${podName}`}
+      className="w-full justify-center lg:w-auto"
+      disabled={pending}
+      title={`Save game for ${podName}`}
+      type="submit"
+      variant="primary"
+    >
+      <Trophy className="size-4" aria-hidden="true" />
+      {pending ? "Saving" : "Save Game"}
+    </Button>
+  );
+}

@@ -2,10 +2,12 @@ import {
   createCommander,
   createInitialLifeCounterSession,
   createInitialLifeCounterSnapshot,
+  seats,
   type LifeCounterSession,
   type LifeCounterSnapshot,
   type Player,
 } from "./session";
+import type { EventPodSummary } from "@/db/queries/pods";
 
 type LinkedPlayer = {
   id: string;
@@ -43,6 +45,16 @@ export type LinkedLifeCounterContext = {
   statusLabel: string;
   importedPlayerCount: number;
   session: LifeCounterSession;
+};
+
+type PublishedPodLifeCounterInput = {
+  event: {
+    id: string;
+    title: string;
+    startsAt: Date;
+  };
+  pod: Pick<EventPodSummary, "id" | "name" | "seats">;
+  now?: string;
 };
 
 const linkedEvents = [
@@ -219,6 +231,36 @@ export function getPodLifeCounterContext(
     importedPlayerCount: snapshot.playerCount,
     session: createInitialLifeCounterSession(now, {
       id: createLinkedSessionId("pod", eventId, podId),
+      snapshot,
+    }),
+  };
+}
+
+export function createPodLifeCounterContextFromPublishedPod({
+  event,
+  pod,
+  now = new Date().toISOString(),
+}: PublishedPodLifeCounterInput): LinkedLifeCounterContext {
+  const snapshot = createSnapshotFromLinkedPlayers(
+    pod.seats.map((seat) => ({
+      id: seat.id,
+      name: seat.participantName,
+      commanders: seat.deck?.commanderSnapshot ?? [],
+      deckLabel: seat.deck?.deckNameSnapshot ?? "",
+      seat: seats[seat.seatPosition - 1] ?? `Seat ${seat.seatPosition}`,
+    })),
+  );
+
+  return {
+    kind: "pod",
+    eventId: event.id,
+    podId: pod.id,
+    title: `${pod.name} Life Counter`,
+    eyebrow: `Pod-linked local session - ${event.title}`,
+    statusLabel: `${snapshot.playerCount} published pod seats imported in table order. Save a completed result when the game is ready for group history.`,
+    importedPlayerCount: snapshot.playerCount,
+    session: createInitialLifeCounterSession(now, {
+      id: createLinkedSessionId("pod", event.id, pod.id),
       snapshot,
     }),
   };

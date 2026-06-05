@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  createPodLifeCounterContextFromPublishedPod,
   getEventLifeCounterContext,
   getPodLifeCounterContext,
 } from "./linked-session";
@@ -59,5 +60,66 @@ describe("linked life counter setup", () => {
     expect(
       getPodLifeCounterContext("commander-night-demo", "missing-pod"),
     ).toBeNull();
+  });
+
+  test("imports real published pod summaries without leaking private guest names", () => {
+    const context = createPodLifeCounterContextFromPublishedPod({
+      event: {
+        id: "50000000-0000-4000-8000-000000000001",
+        title: "Friday Commander",
+        startsAt: new Date("2030-06-14T23:00:00.000Z"),
+      },
+      pod: {
+        id: "50000000-0000-4000-8000-000000000002",
+        name: "Pod 1",
+        seats: [
+          {
+            id: "50000000-0000-4000-8000-000000000003",
+            seatPosition: 1,
+            participantName: "Riley Chen",
+            rsvpStatus: "yes",
+            locked: false,
+            deck: {
+              declarationId: "50000000-0000-4000-8000-000000000004",
+              deckId: "50000000-0000-4000-8000-000000000005",
+              deckNameSnapshot: "Atraxa Counters",
+              commanderSnapshot: ["Atraxa, Grand Unifier"],
+              colorIdentitySnapshot: "WUBG",
+              bracketSnapshot: "3",
+              powerEstimateSnapshot: 7,
+              archetypeSnapshot: "Counters",
+            },
+          },
+          {
+            id: "50000000-0000-4000-8000-000000000006",
+            seatPosition: 2,
+            participantName: "Guest RSVP",
+            rsvpStatus: "yes",
+            locked: false,
+            deck: null,
+          },
+        ],
+      },
+      now: "2030-06-14T23:30:00.000Z",
+    });
+
+    expect(context.session.id).toBe(
+      "linked-life:pod:50000000-0000-4000-8000-000000000001:50000000-0000-4000-8000-000000000002",
+    );
+    expect(context.session.playerCount).toBe(2);
+    expect(context.session.players[0]).toMatchObject({
+      name: "Riley Chen",
+      seat: "North",
+      deck: "Atraxa Counters",
+    });
+    expect(context.session.players[0].commanders[0]?.name).toBe(
+      "Atraxa, Grand Unifier",
+    );
+    expect(context.session.players[1]).toMatchObject({
+      name: "Guest RSVP",
+      seat: "East",
+      deck: "",
+    });
+    expect(JSON.stringify(context)).not.toContain("Private Guest");
   });
 });

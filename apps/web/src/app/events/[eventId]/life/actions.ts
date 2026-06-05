@@ -14,19 +14,20 @@ import {
   type SaveEventLifeGameInput,
   validateSaveEventLifeGameInput,
 } from "@/features/life/event-game-save";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export async function saveEventLifeGameAction(
   _previousState: SaveEventLifeGameActionState,
   formData: FormData,
 ): Promise<SaveEventLifeGameActionState> {
+  await assertSameOriginServerAction();
+
   const eventId = String(formData.get("eventId") ?? "");
   const session = await requireServerSession(`/events/${eventId}/life`);
   const fields: SaveEventLifeGameInput = {
     eventId,
     resultType: normalizeLifeGameResultType(formData.get("resultType")),
-    winnerParticipantIds: formData
-      .getAll("winnerParticipantIds")
-      .map(String),
+    winnerParticipantIds: formData.getAll("winnerParticipantIds").map(String),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateSaveEventLifeGameInput({

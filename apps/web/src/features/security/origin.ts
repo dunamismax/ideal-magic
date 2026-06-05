@@ -4,6 +4,8 @@ type AppBaseUrlOptions = {
   requireConfiguredProductionUrl?: boolean;
 };
 
+type OriginHeaders = Pick<Headers, "get">;
+
 export function getAppBaseUrl({
   requireConfiguredProductionUrl = true,
 }: AppBaseUrlOptions = {}) {
@@ -61,8 +63,15 @@ export function isTrustedRequestOrigin(
   request: Request,
   trustedOrigins = getTrustedOrigins(),
 ) {
-  const originHeader = request.headers.get("origin");
-  const refererHeader = request.headers.get("referer");
+  return isTrustedHeadersOrigin(request.headers, trustedOrigins);
+}
+
+export function isTrustedHeadersOrigin(
+  headers: OriginHeaders,
+  trustedOrigins = getTrustedOrigins(),
+) {
+  const originHeader = headers.get("origin");
+  const refererHeader = headers.get("referer");
   const requestOrigin =
     normalizeHttpOrigin(originHeader) ?? normalizeHttpOrigin(refererHeader);
 

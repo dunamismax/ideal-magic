@@ -8,8 +8,11 @@ import {
   PlaygroupInviteAcceptanceError,
 } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export async function acceptGroupInviteAction(formData: FormData) {
+  await assertSameOriginServerAction();
+
   const inviteToken = String(formData.get("inviteToken") ?? "").trim();
   const session = await requireServerSession(`/invites/groups/${inviteToken}`);
 

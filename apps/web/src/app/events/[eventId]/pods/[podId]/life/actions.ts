@@ -13,6 +13,7 @@ import {
   type SavePodLifeGameInput,
   validateSavePodLifeGameInput,
 } from "@/features/life/pod-game-save";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export type SavePodLifeGameActionState = {
   message: string | null;
@@ -25,6 +26,8 @@ export async function savePodLifeGameAction(
   _previousState: SavePodLifeGameActionState,
   formData: FormData,
 ): Promise<SavePodLifeGameActionState> {
+  await assertSameOriginServerAction();
+
   const eventId = String(formData.get("eventId") ?? "");
   const podId = String(formData.get("podId") ?? "");
   const session = await requireServerSession(

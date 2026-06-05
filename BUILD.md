@@ -227,7 +227,7 @@ agent session.
   verification, password reset, signup/login confirmation, and any
   email-change flows, using env-only secrets and tests that never send
   real mail by default.
-- [ ] Add CSRF coverage where Better Auth does not already cover the
+- [x] Add CSRF coverage where Better Auth does not already cover the
   app's server actions/forms.
 - [ ] Add Valkey-backed rate limiting for auth, invite, public RSVP, and
   write-heavy routes.

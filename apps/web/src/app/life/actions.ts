@@ -14,11 +14,14 @@ import {
   type SaveEventLifeGameInput,
   validateSaveEventLifeGameInput,
 } from "@/features/life/event-game-save";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export async function saveStandaloneLifeGameAction(
   _previousState: SaveEventLifeGameActionState,
   formData: FormData,
 ): Promise<SaveEventLifeGameActionState> {
+  await assertSameOriginServerAction();
+
   const eventId = String(formData.get("eventId") ?? "");
   const nextPath = eventId
     ? `/life?eventId=${encodeURIComponent(eventId)}`
@@ -27,9 +30,7 @@ export async function saveStandaloneLifeGameAction(
   const fields: SaveEventLifeGameInput = {
     eventId,
     resultType: normalizeLifeGameResultType(formData.get("resultType")),
-    winnerParticipantIds: formData
-      .getAll("winnerParticipantIds")
-      .map(String),
+    winnerParticipantIds: formData.getAll("winnerParticipantIds").map(String),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateSaveEventLifeGameInput({

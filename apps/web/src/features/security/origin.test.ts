@@ -4,6 +4,7 @@ import {
   getAppBaseUrl,
   getServerActionAllowedOrigins,
   getTrustedOrigins,
+  isTrustedHeadersOrigin,
   isTrustedRequestOrigin,
   parseOriginList,
 } from "./origin";
@@ -64,6 +65,12 @@ describe("origin security helpers", () => {
         new Request("https://pod-tracker.example.test/api", {
           headers: { referer: "https://pod-tracker.example.test/invite" },
         }),
+        trustedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isTrustedHeadersOrigin(
+        new Headers({ origin: "https://pod-tracker.example.test" }),
         trustedOrigins,
       ),
     ).toBe(true);

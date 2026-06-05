@@ -73,6 +73,7 @@ import {
   validatePodPublicationInput,
   validatePodSeatLockInput,
 } from "@/features/pods/pod-form";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export type CreateEventActionState = {
   message: string | null;
@@ -154,6 +155,8 @@ export async function createEventAction(
   _previousState: CreateEventActionState,
   formData: FormData,
 ): Promise<CreateEventActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const validation = validateCreateEventInput({
     playgroupId: formData.get("playgroupId") ?? "",
@@ -211,6 +214,8 @@ export async function updateMemberRsvpAction(
   _previousState: UpdateMemberRsvpActionState,
   formData: FormData,
 ): Promise<UpdateMemberRsvpActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const validation = validateMemberRsvpInput({
     eventId: formData.get("eventId") ?? "",
@@ -269,6 +274,8 @@ export async function updateEventAction(
   _previousState: UpdateEventActionState,
   formData: FormData,
 ): Promise<UpdateEventActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const validation = validateUpdateEventInput({
     eventId: formData.get("eventId") ?? "",
@@ -337,6 +344,8 @@ export async function updateEventStatusAction(
   _previousState: EventStatusActionState,
   formData: FormData,
 ): Promise<EventStatusActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const validation = validateEventStatusInput({
     eventId: formData.get("eventId") ?? "",
@@ -396,6 +405,8 @@ export async function declareDeckAction(
   _previousState: DeckDeclarationActionState,
   formData: FormData,
 ): Promise<DeckDeclarationActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: DeckDeclarationInput = {
     eventId: String(formData.get("eventId") ?? ""),
@@ -465,6 +476,8 @@ export async function undeclareDeckAction(
   _previousState: UndeclareDeckActionState,
   formData: FormData,
 ): Promise<UndeclareDeckActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: UndeclareDeckInput = {
     declarationId: String(formData.get("declarationId") ?? ""),
@@ -521,6 +534,8 @@ export async function generatePodsAction(
   _previousState: GeneratePodsActionState,
   formData: FormData,
 ): Promise<GeneratePodsActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: GeneratePodsInput = {
     eventId: String(formData.get("eventId") ?? ""),
@@ -598,6 +613,8 @@ export async function movePodSeatAction(
   _previousState: MovePodSeatActionState,
   formData: FormData,
 ): Promise<MovePodSeatActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: MovePodSeatInput = {
     eventId: String(formData.get("eventId") ?? ""),
@@ -678,6 +695,8 @@ export async function updatePodSeatLockAction(
   _previousState: PodSeatLockActionState,
   formData: FormData,
 ): Promise<PodSeatLockActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: PodSeatLockInput = {
     eventId: String(formData.get("eventId") ?? ""),
@@ -758,6 +777,8 @@ export async function updatePodPublicationAction(
   _previousState: PodPublicationActionState,
   formData: FormData,
 ): Promise<PodPublicationActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: PodPublicationInput = {
     eventId: String(formData.get("eventId") ?? ""),
@@ -840,6 +861,8 @@ export async function logPodGameAction(
   _previousState: LogPodGameActionState,
   formData: FormData,
 ): Promise<LogPodGameActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/game-night");
   const fields: LogPodGameInput = {
     eventId: String(formData.get("eventId") ?? ""),

@@ -31,6 +31,7 @@ import {
   validateChangeGroupMemberRoleInput,
   validateRemoveGroupMemberInput,
 } from "@/features/groups/group-member-management";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export type CreateGroupActionState = {
   message: string | null;
@@ -74,6 +75,8 @@ export async function createGroupAction(
   _previousState: CreateGroupActionState,
   formData: FormData,
 ): Promise<CreateGroupActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/groups");
   const validation = validateCreateGroupInput({
     name: formData.get("name") ?? "",
@@ -115,6 +118,8 @@ export async function createGroupInviteAction(
   _previousState: CreateGroupInviteActionState,
   formData: FormData,
 ): Promise<CreateGroupInviteActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/groups");
   const validation = validateCreateGroupInviteInput({
     playgroupId: formData.get("playgroupId") ?? "",
@@ -177,6 +182,8 @@ export async function revokeGroupInviteAction(
   _previousState: RevokeGroupInviteActionState,
   formData: FormData,
 ): Promise<RevokeGroupInviteActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/groups");
   const validation = validateRevokeGroupInviteInput({
     inviteId: formData.get("inviteId") ?? "",
@@ -232,6 +239,8 @@ export async function changeGroupMemberRoleAction(
   _previousState: ChangeGroupMemberRoleActionState,
   formData: FormData,
 ): Promise<ChangeGroupMemberRoleActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/groups");
   const validation = validateChangeGroupMemberRoleInput({
     membershipId: formData.get("membershipId") ?? "",
@@ -303,6 +312,8 @@ export async function removeGroupMemberAction(
   _previousState: RemoveGroupMemberActionState,
   formData: FormData,
 ): Promise<RemoveGroupMemberActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/groups");
   const validation = validateRemoveGroupMemberInput({
     membershipId: formData.get("membershipId") ?? "",

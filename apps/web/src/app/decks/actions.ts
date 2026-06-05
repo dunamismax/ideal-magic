@@ -20,6 +20,7 @@ import {
   validateRetireDeckInput,
   validateUpdateDeckInput,
 } from "@/features/decks/deck-form";
+import { assertSameOriginServerAction } from "@/features/security/csrf";
 
 export type CreateDeckActionState = {
   message: string | null;
@@ -48,6 +49,8 @@ export async function createDeckAction(
   _previousState: CreateDeckActionState,
   formData: FormData,
 ): Promise<CreateDeckActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/decks");
   const validation = validateCreateDeckInput({
     name: formData.get("name") ?? "",
@@ -120,6 +123,8 @@ export async function updateDeckAction(
   _previousState: UpdateDeckActionState,
   formData: FormData,
 ): Promise<UpdateDeckActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/decks");
   const validation = validateUpdateDeckInput({
     deckId: formData.get("deckId") ?? "",
@@ -192,6 +197,8 @@ export async function retireDeckAction(
   _previousState: RetireDeckActionState,
   formData: FormData,
 ): Promise<RetireDeckActionState> {
+  await assertSameOriginServerAction();
+
   const session = await requireServerSession("/decks");
   const validation = validateRetireDeckInput({
     deckId: formData.get("deckId") ?? "",

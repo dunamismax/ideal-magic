@@ -340,7 +340,7 @@ function createLogPodGameInitialState(input: {
       eventId: input.eventId,
       podId: input.podId,
       resultType: "normal_win",
-      winnerSeatId: "",
+      winnerSeatIds: [],
       notes: "",
     },
   };
@@ -375,23 +375,45 @@ function LogPodGameForm({
         name="resultType"
       >
         <option value="normal_win">Normal win</option>
+        <option value="combat_win">Combat win</option>
+        <option value="combo_win">Combo win</option>
+        <option value="concession">Concession</option>
+        <option value="archenemy_win">Archenemy win</option>
+        <option value="team_win">Team win</option>
         <option value="draw">Draw</option>
         <option value="time_called">Time called</option>
         <option value="unfinished">Unfinished</option>
       </select>
-      <select
-        aria-label={`Winner for ${pod.name}`}
-        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
-        defaultValue={state.fields.winnerSeatId}
-        name="winnerSeatId"
-      >
-        <option value="">No winner logged</option>
-        {pod.seats.map((seat) => (
-          <option key={seat.id} value={seat.id}>
-            Seat {seat.seatPosition}: {seat.participantName}
-          </option>
-        ))}
-      </select>
+      <fieldset className="grid gap-1 rounded-control border border-border bg-background px-2 py-1.5">
+        <legend className="sr-only">Winners for {pod.name}</legend>
+        <span
+          className="text-[0.7rem] font-black uppercase text-muted"
+          id={`${pod.id}-winner-seats-label`}
+        >
+          Winners
+        </span>
+        <div
+          aria-labelledby={`${pod.id}-winner-seats-label`}
+          className="flex flex-wrap gap-2"
+          role="group"
+        >
+          {pod.seats.map((seat) => (
+            <label
+              className="inline-flex items-center gap-1 text-xs font-bold text-foreground"
+              key={seat.id}
+            >
+              <input
+                className="size-4 accent-current"
+                defaultChecked={state.fields.winnerSeatIds.includes(seat.id)}
+                name="winnerSeatIds"
+                type="checkbox"
+                value={seat.id}
+              />
+              Seat {seat.seatPosition}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <input
         aria-label={`Notes for ${pod.name}`}
         className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
@@ -415,12 +437,12 @@ function LogPodGameForm({
       {state.fieldErrors.eventId ||
       state.fieldErrors.podId ||
       state.fieldErrors.resultType ||
-      state.fieldErrors.winnerSeatId ? (
+      state.fieldErrors.winnerSeatIds ? (
         <p className="text-xs font-bold text-danger lg:col-span-4">
           {state.fieldErrors.eventId ??
             state.fieldErrors.podId ??
             state.fieldErrors.resultType ??
-            state.fieldErrors.winnerSeatId}
+            state.fieldErrors.winnerSeatIds}
         </p>
       ) : null}
     </form>

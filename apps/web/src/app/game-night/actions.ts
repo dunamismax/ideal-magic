@@ -844,22 +844,15 @@ export async function logPodGameAction(
   const fields: LogPodGameInput = {
     eventId: String(formData.get("eventId") ?? ""),
     podId: String(formData.get("podId") ?? ""),
-    resultType:
-      String(formData.get("resultType") ?? "") === "draw"
-        ? "draw"
-        : String(formData.get("resultType") ?? "") === "time_called"
-          ? "time_called"
-          : String(formData.get("resultType") ?? "") === "unfinished"
-            ? "unfinished"
-            : "normal_win",
-    winnerSeatId: String(formData.get("winnerSeatId") ?? ""),
+    resultType: normalizeLogGameResultType(formData.get("resultType")),
+    winnerSeatIds: formData.getAll("winnerSeatIds").map(String),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateLogPodGameInput({
     eventId: fields.eventId,
     podId: fields.podId,
     resultType: String(formData.get("resultType") ?? ""),
-    winnerSeatId: fields.winnerSeatId,
+    winnerSeatIds: fields.winnerSeatIds,
     notes: fields.notes,
   });
 
@@ -884,7 +877,7 @@ export async function logPodGameAction(
       message: `Logged ${logged.players.length}-player game.`,
       saved: true,
       fieldErrors: {},
-      fields,
+      fields: validation.input,
     };
   } catch (error) {
     if (error instanceof PodGameLoggingAuthorizationError) {
@@ -915,5 +908,25 @@ export async function logPodGameAction(
       fieldErrors: {},
       fields,
     };
+  }
+}
+
+function normalizeLogGameResultType(
+  value: FormDataEntryValue | null,
+): LogPodGameInput["resultType"] {
+  const resultType = String(value ?? "");
+
+  switch (resultType) {
+    case "combo_win":
+    case "combat_win":
+    case "concession":
+    case "draw":
+    case "time_called":
+    case "unfinished":
+    case "archenemy_win":
+    case "team_win":
+      return resultType;
+    default:
+      return "normal_win";
   }
 }

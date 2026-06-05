@@ -33,7 +33,9 @@ export function HistoryGameList({
             <div className="flex flex-wrap gap-2">
               <Badge value={formatResultType(game.resultType)} />
               {game.winners.length > 0 ? (
-                <Badge value={`Winner: ${formatWinners(game.winners)}`} />
+                <Badge
+                  value={`${game.winners.length === 1 ? "Winner" : "Winners"}: ${formatWinners(game.winners)}`}
+                />
               ) : null}
             </div>
           </div>
@@ -46,7 +48,9 @@ export function HistoryGameList({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-bold">{player.participantName}</p>
+                    <p className="text-sm font-bold">
+                      {player.participantName}
+                    </p>
                     <p className="mt-1 text-xs font-semibold text-muted">
                       Seat {player.seatPosition}
                       {player.finishPosition
@@ -64,9 +68,7 @@ export function HistoryGameList({
                     {player.deck.commanderSnapshot.length > 0 ? (
                       <p>{player.deck.commanderSnapshot.join(", ")}</p>
                     ) : null}
-                    <p className="mt-1">
-                      {formatDeckMetadata(player.deck)}
-                    </p>
+                    <p className="mt-1">{formatDeckMetadata(player.deck)}</p>
                   </div>
                 ) : (
                   <p className="mt-3 text-xs font-semibold text-muted">
@@ -128,9 +130,7 @@ function formatResultType(resultType: LoggedGameHistorySummary["resultType"]) {
   }
 }
 
-function formatWinners(
-  winners: LoggedGameHistorySummary["winners"],
-) {
+function formatWinners(winners: LoggedGameHistorySummary["winners"]) {
   return winners.map((winner) => winner.participantName).join(", ");
 }
 

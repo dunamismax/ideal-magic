@@ -27,6 +27,7 @@ import {
   listLoggedGamesForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
+  PodGameLoggingBlockedError,
 } from "./games";
 import { createPlaygroupForUser } from "./playgroups";
 import {
@@ -186,7 +187,11 @@ describe("game logging data access", () => {
     expect(afterHistory).toHaveLength(3);
     expect(
       afterHistory.every(
-        (row) => row.leftUserId && row.rightUserId && row.leftDeckId && row.rightDeckId,
+        (row) =>
+          row.leftUserId &&
+          row.rightUserId &&
+          row.leftDeckId &&
+          row.rightDeckId,
       ),
     ).toBe(true);
 
@@ -228,6 +233,207 @@ describe("game logging data access", () => {
     });
 
     expect(loggedByParticipant.players).toHaveLength(4);
+  });
+
+  test("logs team wins with multiple safe winners and team result fields", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+    const guestSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Guest RSVP",
+    );
+
+    if (!ownerSeat || !guestSeat) {
+      throw new Error("Expected owner and guest seats in published pod.");
+    }
+
+    const logged = await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "team_win",
+      winnerSeatIds: [ownerSeat.id, guestSeat.id],
+      notes: "Team finish.",
+      completedAt: new Date("2030-06-15T04:30:00.000Z"),
+    });
+
+    expect(
+      logged.players
+        .filter((player) => player.isWinner)
+        .map((player) => player.participantName),
+    ).toEqual(["Owner Player", "Guest RSVP"]);
+    expect(JSON.stringify(logged)).not.toContain("Private Guest");
+
+    const persistedPlayers = await db
+      .select({
+        podSeatId: gamePlayers.podSeatId,
+        guestName: gamePlayers.guestName,
+        finishPosition: gamePlayers.finishPosition,
+        isWinner: gamePlayers.isWinner,
+        team: gamePlayers.team,
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.gameId, logged.id))
+      .orderBy(asc(gamePlayers.seatPosition));
+    const persistedWinners = persistedPlayers.filter(
+      (player) => player.isWinner,
+    );
+
+    expect(persistedWinners).toHaveLength(2);
+    expect(
+      persistedWinners.every((player) => player.finishPosition === 1),
+    ).toBe(true);
+    expect(
+      persistedWinners.every((player) => player.team === "winning_team"),
+    ).toBe(true);
+    expect(
+      persistedWinners.some((player) => player.guestName === "Private Guest"),
+    ).toBe(true);
+
+    const [resultRow] = await db
+      .select({
+        resultType: gameResults.resultType,
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+        notes: gameResults.notes,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      resultType: "team_win",
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: "winning_team",
+      notes: "Team finish.",
+    });
+
+    const [history] = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.ownerId,
+    });
+
+    expect(history?.winners.map((winner) => winner.participantName)).toEqual([
+      "Owner Player",
+      "Guest RSVP",
+    ]);
+    expect(JSON.stringify(history)).not.toContain("Private Guest");
+  });
+
+  test("logs draw results without forcing winner fields", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    const logged = await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "draw",
+      winnerSeatIds: [],
+      notes: "Table agreed to draw.",
+    });
+
+    expect(logged.resultType).toBe("draw");
+    expect(logged.players.every((player) => !player.isWinner)).toBe(true);
+
+    const persistedPlayers = await db
+      .select({
+        finishPosition: gamePlayers.finishPosition,
+        isWinner: gamePlayers.isWinner,
+        team: gamePlayers.team,
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.gameId, logged.id));
+
+    expect(
+      persistedPlayers.every(
+        (player) =>
+          !player.isWinner &&
+          player.finishPosition === null &&
+          player.team === null,
+      ),
+    ).toBe(true);
+
+    const [resultRow] = await db
+      .select({
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: null,
+    });
+
+    const [history] = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.ownerId,
+    });
+
+    expect(history?.winners).toEqual([]);
+  });
+
+  test("rejects invalid winner semantics and foreign winner seats", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const winnerSeat = fixture.publishedPod.seats[0];
+    const secondWinnerSeat = fixture.publishedPod.seats[1];
+
+    if (!winnerSeat || !secondWinnerSeat) {
+      throw new Error("Expected published pod seats.");
+    }
+
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "normal_win",
+        winnerSeatIds: [],
+      }),
+    ).rejects.toThrow(PodGameLoggingBlockedError);
+
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "team_win",
+        winnerSeatIds: [winnerSeat.id],
+      }),
+    ).rejects.toThrow(PodGameLoggingBlockedError);
+
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "draw",
+        winnerSeatIds: [winnerSeat.id],
+      }),
+    ).rejects.toThrow(PodGameLoggingBlockedError);
+
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "team_win",
+        winnerSeatIds: [winnerSeat.id, "40000000-0000-4000-8000-000000000999"],
+      }),
+    ).rejects.toThrow("Winners must be seated in the logged pod.");
+
+    const persistedGames = await db
+      .select({ id: games.id })
+      .from(games)
+      .where(eq(games.eventId, fixture.eventId));
+
+    expect(persistedGames).toHaveLength(0);
   });
 
   test("keeps guest details out of participant pod summaries after logging", async () => {

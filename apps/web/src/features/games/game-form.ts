@@ -4,7 +4,7 @@ export type LogPodGameInput = {
   eventId: string;
   podId: string;
   resultType: GameResultType;
-  winnerSeatId: string;
+  winnerSeatIds: string[];
   notes: string;
 };
 
@@ -36,15 +36,32 @@ const resultTypes = [
   "archenemy_win",
   "team_win",
 ] as const;
+const singleWinnerResultTypes = [
+  "normal_win",
+  "combo_win",
+  "combat_win",
+  "concession",
+  "archenemy_win",
+] as const satisfies readonly GameResultType[];
+const noWinnerResultTypes = [
+  "draw",
+  "time_called",
+  "unfinished",
+] as const satisfies readonly GameResultType[];
 
 export function validateLogPodGameInput(
-  rawInput: Partial<Record<keyof LogPodGameInput, FormDataEntryValue | string>>,
+  rawInput: Partial<
+    Record<
+      keyof LogPodGameInput,
+      FormDataEntryValue | string | readonly (FormDataEntryValue | string)[]
+    >
+  >,
 ): LogPodGameValidationResult {
   const fields: LogPodGameInput = {
     eventId: normalizeText(rawInput.eventId),
     podId: normalizeText(rawInput.podId),
     resultType: normalizeResultType(rawInput.resultType),
-    winnerSeatId: normalizeText(rawInput.winnerSeatId),
+    winnerSeatIds: normalizeWinnerSeatIds(rawInput.winnerSeatIds),
     notes: normalizeText(rawInput.notes),
   };
   const fieldErrors: Partial<Record<keyof LogPodGameInput, string>> = {};
@@ -61,8 +78,21 @@ export function validateLogPodGameInput(
     fieldErrors.resultType = "Choose a result.";
   }
 
-  if (fields.winnerSeatId && !isUuid(fields.winnerSeatId)) {
-    fieldErrors.winnerSeatId = "Choose a winner from this pod.";
+  if (fields.winnerSeatIds.some((winnerSeatId) => !isUuid(winnerSeatId))) {
+    fieldErrors.winnerSeatIds = "Choose winners from this pod.";
+  } else if (requiresSingleWinner(fields.resultType)) {
+    if (fields.winnerSeatIds.length !== 1) {
+      fieldErrors.winnerSeatIds = "Choose exactly one winner for this result.";
+    }
+  } else if (fields.resultType === "team_win") {
+    if (fields.winnerSeatIds.length < 2) {
+      fieldErrors.winnerSeatIds = "Choose at least two winners for a team win.";
+    }
+  } else if (isNoWinnerResultType(fields.resultType)) {
+    if (fields.winnerSeatIds.length > 0) {
+      fieldErrors.winnerSeatIds =
+        "Draw, time called, and unfinished games do not use winners.";
+    }
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -79,14 +109,18 @@ export function validateLogPodGameInput(
       eventId: fields.eventId,
       podId: fields.podId,
       resultType: fields.resultType,
-      winnerSeatIds: fields.winnerSeatId ? [fields.winnerSeatId] : [],
+      winnerSeatIds: fields.winnerSeatIds,
       notes: fields.notes,
     },
   };
 }
 
 function normalizeResultType(
-  value: FormDataEntryValue | string | undefined,
+  value:
+    | FormDataEntryValue
+    | string
+    | readonly (FormDataEntryValue | string)[]
+    | undefined,
 ): GameResultType {
   const normalized = normalizeText(value);
 
@@ -97,12 +131,55 @@ function isResultType(value: string): value is GameResultType {
   return resultTypes.includes(value as GameResultType);
 }
 
-function normalizeText(value: FormDataEntryValue | string | undefined) {
+function normalizeText(
+  value:
+    | FormDataEntryValue
+    | string
+    | readonly (FormDataEntryValue | string)[]
+    | undefined,
+) {
+  if (Array.isArray(value)) {
+    return normalizeText(value[0]);
+  }
+
   return String(value ?? "").trim();
+}
+
+function normalizeWinnerSeatIds(
+  value:
+    | FormDataEntryValue
+    | string
+    | readonly (FormDataEntryValue | string)[]
+    | undefined,
+) {
+  const values = Array.isArray(value) ? value : [value];
+  const uniqueWinnerSeatIds = new Set<string>();
+
+  for (const rawValue of values) {
+    const winnerSeatId = normalizeText(rawValue);
+
+    if (winnerSeatId) {
+      uniqueWinnerSeatIds.add(winnerSeatId);
+    }
+  }
+
+  return [...uniqueWinnerSeatIds];
 }
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
+  );
+}
+
+function requiresSingleWinner(resultType: GameResultType) {
+  return singleWinnerResultTypes.includes(
+    resultType as (typeof singleWinnerResultTypes)[number],
+  );
+}
+
+function isNoWinnerResultType(resultType: GameResultType) {
+  return noWinnerResultTypes.includes(
+    resultType as (typeof noWinnerResultTypes)[number],
   );
 }

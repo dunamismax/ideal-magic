@@ -686,11 +686,19 @@ safe notes into the game/result rows, marks selected winner seats in
 `game_players`, stores the single user-backed winner in `game_results`
 when exactly one is known, writes `matchup_history` rows for logged
 user/deck pairs, and transitions the pod to `completed` so it cannot be
-quick-logged again or unpublished as a live assignment. The `/game-night`
-published pod card now has a manager-facing quick-log form for result
-type, optional winner seat, and optional notes. Guest names remain
-internal; the quick-log response, participant pod summaries, and logged
-history projections redact guest seats as `Guest RSVP`.
+quick-logged again or unpublished as a live assignment. Quick logging now
+validates result semantics in both the form/domain layer and the
+data-access layer: normal, combat, combo, concession, and archenemy wins
+require exactly one winner seat; draw, time-called, and unfinished
+results persist with no winners; team wins require at least two winner
+seats and use the existing `game_players.team` and
+`game_results.winning_team` fields without a schema change. Winner seat
+IDs outside the logged pod are rejected. The `/game-night` published pod
+card now has a manager-facing quick-log form for the full quick-log
+result set, multiple winner-seat selection, and optional notes. Guest
+names remain internal; the quick-log response, participant pod summaries,
+and logged history projections redact guest seats as `Guest RSVP`,
+including guest winner display.
 
 The TypeScript rewrite now also has a scoped logged-game history
 data-access surface plus a protected `/history` page. Owners, admins,
@@ -700,15 +708,18 @@ rows. History summaries include event title/start time, playgroup name,
 completed time, result type, linked pod name when present, safe winner
 display, participant-safe names, deck/commander/color/bracket/power/
 archetype snapshots, and game notes for authenticated scoped members.
-The projection omits emails, invite tokens, token hashes, host
-addresses, RSVP notes, private guest names/details, and private contact
-data. Focused PGlite tests cover published-pod logging, participant
+Multiple safe winners render in history summaries. The projection omits
+emails, invite tokens, token hashes, host addresses, RSVP notes, private
+guest names/details, and private contact data. Focused unit, PGlite, and
+component tests cover published-pod logging, result semantic validation,
+multi-winner team wins, draw/no-winner persistence, participant
 authorization, non-member denial, logged history listing for scoped
 members and managers, immutable history snapshots after later deck
 edits, guest redaction in history projections, pod context for completed
 pod games, and matchup-history writes. Focused component tests cover the
-`/history` game list and empty state. Life-counter-session game saves,
-finish order beyond winner marking, elimination detail,
+`/game-night` quick-log controls, `/history` game list, multiple-winner
+display, and empty state. Life-counter-session game saves, finish order
+beyond winner marking, elimination detail,
 poison/commander-damage loss detail, event-specific history pages, public
 history views, meta health summaries, materialized summary views, and
 Playwright coverage for the quick-log/history UI remain unimplemented.

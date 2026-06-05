@@ -325,7 +325,14 @@ describe("event card", () => {
       screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
     ).toHaveAttribute("href", `/events/${baseEvent.id}/pods/${pod.id}/life`);
     expect(screen.getByLabelText("Result for Pod 1")).toBeInTheDocument();
-    expect(screen.getByLabelText("Winner for Pod 1")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Team win" })).toHaveValue(
+      "team_win",
+    );
+    expect(screen.getByRole("group", { name: "Winners" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Seat 1" })).toHaveAttribute(
+      "value",
+      pod.seats[0]!.id,
+    );
     expect(screen.getByLabelText("Notes for Pod 1")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Log game for Pod 1" }),

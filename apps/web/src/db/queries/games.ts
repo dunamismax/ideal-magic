@@ -127,6 +127,18 @@ const resultTypes = [
   "archenemy_win",
   "team_win",
 ] as const;
+const singleWinnerResultTypes = [
+  "normal_win",
+  "combo_win",
+  "combat_win",
+  "concession",
+  "archenemy_win",
+] as const satisfies readonly GameResultType[];
+const noWinnerResultTypes = [
+  "draw",
+  "time_called",
+  "unfinished",
+] as const satisfies readonly GameResultType[];
 const playgroupRoles = [
   "owner",
   "admin",
@@ -333,6 +345,14 @@ export async function logGameFromPublishedPod(
     }
 
     const winnerSeatIds = new Set(input.winnerSeatIds ?? []);
+    const winnerValidationError = validateWinnerCountForResult({
+      resultType: input.resultType,
+      winnerCount: winnerSeatIds.size,
+    });
+
+    if (winnerValidationError) {
+      throw new PodGameLoggingBlockedError(winnerValidationError);
+    }
 
     for (const winnerSeatId of winnerSeatIds) {
       if (!seats.some((seat) => seat.id === winnerSeatId)) {
@@ -386,6 +406,10 @@ export async function logGameFromPublishedPod(
           seatPosition: seat.seatPosition,
           finishPosition: winnerSeatIds.has(seat.id) ? 1 : null,
           isWinner: winnerSeatIds.has(seat.id),
+          team:
+            input.resultType === "team_win" && winnerSeatIds.has(seat.id)
+              ? "winning_team"
+              : null,
         })),
       )
       .returning({
@@ -411,8 +435,10 @@ export async function logGameFromPublishedPod(
     await tx.insert(gameResults).values({
       gameId: game.id,
       resultType: input.resultType,
-      winnerUserId: winners.length === 1 ? firstWinner?.userId ?? null : null,
-      winningDeckId: winners.length === 1 ? firstWinner?.deckId ?? null : null,
+      winnerUserId: winners.length === 1 ? (firstWinner?.userId ?? null) : null,
+      winningDeckId:
+        winners.length === 1 ? (firstWinner?.deckId ?? null) : null,
+      winningTeam: input.resultType === "team_win" ? "winning_team" : null,
       notes,
     });
 
@@ -506,7 +532,10 @@ async function getViewerSeatForPod(
     })
     .from(podSeats)
     .where(
-      and(eq(podSeats.podId, input.podId), eq(podSeats.userId, input.viewerUserId)),
+      and(
+        eq(podSeats.podId, input.podId),
+        eq(podSeats.userId, input.viewerUserId),
+      ),
     )
     .limit(1);
 
@@ -550,7 +579,9 @@ async function listGameLogSeatRows(
       eventDeckDeclarations,
       eq(eventDeckDeclarations.id, podSeats.deckDeclarationId),
     )
-    .where(and(eq(podSeats.eventId, input.eventId), eq(podSeats.podId, input.podId)))
+    .where(
+      and(eq(podSeats.eventId, input.eventId), eq(podSeats.podId, input.podId)),
+    )
     .orderBy(asc(podSeats.seatPosition), asc(podSeats.id));
 }
 
@@ -627,6 +658,37 @@ function asGameResultType(value: string): GameResultType {
   return resultTypes.includes(value as GameResultType)
     ? (value as GameResultType)
     : "unfinished";
+}
+
+function validateWinnerCountForResult(input: {
+  resultType: GameResultType;
+  winnerCount: number;
+}) {
+  if (requiresSingleWinner(input.resultType) && input.winnerCount !== 1) {
+    return "This result type requires exactly one winner.";
+  }
+
+  if (input.resultType === "team_win" && input.winnerCount < 2) {
+    return "Team wins require at least two winners.";
+  }
+
+  if (isNoWinnerResultType(input.resultType) && input.winnerCount > 0) {
+    return "Draw, time called, and unfinished games do not use winners.";
+  }
+
+  return null;
+}
+
+function requiresSingleWinner(resultType: GameResultType) {
+  return singleWinnerResultTypes.includes(
+    resultType as (typeof singleWinnerResultTypes)[number],
+  );
+}
+
+function isNoWinnerResultType(resultType: GameResultType) {
+  return noWinnerResultTypes.includes(
+    resultType as (typeof noWinnerResultTypes)[number],
+  );
 }
 
 function asPlaygroupRole(value: string | null): PlaygroupRole | null {

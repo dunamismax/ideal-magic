@@ -84,6 +84,42 @@ describe("history game list", () => {
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
   });
 
+  test("renders multiple safe winners for team results", () => {
+    render(
+      <HistoryGameList
+        games={[
+          {
+            ...loggedGame,
+            resultType: "team_win",
+            winners: [
+              ...loggedGame.winners,
+              {
+                id: "50000000-0000-4000-8000-000000000008",
+                participantName: "Guest RSVP",
+                deckNameSnapshot: "",
+              },
+            ],
+            players: [
+              loggedGame.players[0]!,
+              {
+                ...loggedGame.players[1]!,
+                id: "50000000-0000-4000-8000-000000000008",
+                isWinner: true,
+                finishPosition: 1,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Team Win")).toBeInTheDocument();
+    expect(
+      screen.getByText("Winners: Riley Chen, Guest RSVP"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/private guest/i)).not.toBeInTheDocument();
+  });
+
   test("renders an empty state when no logged games are visible", () => {
     render(<HistoryGameList games={[]} />);
 

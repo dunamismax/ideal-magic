@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
 
 import type { AppDatabase } from "@/db/client";
@@ -6,6 +6,7 @@ import {
   eventRsvps,
   games,
   lifeCounterSessions,
+  matchupHistory,
   playgroupMemberships,
   podSeats,
   pods,
@@ -129,6 +130,88 @@ describe("pod data access", () => {
       .where(eq(pods.eventId, fixture.eventId));
 
     expect(persistedPods).toHaveLength(2);
+  });
+
+  test("uses scoped matchup history to avoid repeated generated pairings", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPodPlanningFixture(db);
+    const initial = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const firstPod = initial[0];
+
+    if (!firstPod) {
+      throw new Error("Expected generated pods for matchup history fixture.");
+    }
+
+    const [leftSeat, rightSeat] = await db
+      .select({
+        userId: podSeats.userId,
+        deckId: podSeats.deckId,
+      })
+      .from(podSeats)
+      .where(eq(podSeats.podId, firstPod.id))
+      .orderBy(asc(podSeats.seatPosition))
+      .limit(2);
+
+    if (
+      !leftSeat?.userId ||
+      !rightSeat?.userId ||
+      !leftSeat.deckId ||
+      !rightSeat.deckId
+    ) {
+      throw new Error("Expected two user-backed pod seats with decks.");
+    }
+
+    await db.insert(games).values({
+      id: "30000000-0000-4000-8000-000000000101",
+      eventId: fixture.eventId,
+      loggedByUserId: fixture.ownerId,
+      resultType: "normal_win",
+    });
+    await db.insert(matchupHistory).values({
+      id: "30000000-0000-4000-8000-000000000102",
+      gameId: "30000000-0000-4000-8000-000000000101",
+      eventId: fixture.eventId,
+      playgroupId: fixture.playgroupId,
+      leftUserId: leftSeat.userId,
+      rightUserId: rightSeat.userId,
+      leftDeckId: leftSeat.deckId,
+      rightDeckId: rightSeat.deckId,
+    });
+
+    const regenerated = await generateDraftPodsForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+    });
+    const regeneratedRows = await db
+      .select({
+        podId: podSeats.podId,
+        userId: podSeats.userId,
+      })
+      .from(podSeats)
+      .where(eq(podSeats.eventId, fixture.eventId));
+    const regeneratedPodIdsByUserId = new Map(
+      regeneratedRows.map((row) => [row.userId, row.podId]),
+    );
+
+    expect(regeneratedPodIdsByUserId.get(leftSeat.userId)).not.toBe(
+      regeneratedPodIdsByUserId.get(rightSeat.userId),
+    );
+    expect(regenerated.every((pod) => pod.repeatPlayerPairPenalty === 0)).toBe(
+      true,
+    );
+    expect(regenerated.every((pod) => pod.repeatDeckMatchupPenalty === 0)).toBe(
+      true,
+    );
+    expect(regenerated[0]?.scoringDetails).toMatchObject({
+      method: "draft-pod-optimizer-v2",
+      repeatPairing: {
+        playerPairCount: 0,
+        deckMatchupCount: 0,
+      },
+    });
   });
 
   test("does not overwrite non-draft pods during generation", async () => {

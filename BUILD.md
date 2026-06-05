@@ -631,15 +631,26 @@ participant-scoped launch links to `/events/[eventId]/pods/[podId]/life`;
 draft/proposed pods do not show launch controls. This is only a launch
 affordance into the existing linked local counter route and does not
 claim Postgres counter save, server sync, game-log conversion, or
-offline/PWA launch. The projection omits emails, invite tokens, token
+offline/PWA launch. Draft generation now uses a deterministic optimizer
+that scores candidate assignments by pod size, bracket spread,
+repeat-player pair history, repeat-deck matchup history, deck variety
+through color identity/archetype/commander repetition, RSVP maybe status,
+late arrivals, early leaving times, and shared availability windows.
+Generation reads scoped `matchup_history` rows for the event playgroup
+and persists the resulting size, bracket, repeat-pair, repeat-deck,
+availability, total-score, and scoring-detail values on `pods`; the
+score now affects assignments instead of only describing them. Guest
+placement remains unimplemented because guest pod seats are not modeled
+in generation yet, so `guest_placement_score` remains a neutral stored
+value. Host overrides also remain unimplemented because there is no
+override model yet. The projection omits emails, invite tokens, token
 hashes, host addresses, private notes, guest names/details, and private
 contact fields. Unit, PGlite integration, component rendering,
-Playwright, and database gates cover draft generation, display, manual
-movement, locking, unlocking, publishing, unpublishing, scoped
-participant visibility, launch-link visibility, and non-member denial.
-Repeat-pairing history, deck-variety optimization, guest placement,
-late-arrival scoring beyond simple maybe availability, host overrides,
-and game logging remain unimplemented.
+Playwright, and database gates cover draft generation, scoring-driven
+repeat-pair avoidance, display, manual movement, locking, unlocking,
+publishing, unpublishing, scoped participant visibility, launch-link
+visibility, and non-member denial. Guest placement, host overrides, and
+game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 

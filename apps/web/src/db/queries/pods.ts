@@ -8,6 +8,7 @@ import {
   events,
   games,
   lifeCounterSessions,
+  matchupHistory,
   playgroupMemberships,
   podSeats,
   pods,
@@ -17,6 +18,7 @@ import { canManageEvent, canRsvpToEvent, type PlaygroupRole } from "../scopes";
 import {
   generateDraftPodAssignments,
   type PodGenerationDeckSnapshot,
+  type PodGenerationMatchupHistory,
   type PodGenerationParticipant,
 } from "@/features/pods/pod-generation";
 
@@ -59,6 +61,9 @@ export type EventPodSummary = {
   position: number;
   sizeFitScore: number;
   bracketCompatibilityScore: number;
+  repeatPlayerPairPenalty: number;
+  repeatDeckMatchupPenalty: number;
+  guestPlacementScore: number;
   availabilityWindowScore: number;
   totalScore: number;
   scoringDetails: Record<string, unknown>;
@@ -192,7 +197,12 @@ export async function generateDraftPodsForEvent(
       eventId: input.eventId,
       playgroupId: eventRow.playgroupId,
     });
-    const drafts = generateDraftPodAssignments(participants);
+    const matchupHistoryRows = await listMatchupHistoryForPodGeneration(tx, {
+      playgroupId: eventRow.playgroupId,
+    });
+    const drafts = generateDraftPodAssignments(participants, {
+      matchupHistory: matchupHistoryRows,
+    });
 
     await tx
       .delete(pods)
@@ -278,6 +288,9 @@ export async function listPodsForEventViewer(
       podPosition: pods.position,
       sizeFitScore: pods.sizeFitScore,
       bracketCompatibilityScore: pods.bracketCompatibilityScore,
+      repeatPlayerPairPenalty: pods.repeatPlayerPairPenalty,
+      repeatDeckMatchupPenalty: pods.repeatDeckMatchupPenalty,
+      guestPlacementScore: pods.guestPlacementScore,
       availabilityWindowScore: pods.availabilityWindowScore,
       totalScore: pods.totalScore,
       scoringDetails: pods.scoringDetails,
@@ -329,6 +342,9 @@ export async function listPodsForEventViewer(
         position: row.podPosition,
         sizeFitScore: row.sizeFitScore,
         bracketCompatibilityScore: row.bracketCompatibilityScore,
+        repeatPlayerPairPenalty: row.repeatPlayerPairPenalty,
+        repeatDeckMatchupPenalty: row.repeatDeckMatchupPenalty,
+        guestPlacementScore: row.guestPlacementScore,
         availabilityWindowScore: row.availabilityWindowScore,
         totalScore: row.totalScore,
         scoringDetails: row.scoringDetails,
@@ -843,6 +859,24 @@ async function listEligiblePodParticipants(
       };
     })
     .filter((participant) => participant !== null);
+}
+
+async function listMatchupHistoryForPodGeneration(
+  db: PodReadDatabase,
+  input: {
+    playgroupId: string;
+  },
+): Promise<PodGenerationMatchupHistory[]> {
+  return db
+    .select({
+      leftUserId: matchupHistory.leftUserId,
+      rightUserId: matchupHistory.rightUserId,
+      leftDeckId: matchupHistory.leftDeckId,
+      rightDeckId: matchupHistory.rightDeckId,
+    })
+    .from(matchupHistory)
+    .where(eq(matchupHistory.playgroupId, input.playgroupId))
+    .orderBy(asc(matchupHistory.createdAt), asc(matchupHistory.id));
 }
 
 type SeatOrderRow = {

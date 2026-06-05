@@ -86,10 +86,13 @@ const pod: EventPodSummary = {
   position: 1,
   sizeFitScore: 100,
   bracketCompatibilityScore: 85,
+  repeatPlayerPairPenalty: 0,
+  repeatDeckMatchupPenalty: 0,
+  guestPlacementScore: 0,
   availabilityWindowScore: 30,
   totalScore: 215,
   scoringDetails: {
-    method: "draft-rsvp-declaration-v1",
+    method: "draft-pod-optimizer-v2",
   },
   publishedAt: null,
   seats: [
@@ -320,10 +323,7 @@ describe("event card", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
-    ).toHaveAttribute(
-      "href",
-      `/events/${baseEvent.id}/pods/${pod.id}/life`,
-    );
+    ).toHaveAttribute("href", `/events/${baseEvent.id}/pods/${pod.id}/life`);
     expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
@@ -365,10 +365,7 @@ describe("event card", () => {
     expect(screen.getByText("Published Pods")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
-    ).toHaveAttribute(
-      "href",
-      `/events/${baseEvent.id}/pods/${pod.id}/life`,
-    );
+    ).toHaveAttribute("href", `/events/${baseEvent.id}/pods/${pod.id}/life`);
     expect(
       screen.queryByRole("button", { name: "Publish Pods" }),
     ).not.toBeInTheDocument();

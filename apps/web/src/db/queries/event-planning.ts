@@ -1,5 +1,6 @@
 import { and, asc, count, eq, gt, isNull, sql } from "drizzle-orm";
 
+import { recordAuditEvent } from "../audit";
 import {
   eventDeckDeclarations,
   eventGuests,
@@ -267,7 +268,7 @@ export async function updateEventForViewer(
   },
 ) {
   return runInTransaction(db, async (tx) => {
-    await assertCanManageEvent(tx, {
+    const currentEvent = await assertCanManageEvent(tx, {
       eventId: input.eventId,
       viewerUserId: input.viewerUserId,
     });
@@ -296,6 +297,21 @@ export async function updateEventForViewer(
 
     if (!updated) {
       throw new Error("Expected event update to return a row.");
+    }
+
+    if (currentEvent.visibility !== updated.visibility) {
+      await recordAuditEvent(tx, {
+        action: "event.visibility.changed",
+        actorUserId: input.viewerUserId,
+        playgroupId: updated.playgroupId,
+        eventId: updated.id,
+        targetType: "event",
+        targetId: updated.id,
+        metadata: {
+          previousVisibility: currentEvent.visibility,
+          newVisibility: updated.visibility,
+        },
+      });
     }
 
     return {
@@ -919,6 +935,8 @@ async function assertCanManageEvent(
     .select({
       playgroupId: events.playgroupId,
       status: events.status,
+      visibility: events.visibility,
+      locationId: events.locationId,
     })
     .from(events)
     .where(eq(events.id, input.eventId))
@@ -936,6 +954,13 @@ async function assertCanManageEvent(
   if (!role || !canManageEvent(role)) {
     throw new EventManagementAuthorizationError();
   }
+
+  return {
+    playgroupId: eventRow.playgroupId,
+    status: asEventStatus(eventRow.status),
+    visibility: asEventVisibility(eventRow.visibility),
+    locationId: eventRow.locationId,
+  };
 }
 
 async function getViewerRole(

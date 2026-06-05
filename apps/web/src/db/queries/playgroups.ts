@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gt, inArray, like, sql } from "drizzle-orm";
 
+import { recordAuditEvent } from "../audit";
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
 import {
@@ -300,6 +301,17 @@ export async function createPlaygroupInviteForViewer(
       throw new Error("Expected playgroup invite insert to return a row.");
     }
 
+    await recordAuditEvent(tx, {
+      action: "playgroup.invite.created",
+      actorUserId: input.viewerUserId,
+      playgroupId: input.playgroupId,
+      targetType: "playgroup_invite",
+      targetId: invite.id,
+      metadata: {
+        role: invite.role,
+      },
+    });
+
     return {
       ...toViewerPlaygroupInvite(invite, input.now ?? new Date()),
       playgroupId: input.playgroupId,
@@ -388,6 +400,18 @@ export async function revokePlaygroupInviteForViewer(
     if (!invite) {
       throw new Error("Expected playgroup invite update to return a row.");
     }
+
+    await recordAuditEvent(tx, {
+      action: "playgroup.invite.revoked",
+      actorUserId: input.viewerUserId,
+      playgroupId: inviteRow.playgroupId,
+      targetType: "playgroup_invite",
+      targetId: input.inviteId,
+      metadata: {
+        role: invite.role,
+        alreadyRevoked: inviteRow.revokedAt !== null,
+      },
+    });
 
     return toViewerPlaygroupInvite(invite, input.now ?? new Date());
   });
@@ -577,6 +601,19 @@ export async function changePlaygroupMemberRoleForViewer(
       throw new Error("Expected membership role update to return a row.");
     }
 
+    await recordAuditEvent(tx, {
+      action: "playgroup.member.role_changed",
+      actorUserId: input.viewerUserId,
+      playgroupId: target.playgroupId,
+      targetType: "playgroup_membership",
+      targetId: target.id,
+      metadata: {
+        targetUserId: target.userId,
+        previousRole: target.role,
+        newRole: input.role,
+      },
+    });
+
     return {
       id: updated.id,
       displayName: target.displayName,
@@ -622,6 +659,18 @@ export async function removePlaygroupMemberForViewer(
       .delete(playgroupMemberships)
       .where(eq(playgroupMemberships.id, input.membershipId));
 
+    await recordAuditEvent(tx, {
+      action: "playgroup.member.removed",
+      actorUserId: input.viewerUserId,
+      playgroupId: target.playgroupId,
+      targetType: "playgroup_membership",
+      targetId: target.id,
+      metadata: {
+        targetUserId: target.userId,
+        previousRole: target.role,
+      },
+    });
+
     return {
       playgroupId: target.playgroupId,
       membershipId: target.id,
@@ -664,6 +713,7 @@ async function getManageableMembershipById(
     .select({
       id: playgroupMemberships.id,
       playgroupId: playgroupMemberships.playgroupId,
+      userId: playgroupMemberships.userId,
       displayName: playgroupMemberships.displayName,
       role: playgroupMemberships.role,
       joinedAt: playgroupMemberships.joinedAt,
@@ -687,6 +737,7 @@ async function getManageableMembershipById(
   return {
     id: membership.id,
     playgroupId: membership.playgroupId,
+    userId: membership.userId,
     displayName: membership.displayName ?? membership.userName,
     role,
     joinedAt: membership.joinedAt,

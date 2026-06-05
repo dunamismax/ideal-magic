@@ -231,11 +231,13 @@ agent session.
   app's server actions/forms.
 - [x] Add Valkey-backed rate limiting for auth, invite, public RSVP, and
   write-heavy routes.
-- [ ] Add audit events for sensitive changes: invite creation/revocation,
-  member role changes/removal, event visibility/location changes, and
-  production-relevant auth events.
-- [ ] Verify with focused unit/integration tests plus signup/login/logout
-  Playwright smoke.
+- [x] Add audit event schema, safe write helper, and records for invite
+  creation/revocation, member role changes/removal, and event visibility
+  changes.
+- [x] Verify implemented audit-event coverage with focused
+  unit/integration tests plus signup/login/logout Playwright smoke.
+- [ ] Add audit events for event location changes once location edit
+  flows exist, plus production-relevant auth events.
 
 ## Pass 2 - Host Locations And Event Operations
 

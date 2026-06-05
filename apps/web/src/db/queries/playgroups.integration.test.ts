@@ -1,8 +1,13 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
 
 import type { AppDatabase } from "@/db/client";
-import { playgroupInvites, playgroupMemberships, users } from "@/db/schema";
+import {
+  auditEvents,
+  playgroupInvites,
+  playgroupMemberships,
+  users,
+} from "@/db/schema";
 import { hashInviteToken } from "@/db/tokens";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import {
@@ -345,6 +350,57 @@ describe("playgroup data access", () => {
       isActive: false,
       revokedAt: new Date("2026-06-04T01:00:00.000Z"),
     });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.playgroupId, created.id))
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+    expect(auditRows).toEqual([
+      {
+        action: "playgroup.invite.created",
+        actorUserId: "20000000-0000-4000-8000-000000000011",
+        playgroupId: created.id,
+        targetType: "playgroup_invite",
+        targetId: ownerInvite.id,
+        metadata: {
+          role: "member",
+        },
+      },
+      {
+        action: "playgroup.invite.created",
+        actorUserId: "20000000-0000-4000-8000-000000000012",
+        playgroupId: created.id,
+        targetType: "playgroup_invite",
+        targetId: adminInvite.id,
+        metadata: {
+          role: "member",
+        },
+      },
+      {
+        action: "playgroup.invite.revoked",
+        actorUserId: "20000000-0000-4000-8000-000000000011",
+        playgroupId: created.id,
+        targetType: "playgroup_invite",
+        targetId: ownerInvite.id,
+        metadata: {
+          role: "member",
+          alreadyRevoked: false,
+        },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain(ownerInvite.inviteToken);
+    expect(JSON.stringify(auditRows)).not.toContain(
+      hashInviteToken(ownerInvite.inviteToken),
+    );
   });
 
   test("denies invite management to hosts, members, guests, viewers, and non-members", async () => {
@@ -675,6 +731,58 @@ describe("playgroup data access", () => {
       id: "20000000-0000-4000-8000-000000000024",
       email: "remove-member@example.test",
     });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.playgroupId, created.id))
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+    expect(auditRows).toEqual([
+      {
+        action: "playgroup.member.role_changed",
+        actorUserId: "20000000-0000-4000-8000-000000000021",
+        playgroupId: created.id,
+        targetId: memberMembership!.id,
+        metadata: {
+          targetUserId: "20000000-0000-4000-8000-000000000023",
+          previousRole: "member",
+          newRole: "host",
+        },
+      },
+      {
+        action: "playgroup.member.role_changed",
+        actorUserId: "20000000-0000-4000-8000-000000000022",
+        playgroupId: created.id,
+        targetId: memberMembership!.id,
+        metadata: {
+          targetUserId: "20000000-0000-4000-8000-000000000023",
+          previousRole: "host",
+          newRole: "member",
+        },
+      },
+      {
+        action: "playgroup.member.removed",
+        actorUserId: "20000000-0000-4000-8000-000000000022",
+        playgroupId: created.id,
+        targetId: removedMembership!.id,
+        metadata: {
+          targetUserId: "20000000-0000-4000-8000-000000000024",
+          previousRole: "member",
+        },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain("Manage Member");
+    expect(JSON.stringify(auditRows)).not.toContain("Remove Member");
+    expect(JSON.stringify(auditRows)).not.toContain(
+      "remove-member@example.test",
+    );
   });
 
   test("protects owner roles, last owner, and member management authorization", async () => {

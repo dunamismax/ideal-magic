@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db/client";
 import {
+  auditEvents,
   events,
   eventHosts,
   eventRsvps,
@@ -330,6 +331,39 @@ describe("event planning data access", () => {
       cancelledAt: null,
       archivedAt,
     });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        eventId: auditEvents.eventId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.eventId, event.id))
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+    expect(auditRows).toEqual([
+      {
+        action: "event.visibility.changed",
+        actorUserId: "20000000-0000-4000-8000-000000000008",
+        playgroupId: group.id,
+        eventId: event.id,
+        targetType: "event",
+        targetId: event.id,
+        metadata: {
+          previousVisibility: "members",
+          newVisibility: "invite_only",
+        },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain(
+      "Updated Lifecycle Commander",
+    );
+    expect(JSON.stringify(auditRows)).not.toContain("Shifted to Saturday");
   });
 
   test("upserts authenticated member RSVPs without exposing them to non-members", async () => {

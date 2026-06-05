@@ -665,7 +665,7 @@ guest seating, and life-counter-to-game logging remain unimplemented.
 - [ ] Store result type, winner or winners, participants, commanders,
   decks, finish order, eliminations, commander-damage losses, poison
   losses, and notes.
-- [ ] Build event history and group history views.
+- [x] Build event history and group history views.
 - [ ] Build meta health summaries for attendance, variety, matchup
   freshness, commander/deck spread, color/archetype distribution, and
   repeat pairings.
@@ -701,28 +701,33 @@ and logged history projections redact guest seats as `Guest RSVP`,
 including guest winner display.
 
 The TypeScript rewrite now also has a scoped logged-game history
-data-access surface plus a protected `/history` page. Owners, admins,
-hosts, and members can list recent logged games across playgroups where
-they hold one of those roles; non-members and outsider users receive no
-rows. History summaries include event title/start time, playgroup name,
-completed time, result type, linked pod name when present, safe winner
-display, participant-safe names, deck/commander/color/bracket/power/
-archetype snapshots, and game notes for authenticated scoped members.
-Multiple safe winners render in history summaries. The projection omits
-emails, invite tokens, token hashes, host addresses, RSVP notes, private
-guest names/details, and private contact data. Focused unit, PGlite, and
+data-access surface, a protected `/history` page, and compact
+event-specific history sections on `/game-night` event cards. Owners,
+admins, hosts, and members can list recent logged games across
+playgroups where they hold one of those roles and can see recent logged
+games for a specific scoped event; non-members and outsider users
+receive no rows. History summaries include event title/start time,
+playgroup name, completed time, result type, linked pod name when
+present, safe winner display, participant-safe names, deck/commander/
+color/bracket/power/archetype snapshots, and game notes for
+authenticated scoped members. Multiple safe winners and draw/no-winner
+results render in history summaries. The projection omits emails, invite
+tokens, token hashes, host addresses, RSVP notes, private guest
+names/details, and private contact data. Focused unit, PGlite, and
 component tests cover published-pod logging, result semantic validation,
 multi-winner team wins, draw/no-winner persistence, participant
 authorization, non-member denial, logged history listing for scoped
-members and managers, immutable history snapshots after later deck
-edits, guest redaction in history projections, pod context for completed
-pod games, and matchup-history writes. Focused component tests cover the
-`/game-night` quick-log controls, `/history` game list, multiple-winner
-display, and empty state. Life-counter-session game saves, finish order
-beyond winner marking, elimination detail,
-poison/commander-damage loss detail, event-specific history pages, public
-history views, meta health summaries, materialized summary views, and
-Playwright coverage for the quick-log/history UI remain unimplemented.
+members and managers, event-scoped history filtering, immutable history
+snapshots after later deck edits, guest redaction in history projections,
+pod context for completed pod games, and matchup-history writes. Focused
+component tests cover the `/game-night` quick-log controls,
+event-card history display and empty state, `/history` game list,
+multiple-winner display, and empty state. Life-counter-session game
+saves, finish order beyond winner marking, elimination detail,
+poison/commander-damage loss detail, dedicated event history pages,
+public history views, meta health summaries, materialized summary views,
+and Playwright coverage for the quick-log/history UI remain
+unimplemented.
 
 ## Phase 11 - Simplification And Removal
 

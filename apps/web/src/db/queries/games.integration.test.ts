@@ -24,6 +24,7 @@ import {
   upsertMemberRsvpForEvent,
 } from "./event-planning";
 import {
+  listLoggedGamesForEventViewer,
   listLoggedGamesForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
@@ -562,6 +563,107 @@ describe("game logging data access", () => {
     expect(payload).not.toContain("Private Guest");
     expect(payload).not.toContain("Private guest RSVP note");
     expect(payload).not.toContain("@example.test");
+  });
+
+  test("lists event-scoped history only for scoped members with safe team winner data", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+    const guestSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Guest RSVP",
+    );
+
+    if (!ownerSeat || !guestSeat) {
+      throw new Error("Expected owner and guest seats in published pod.");
+    }
+
+    const otherEvent = await createEventForPlaygroup(db, {
+      viewerUserId: fixture.ownerId,
+      playgroupId: fixture.playgroupId,
+      title: "Other Event",
+      description: "",
+      startsAt: new Date("2030-06-22T00:00:00.000Z"),
+      visibility: "members",
+    });
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "team_win",
+      winnerSeatIds: [ownerSeat.id, guestSeat.id],
+      notes: "Scoped team note",
+      completedAt: new Date("2030-06-15T03:45:00.000Z"),
+    });
+
+    const eventHistory = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const otherEventHistory = await listLoggedGamesForEventViewer(db, {
+      eventId: otherEvent.id,
+      viewerUserId: fixture.ownerId,
+    });
+    const outsiderHistory = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.outsiderId,
+    });
+    const payload = JSON.stringify(eventHistory);
+
+    expect(eventHistory).toHaveLength(1);
+    expect(otherEventHistory).toEqual([]);
+    expect(outsiderHistory).toEqual([]);
+    expect(eventHistory[0]).toMatchObject({
+      event: {
+        id: fixture.eventId,
+        title: "Published Pod Game Night",
+      },
+      pod: {
+        id: fixture.publishedPod.id,
+        name: fixture.publishedPod.name,
+      },
+      resultType: "team_win",
+      notes: "Scoped team note",
+    });
+    expect(
+      eventHistory[0]?.winners.map((winner) => winner.participantName),
+    ).toEqual(["Owner Player", "Guest RSVP"]);
+    expect(eventHistory[0]?.players).toHaveLength(4);
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("invite");
+    expect(payload).not.toContain("token");
+  });
+
+  test("returns event-scoped draw history without winners", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "draw",
+      winnerSeatIds: [],
+      notes: "Table draw.",
+      completedAt: new Date("2030-06-15T04:15:00.000Z"),
+    });
+
+    const [history] = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+
+    expect(history).toMatchObject({
+      resultType: "draw",
+      notes: "Table draw.",
+      winners: [],
+    });
+    expect(history?.players.every((player) => !player.isWinner)).toBe(true);
   });
 
   test("keeps history deck snapshots immutable after later deck edits", async () => {

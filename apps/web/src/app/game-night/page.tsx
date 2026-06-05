@@ -21,6 +21,10 @@ import {
   listUpcomingEventsForViewer,
 } from "@/db/queries/event-planning";
 import {
+  listLoggedGamesForEventViewer,
+  type LoggedGameHistorySummary,
+} from "@/db/queries/games";
+import {
   listPodsForEventViewer,
   type EventPodSummary,
 } from "@/db/queries/pods";
@@ -29,6 +33,7 @@ import { canManageEvent } from "@/db/scopes";
 import { requireServerSession } from "@/features/auth/server";
 import { CreateEventForm } from "./create-event-form";
 import { EventDeckDeclarationForm } from "./event-deck-declaration-form";
+import { EventGameHistory } from "./event-game-history";
 import { EventManagementForm } from "./event-management-form";
 import { EventPodsPanel } from "./event-pods-panel";
 import { MemberRsvpForm } from "./member-rsvp-form";
@@ -80,10 +85,25 @@ export default async function GameNightPage() {
       }),
     ]),
   );
+  const historyEntries = await Promise.all(
+    eventSummaries.map(async (event) => [
+      event.id,
+      await listLoggedGamesForEventViewer(db, {
+        eventId: event.id,
+        viewerUserId: session.user.id,
+        page: {
+          pageSize: 3,
+        },
+      }),
+    ]),
+  );
   const declarationsByEventId = new Map(
     declarationEntries as [string, EventDeckDeclaration[]][],
   );
   const podsByEventId = new Map(podEntries as [string, EventPodSummary[]][]);
+  const historyByEventId = new Map(
+    historyEntries as [string, LoggedGameHistorySummary[]][],
+  );
   const eventCreatableGroups = groups
     .filter((group) => canManageEvent(group.role))
     .map((group) => ({
@@ -134,6 +154,7 @@ export default async function GameNightPage() {
                   decks={decks}
                   declarations={declarationsByEventId.get(event.id) ?? []}
                   event={event}
+                  historyGames={historyByEventId.get(event.id) ?? []}
                   key={event.id}
                   pods={podsByEventId.get(event.id) ?? []}
                 />
@@ -152,11 +173,13 @@ export function EventCard({
   event,
   decks = [],
   declarations = [],
+  historyGames = [],
   pods = [],
 }: {
   event: EventPlanningSummary;
   decks?: ViewerDeck[];
   declarations?: EventDeckDeclaration[];
+  historyGames?: LoggedGameHistorySummary[];
   pods?: EventPodSummary[];
 }) {
   return (
@@ -224,6 +247,10 @@ export function EventCard({
             eventId={event.id}
             pods={pods}
           />
+        ) : null}
+
+        {canViewEventHistory(event.viewer.role) ? (
+          <EventGameHistory games={historyGames} />
         ) : null}
 
         {event.viewer.canManageEvent ? (
@@ -321,4 +348,10 @@ function formatEventStatus(status: EventPlanningSummary["status"]) {
 
 function countRsvps(rsvps: EventPlanningSummary["counts"]["rsvps"]) {
   return rsvps.yes + rsvps.maybe + rsvps.no + rsvps.waitlist;
+}
+
+function canViewEventHistory(role: EventPlanningSummary["viewer"]["role"]) {
+  return (
+    role === "owner" || role === "admin" || role === "host" || role === "member"
+  );
 }

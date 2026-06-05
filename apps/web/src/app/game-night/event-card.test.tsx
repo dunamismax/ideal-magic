@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import type { EventDeckDeclaration, ViewerDeck } from "@/db/queries/decks";
 import type { EventPlanningSummary } from "@/db/queries/event-planning";
+import type { LoggedGameHistorySummary } from "@/db/queries/games";
 import type { EventPodSummary } from "@/db/queries/pods";
 import { EventCard } from "./page";
 
@@ -116,6 +117,61 @@ const pod: EventPodSummary = {
   ],
 };
 
+const loggedGame: LoggedGameHistorySummary = {
+  id: "20000000-0000-4000-8000-000000000009",
+  event: {
+    id: baseEvent.id,
+    title: baseEvent.title,
+    startsAt: baseEvent.startsAt,
+  },
+  playgroup: baseEvent.playgroup,
+  pod: {
+    id: pod.id,
+    name: pod.name,
+  },
+  resultType: "team_win",
+  notes: "Shared table note",
+  completedAt: new Date("2030-06-15T03:30:00.000Z"),
+  winners: [
+    {
+      id: "20000000-0000-4000-8000-000000000010",
+      participantName: "Riley Chen",
+      deckNameSnapshot: "Atraxa Counters",
+    },
+    {
+      id: "20000000-0000-4000-8000-000000000011",
+      participantName: "Guest RSVP",
+      deckNameSnapshot: "",
+    },
+  ],
+  players: [
+    {
+      id: "20000000-0000-4000-8000-000000000010",
+      participantName: "Riley Chen",
+      seatPosition: 1,
+      finishPosition: 1,
+      isWinner: true,
+      deck: {
+        deckId: viewerDeck.id,
+        deckNameSnapshot: "Atraxa Counters",
+        commanderSnapshot: ["Atraxa, Grand Unifier"],
+        colorIdentitySnapshot: "WUBG",
+        bracketSnapshot: "3",
+        powerEstimateSnapshot: 7,
+        archetypeSnapshot: "Counters",
+      },
+    },
+    {
+      id: "20000000-0000-4000-8000-000000000011",
+      participantName: "Guest RSVP",
+      seatPosition: 2,
+      finishPosition: 1,
+      isWinner: true,
+      deck: null,
+    },
+  ],
+};
+
 describe("event card", () => {
   afterEach(() => {
     cleanup();
@@ -136,6 +192,9 @@ describe("event card", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Archive Event" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No logged games for this event yet."),
     ).toBeInTheDocument();
   });
 
@@ -391,5 +450,48 @@ describe("event card", () => {
     expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
+  });
+
+  test("renders compact event history from safe logged game snapshots", () => {
+    render(<EventCard event={baseEvent} historyGames={[loggedGame]} />);
+
+    expect(
+      screen.getByRole("heading", { name: "Event History" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 logged")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Team Win" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Winners: Riley Chen, Guest RSVP"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Pod 1/)).toBeInTheDocument();
+    expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
+    expect(screen.getByText("Atraxa, Grand Unifier")).toBeInTheDocument();
+    expect(screen.getByText("Guest RSVP")).toBeInTheDocument();
+    expect(screen.getByText("Shared table note")).toBeInTheDocument();
+    expect(screen.queryByText(/private guest/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
+  });
+
+  test("hides event history from roles outside the scoped history audience", () => {
+    render(
+      <EventCard
+        event={{
+          ...baseEvent,
+          viewer: {
+            ...baseEvent.viewer,
+            role: "viewer",
+            canManageEvent: false,
+            canRsvp: false,
+          },
+        }}
+        historyGames={[loggedGame]}
+      />,
+    );
+
+    expect(screen.queryByText("Event History")).not.toBeInTheDocument();
+    expect(screen.queryByText("Team Win")).not.toBeInTheDocument();
   });
 });

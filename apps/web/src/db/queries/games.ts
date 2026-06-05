@@ -157,6 +157,28 @@ export async function listLoggedGamesForViewer(
     page?: PageRequest;
   },
 ): Promise<LoggedGameHistorySummary[]> {
+  return listScopedLoggedGames(db, input);
+}
+
+export async function listLoggedGamesForEventViewer(
+  db: GameReadDatabase,
+  input: {
+    eventId: string;
+    viewerUserId: string;
+    page?: PageRequest;
+  },
+): Promise<LoggedGameHistorySummary[]> {
+  return listScopedLoggedGames(db, input);
+}
+
+async function listScopedLoggedGames(
+  db: GameReadDatabase,
+  input: {
+    viewerUserId: string;
+    eventId?: string;
+    page?: PageRequest;
+  },
+): Promise<LoggedGameHistorySummary[]> {
   const page = normalizePageRequest(input.page);
   const gameRows = await db
     .select({
@@ -184,7 +206,12 @@ export async function listLoggedGamesForViewer(
       ),
     )
     .leftJoin(pods, eq(pods.id, games.podId))
-    .where(inArray(playgroupMemberships.role, loggedGameViewerRoles))
+    .where(
+      and(
+        inArray(playgroupMemberships.role, loggedGameViewerRoles),
+        input.eventId ? eq(games.eventId, input.eventId) : undefined,
+      ),
+    )
     .orderBy(desc(games.completedAt), desc(games.id))
     .limit(page.limit)
     .offset(page.offset);

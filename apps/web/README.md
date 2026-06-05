@@ -62,14 +62,21 @@ SMTP2GO is the approved transactional email provider for auth email. Set
 production environment files. `POD_TRACKER_EMAIL_REPLY_TO` is optional.
 Better Auth uses SMTP2GO for account verification, password reset,
 verification resend during unverified login, and confirmed email-change
-flows. Tests use fakes and must not send real mail by default.
+flows. Playwright and local test runs may set
+`POD_TRACKER_EMAIL_DELIVERY_MODE=test` to exercise the real auth backend
+without sending mail; production rejects that mode. Tests use fakes and
+must not send real mail by default.
 
 Set `VALKEY_URL` to a Redis-compatible Valkey endpoint to enable
 production rate limiting for Better Auth writes, public guest RSVP
 writes, group invites, and app-owned write actions. Local development
 and tests fall back to in-memory counters when `VALKEY_URL` is unset;
 production treats a missing or unavailable limiter as a request
-protection failure.
+protection failure. Non-production smoke tests may raise local caps with
+`POD_TRACKER_AUTH_RATE_LIMIT_MAX`, `POD_TRACKER_INVITE_RATE_LIMIT_MAX`,
+`POD_TRACKER_PUBLIC_GUEST_RSVP_RATE_LIMIT_MAX`, and
+`POD_TRACKER_WRITE_RATE_LIMIT_MAX`; unset values keep the documented
+defaults.
 
 Do not commit API keys, reset tokens, email contents, or private user
 data. Password reset is enabled only through Better Auth's tokenized

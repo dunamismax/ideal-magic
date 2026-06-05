@@ -4,6 +4,7 @@ export type Smtp2goEnv = {
   SMTP2GO_API_KEY?: string;
   POD_TRACKER_EMAIL_FROM?: string;
   POD_TRACKER_EMAIL_REPLY_TO?: string;
+  POD_TRACKER_EMAIL_DELIVERY_MODE?: string;
   NODE_ENV?: string;
 };
 
@@ -37,9 +38,21 @@ export function createSmtp2goEmailDeliveryFromEnv(
   env: Smtp2goEnv = process.env,
   fetchImpl: typeof fetch = fetch,
 ): TransactionalEmailDelivery {
+  if (isNoopEmailDeliveryMode(env)) {
+    return createNoopEmailDelivery();
+  }
+
   const config = readSmtp2goConfig(env);
 
   return createSmtp2goEmailDelivery(config, fetchImpl);
+}
+
+export function createNoopEmailDelivery(): TransactionalEmailDelivery {
+  return {
+    async send() {
+      return undefined;
+    },
+  };
 }
 
 export function createSmtp2goEmailDelivery(
@@ -92,6 +105,24 @@ export function readSmtp2goConfig(env: Smtp2goEnv): Smtp2goConfig {
     sender,
     ...(replyTo ? { replyTo } : {}),
   };
+}
+
+function isNoopEmailDeliveryMode(env: Smtp2goEnv) {
+  const mode = env.POD_TRACKER_EMAIL_DELIVERY_MODE?.trim().toLowerCase();
+
+  if (!mode) {
+    return false;
+  }
+
+  if (mode !== "test") {
+    throw new Error("Unsupported POD_TRACKER_EMAIL_DELIVERY_MODE");
+  }
+
+  if (env.NODE_ENV === "production") {
+    throw new Error("Test email delivery mode is not allowed in production");
+  }
+
+  return true;
 }
 
 export function createSmtp2goPayload(

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  createSmtp2goEmailDeliveryFromEnv,
   createSmtp2goEmailDelivery,
   createSmtp2goPayload,
   readSmtp2goConfig,
@@ -97,5 +98,33 @@ describe("SMTP2GO email delivery", () => {
         textBody: "Open the password link.",
       }),
     ).rejects.toThrow("SMTP2GO email delivery failed");
+  });
+
+  test("supports no-op test delivery outside production", async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const delivery = createSmtp2goEmailDeliveryFromEnv(
+      {
+        NODE_ENV: "development",
+        POD_TRACKER_EMAIL_DELIVERY_MODE: "test",
+      },
+      fetchImpl,
+    );
+
+    await delivery.send({
+      to: "player@example.test",
+      subject: "Verify your Pod Tracker account",
+      textBody: "Open the account link.",
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("blocks no-op test delivery in production", () => {
+    expect(() =>
+      createSmtp2goEmailDeliveryFromEnv({
+        NODE_ENV: "production",
+        POD_TRACKER_EMAIL_DELIVERY_MODE: "test",
+      }),
+    ).toThrow("Test email delivery mode is not allowed in production");
   });
 });

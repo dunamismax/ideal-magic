@@ -22,22 +22,22 @@ export type RateLimitStore = {
 export const rateLimitPolicies = {
   auth: {
     name: "auth",
-    max: 12,
+    max: readRateLimitMax("POD_TRACKER_AUTH_RATE_LIMIT_MAX", 12),
     windowSeconds: 60,
   },
   invite: {
     name: "invite",
-    max: 10,
+    max: readRateLimitMax("POD_TRACKER_INVITE_RATE_LIMIT_MAX", 10),
     windowSeconds: 60,
   },
   publicGuestRsvp: {
     name: "public-guest-rsvp",
-    max: 8,
+    max: readRateLimitMax("POD_TRACKER_PUBLIC_GUEST_RSVP_RATE_LIMIT_MAX", 8),
     windowSeconds: 60,
   },
   write: {
     name: "app-write",
-    max: 60,
+    max: readRateLimitMax("POD_TRACKER_WRITE_RATE_LIMIT_MAX", 60),
     windowSeconds: 60,
   },
 } satisfies Record<string, RateLimitPolicy>;
@@ -258,6 +258,22 @@ function firstForwardedForIp(value: string | null) {
     ?.split(",")
     .map((part) => part.trim())
     .find(Boolean);
+}
+
+function readRateLimitMax(envName: string, fallback: number) {
+  const rawValue = process.env[envName]?.trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const value = Number(rawValue);
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${envName} must be a positive integer`);
+  }
+
+  return value;
 }
 
 const rateLimitLuaScript = `

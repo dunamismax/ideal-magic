@@ -1,6 +1,248 @@
-import { expect, test } from "@playwright/test";
+import { createHash, randomUUID } from "node:crypto";
+
+import { expect, type Page, test } from "@playwright/test";
+import postgres from "postgres";
 
 const appNetworkRequestTypes = new Set(["document", "fetch", "xhr"]);
+const e2eDatabaseUrl =
+  process.env.POD_TRACKER_DATABASE_URL ??
+  "postgres://pod_tracker:pod_tracker@127.0.0.1:55432/pod_tracker";
+const testPassword = "correct-horse-battery";
+
+type TestUser = {
+  email: string;
+  name: string;
+  password?: string;
+};
+
+async function signUpVerifyAndLogin(
+  page: Page,
+  user: TestUser,
+  nextPath = "/account",
+) {
+  await signUpThroughUi(page, user, nextPath);
+  await verifyEmailInDatabase(user.email);
+  await logInThroughUi(page, user, nextPath);
+}
+
+async function signUpThroughUi(
+  page: Page,
+  user: TestUser,
+  nextPath = "/account",
+) {
+  await page.goto(`/signup?next=${encodeURIComponent(nextPath)}`);
+  await page.getByLabel("Name").fill(user.name);
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByLabel("Password").fill(user.password ?? testPassword);
+  await page.getByRole("button", { name: "Create Account" }).click();
+  await expect(
+    page.getByText("Check your email to verify your account."),
+  ).toBeVisible();
+}
+
+async function logInThroughUi(
+  page: Page,
+  user: Pick<TestUser, "email" | "password">,
+  nextPath = "/account",
+) {
+  await page.goto(`/login?next=${encodeURIComponent(nextPath)}`);
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByLabel("Password").fill(user.password ?? testPassword);
+  await page.getByRole("button", { name: "Log In" }).click();
+  await expect(page).toHaveURL(nextPath);
+}
+
+async function verifyEmailInDatabase(email: string) {
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      update core.users
+      set email_verified = true, updated_at = now()
+      where email = ${email.toLowerCase()}
+      returning id
+    `;
+
+    expect(rows).toHaveLength(1);
+  });
+}
+
+async function createPublicEventFixture(input: {
+  eventTitle: string;
+  groupName: string;
+  locationName: string;
+}) {
+  const playgroupId = randomUUID();
+  const locationId = randomUUID();
+  const eventId = randomUUID();
+  const inviteToken = `event-${randomUUID()}`;
+  const slug = `e2e-${randomUUID().slice(0, 8)}`;
+
+  await withE2eSql(async (sql) => {
+    await sql`
+      insert into core.playgroups (id, name, slug, description)
+      values (${playgroupId}, ${input.groupName}, ${slug}, 'Playwright public RSVP fixture')
+    `;
+    await sql`
+      insert into core.event_locations (
+        id,
+        playgroup_id,
+        name,
+        address_line1,
+        city,
+        notes
+      )
+      values (
+        ${locationId},
+        ${playgroupId},
+        ${input.locationName},
+        'fixture-address-not-public',
+        'Example City',
+        'Private fixture note'
+      )
+    `;
+    await sql`
+      insert into core.events (
+        id,
+        playgroup_id,
+        title,
+        description,
+        starts_at,
+        location_id,
+        visibility,
+        invite_token_hash
+      )
+      values (
+        ${eventId},
+        ${playgroupId},
+        ${input.eventTitle},
+        'Public RSVP smoke fixture',
+        '2030-06-14 19:00:00+00',
+        ${locationId},
+        'public_safe',
+        ${hashInviteToken(inviteToken)}
+      )
+    `;
+  });
+
+  return {
+    eventId,
+    inviteToken,
+  };
+}
+
+async function createOwnedPlaygroupFixture(input: {
+  email: string;
+  groupName: string;
+  description: string;
+}) {
+  const playgroupId = randomUUID();
+  const membershipId = randomUUID();
+  const slug = `e2e-${randomUUID().slice(0, 8)}`;
+
+  await withE2eSql(async (sql) => {
+    const users = await sql<{ id: string }[]>`
+      select id
+      from core.users
+      where email = ${input.email.toLowerCase()}
+      limit 1
+    `;
+    const userId = users[0]?.id;
+
+    expect(userId).toBeTruthy();
+
+    await sql`
+      insert into core.playgroups (
+        id,
+        name,
+        slug,
+        description,
+        created_by_user_id
+      )
+      values (
+        ${playgroupId},
+        ${input.groupName},
+        ${slug},
+        ${input.description},
+        ${userId}
+      )
+    `;
+    await sql`
+      insert into core.playgroup_memberships (
+        id,
+        playgroup_id,
+        user_id,
+        role,
+        display_name
+      )
+      values (
+        ${membershipId},
+        ${playgroupId},
+        ${userId},
+        'owner',
+        'Riley Chen'
+      )
+    `;
+  });
+}
+
+async function addUserToPlaygroupFixture(input: {
+  email: string;
+  displayName: string;
+  groupName: string;
+}) {
+  await withE2eSql(async (sql) => {
+    const rows = await sql<{ playgroup_id: string; user_id: string }[]>`
+      select p.id as playgroup_id, u.id as user_id
+      from core.playgroups p
+      cross join core.users u
+      where p.name = ${input.groupName}
+        and u.email = ${input.email.toLowerCase()}
+      limit 1
+    `;
+    const row = rows[0];
+
+    expect(row).toBeTruthy();
+
+    await sql`
+      insert into core.playgroup_memberships (
+        id,
+        playgroup_id,
+        user_id,
+        role,
+        display_name
+      )
+      values (
+        ${randomUUID()},
+        ${row?.playgroup_id},
+        ${row?.user_id},
+        'member',
+        ${input.displayName}
+      )
+      on conflict (playgroup_id, user_id) do update
+      set display_name = excluded.display_name,
+        role = excluded.role,
+        updated_at = now()
+    `;
+  });
+}
+
+async function withE2eSql<T>(
+  work: (sql: ReturnType<typeof postgres>) => Promise<T>,
+) {
+  const sql = postgres(e2eDatabaseUrl, {
+    max: 1,
+    prepare: false,
+  });
+
+  try {
+    return await work(sql);
+  } finally {
+    await sql.end();
+  }
+}
+
+function hashInviteToken(token: string) {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
 
 test("app shell exposes primary Commander workflows", async ({ page }) => {
   await page.goto("/");
@@ -466,155 +708,72 @@ test("linked life counter routes require login", async ({ page }) => {
 
 test("tokenized public event invite shows public-safe planning details", async ({
   page,
-}) => {
-  await page.route(
-    "**/api/public-events/fixture-wednesday-event-access",
-    async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          event: {
-            id: "event-1",
-            title: "Wednesday Commander Night",
-            status: "scheduled",
-            playgroupName: "Example City Commander League",
-            dateLabel: "Wednesday, June 10, 2026",
-            timeLabel: "11:00 PM UTC",
-            locationName: "Example Tabletop Room",
-            rsvpCounts: {
-              yes: 3,
-              maybe: 1,
-              no: 1,
-              waitlist: 1,
-            },
-            guestRsvps: 1,
-            namedGuests: 1,
-            totalResponses: 6,
-            expectedPlayers: 5,
-            deckDeclarations: 5,
-            pods: 1,
-            loggedGames: 1,
-          },
-        }),
-      });
-    },
-  );
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const { inviteToken } = await createPublicEventFixture({
+    eventTitle: `Wednesday Commander Night ${suffix}`,
+    groupName: `Example City Commander League ${suffix}`,
+    locationName: `Example Tabletop Room ${suffix}`,
+  });
 
-  await page.goto("/invites/events/fixture-wednesday-event-access");
+  await page.goto(`/invites/events/${inviteToken}`);
 
   await expect(
-    page.getByRole("heading", { name: "Wednesday Commander Night" }),
+    page.getByRole("heading", { name: `Wednesday Commander Night ${suffix}` }),
   ).toBeVisible();
-  await expect(page.getByText("Example City Commander League")).toBeVisible();
-  await expect(page.getByText("Example Tabletop Room")).toBeVisible();
-  await expect(page.getByText("5 players")).toBeVisible();
+  await expect(
+    page.getByText(`Example City Commander League ${suffix}`),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`Example Tabletop Room ${suffix}`),
+  ).toBeVisible();
+  await expect(page.getByText("0 players")).toBeVisible();
   await expect(page.getByRole("cell", { name: "Yes" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Waitlist" })).toBeVisible();
 
   const publicText = await page.locator("body").innerText();
 
-  expect(publicText).not.toContain("101 Example Tabletop Way");
-  expect(publicText).not.toContain("Private fixture RSVP note");
-  expect(publicText).not.toContain("nora@example.test");
-  expect(publicText).not.toContain("fixture-wednesday-event-access");
+  expect(publicText).not.toContain("fixture-address-not-public");
+  expect(publicText).not.toContain("Private fixture note");
+  expect(publicText).not.toContain(inviteToken);
   expect(publicText).not.toContain("Example Guest");
 });
 
 test("tokenized public event invite submits a guest RSVP and refreshes aggregates", async ({
   page,
-}) => {
-  let postedRsvp: unknown = null;
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const { eventId, inviteToken } = await createPublicEventFixture({
+    eventTitle: `Wednesday Commander Night ${suffix}`,
+    groupName: `Example City Commander League ${suffix}`,
+    locationName: `Example Tabletop Room ${suffix}`,
+  });
 
-  await page.route(
-    "**/api/public-events/fixture-wednesday-event-access",
-    async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          event: {
-            id: "event-1",
-            title: "Wednesday Commander Night",
-            status: "scheduled",
-            playgroupName: "Example City Commander League",
-            dateLabel: "Wednesday, June 10, 2026",
-            timeLabel: "11:00 PM UTC",
-            locationName: "Example Tabletop Room",
-            rsvpCounts: {
-              yes: 3,
-              maybe: 1,
-              no: 1,
-              waitlist: 1,
-            },
-            guestRsvps: 1,
-            namedGuests: 1,
-            totalResponses: 6,
-            expectedPlayers: 5,
-            deckDeclarations: 5,
-            pods: 1,
-            loggedGames: 1,
-          },
-        }),
-      });
-    },
-  );
-  await page.route(
-    "**/api/public-events/fixture-wednesday-event-access/guest-rsvp",
-    async (route) => {
-      postedRsvp = route.request().postDataJSON();
-
-      await route.fulfill({
-        status: 201,
-        contentType: "application/json",
-        body: JSON.stringify({
-          event: {
-            id: "event-1",
-            title: "Wednesday Commander Night",
-            status: "scheduled",
-            playgroupName: "Example City Commander League",
-            dateLabel: "Wednesday, June 10, 2026",
-            timeLabel: "11:00 PM UTC",
-            locationName: "Example Tabletop Room",
-            rsvpCounts: {
-              yes: 4,
-              maybe: 1,
-              no: 1,
-              waitlist: 1,
-            },
-            guestRsvps: 2,
-            namedGuests: 1,
-            totalResponses: 7,
-            expectedPlayers: 6,
-            deckDeclarations: 5,
-            pods: 1,
-            loggedGames: 1,
-          },
-        }),
-      });
-    },
-  );
-
-  await page.goto("/invites/events/fixture-wednesday-event-access");
+  await page.goto(`/invites/events/${inviteToken}`);
   await page.getByLabel("Name").fill("Robin Vale");
   await page.getByLabel("Status").selectOption("yes");
   await page.getByRole("button", { name: "RSVP" }).click();
 
-  expect(postedRsvp).toEqual({
-    guestName: "Robin Vale",
-    status: "yes",
-  });
-  await expect(page.getByRole("row", { name: "Yes 4" })).toBeVisible();
-  await expect(page.getByText("6 players")).toBeVisible();
+  await expect(page.getByRole("row", { name: "Yes 1" })).toBeVisible();
+  await expect(page.getByText("1 players")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("");
 
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select guest_name, status
+      from core.event_rsvps
+      where event_id = ${eventId}
+    `;
+
+    expect(rows).toMatchObject([{ guest_name: "Robin Vale", status: "yes" }]);
+  });
+
   const publicText = await page.locator("body").innerText();
 
-  expect(publicText).not.toContain("101 Example Tabletop Way");
-  expect(publicText).not.toContain("Private guest RSVP note");
-  expect(publicText).not.toContain("nora@example.test");
-  expect(publicText).not.toContain("fixture-wednesday-event-access");
+  expect(publicText).not.toContain("fixture-address-not-public");
+  expect(publicText).not.toContain("Private fixture note");
+  expect(publicText).not.toContain(inviteToken);
   expect(publicText).not.toContain("Example Guest");
   expect(publicText).not.toContain("Robin Vale");
 });
@@ -622,14 +781,6 @@ test("tokenized public event invite submits a guest RSVP and refreshes aggregate
 test("tokenized public event invite fails closed for missing invites", async ({
   page,
 }) => {
-  await page.route("**/api/public-events/wrong-token", async (route) => {
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "Event invite not found" }),
-    });
-  });
-
   await page.goto("/invites/events/wrong-token");
 
   await expect(
@@ -640,85 +791,72 @@ test("tokenized public event invite fails closed for missing invites", async ({
   ).toBeVisible();
 });
 
-test("signup form posts Better Auth email credentials", async ({ page }) => {
-  let postedSignup: unknown = null;
-
-  await page.route("**/api/auth/sign-up/email", async (route) => {
-    postedSignup = route.request().postDataJSON();
-
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: {
-        "set-cookie": "pod-tracker.session_token=fake-session; Path=/",
-      },
-      body: JSON.stringify({
-        user: {
-          id: "user-1",
-          email: "riley@example.test",
-          name: "Riley Chen",
-        },
-        session: {
-          id: "session-1",
-        },
-      }),
-    });
-  });
+test("signup creates an unverified Better Auth account without signing in", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `signup-smoke-${suffix}@example.test`;
 
   await page.goto("/signup?next=/life");
   await page.getByLabel("Name").fill("Riley Chen");
-  await page.getByLabel("Email").fill("RILEY@EXAMPLE.TEST");
-  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.getByLabel("Email").fill(email.toUpperCase());
+  await page.getByLabel("Password").fill(testPassword);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  expect(postedSignup).toMatchObject({
-    email: "riley@example.test",
-    password: "correct-horse-battery",
-    name: "Riley Chen",
-    callbackURL: "/life",
-  });
   await expect(
     page.getByText("Check your email to verify your account."),
   ).toBeVisible();
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select email, name, email_verified
+      from core.users
+      where email = ${email}
+    `;
+
+    expect(rows).toMatchObject([
+      {
+        email,
+        name: "Riley Chen",
+        email_verified: false,
+      },
+    ]);
+  });
 });
 
-test("login form posts Better Auth email credentials", async ({ page }) => {
-  let postedLogin: unknown = null;
+test("verified users can log in and log out through Better Auth", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `login-smoke-${suffix}@example.test`;
 
-  await page.route("**/api/auth/sign-in/email", async (route) => {
-    postedLogin = route.request().postDataJSON();
+  await signUpThroughUi(
+    page,
+    {
+      email,
+      name: "Riley Chen",
+      password: testPassword,
+    },
+    "/account",
+  );
+  await verifyEmailInDatabase(email);
+  await logInThroughUi(
+    page,
+    {
+      email,
+      password: testPassword,
+    },
+    "/account",
+  );
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: {
-        "set-cookie": "pod-tracker.session_token=fake-session; Path=/",
-      },
-      body: JSON.stringify({
-        user: {
-          id: "user-1",
-          email: "riley@example.test",
-          name: "Riley Chen",
-        },
-        session: {
-          id: "session-1",
-        },
-      }),
-    });
-  });
-
-  await page.goto("/login?next=/life");
-  await page.getByLabel("Email").fill("riley@example.test");
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Log In" }).click();
-
-  expect(postedLogin).toMatchObject({
-    email: "riley@example.test",
-    password: "correct-horse-battery",
-    callbackURL: "/life",
-  });
+  await expect(page.getByText(email)).toBeVisible();
+  await expect(page.getByText("Session active")).toBeVisible();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL("/login");
+  await page.goto("/account");
+  await expect(page).toHaveURL("/login?next=%2Faccount");
   await expect(
-    page.getByRole("heading", { name: "Life Counter" }),
+    page.getByRole("heading", { level: 1, name: "Log In" }),
   ).toBeVisible();
 });
 
@@ -812,11 +950,7 @@ test("authenticated users can create and list a playgroup", async ({
   const email = `group-smoke-${suffix}@example.test`;
   const groupName = `Friday Pods ${suffix}`;
 
-  await page.goto("/signup?next=/groups");
-  await page.getByLabel("Name").fill("Riley Chen");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
 
   await expect(page).toHaveURL("/groups");
   await expect(
@@ -853,16 +987,15 @@ test("group owners can create, list, and revoke invite links", async ({
   const email = `group-invite-smoke-${suffix}@example.test`;
   const groupName = `Invite Pods ${suffix}`;
 
-  await page.goto("/signup?next=/groups");
-  await page.getByLabel("Name").fill("Riley Chen");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  await createOwnedPlaygroupFixture({
+    email,
+    groupName,
+    description: "Invite management smoke.",
+  });
+  await page.goto("/groups");
 
   await expect(page).toHaveURL("/groups");
-  await page.getByLabel("Group Name").fill(groupName);
-  await page.getByLabel("Description").fill("Invite management smoke.");
-  await page.getByRole("button", { name: "Create Group" }).click();
 
   let groupCard = page.locator("article").filter({ hasText: groupName });
 
@@ -877,13 +1010,18 @@ test("group owners can create, list, and revoke invite links", async ({
   await page.reload();
   groupCard = page.locator("article").filter({ hasText: groupName });
 
-  await expect(groupCard.getByText("Active member invite")).toBeVisible();
-  await expect(groupCard.getByText("0 uses")).toBeVisible();
   await expect(
-    groupCard.getByRole("button", { name: "Revoke Invite" }),
+    groupCard.getByText("Active member invite").first(),
+  ).toBeVisible();
+  await expect(groupCard.getByText("0 uses").first()).toBeVisible();
+  await expect(
+    groupCard.getByRole("button", { name: "Revoke Invite" }).first(),
   ).toBeVisible();
 
-  await groupCard.getByRole("button", { name: "Revoke Invite" }).click();
+  await groupCard
+    .getByRole("button", { name: "Revoke Invite" })
+    .first()
+    .click();
   await expect(groupCard.getByText("Revoked member invite")).toBeVisible();
 
   await page.reload();
@@ -901,11 +1039,11 @@ test("group owners can update member roles and remove memberships", async ({
   const memberEmail = `group-member-manage-${suffix}@example.test`;
   const groupName = `Managed Pods ${suffix}`;
 
-  await page.goto("/signup?next=/groups");
-  await page.getByLabel("Name").fill("Riley Owner");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(
+    page,
+    { email: ownerEmail, name: "Riley Owner" },
+    "/groups",
+  );
 
   await expect(page).toHaveURL("/groups");
   await page.getByLabel("Group Name").fill(groupName);
@@ -921,11 +1059,11 @@ test("group owners can update member roles and remove memberships", async ({
   const inviteContext = await browser.newContext();
   const invitePage = await inviteContext.newPage();
 
-  await invitePage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
-  await invitePage.getByLabel("Name").fill("Mina Rules");
-  await invitePage.getByLabel("Email").fill(memberEmail);
-  await invitePage.getByLabel("Password").fill("correct-horse-battery");
-  await invitePage.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(
+    invitePage,
+    { email: memberEmail, name: "Mina Rules" },
+    invitePath,
+  );
   await expect(invitePage).toHaveURL(invitePath);
   await invitePage.getByRole("button", { name: "Join Group" }).click();
   await expect(invitePage).toHaveURL("/groups");
@@ -968,11 +1106,11 @@ test("event managers can move and publish pod assignments", async ({
   const podLifeHrefPattern =
     /\/events\/[0-9a-f-]+\/pods\/[0-9a-f-]+\/life$/;
 
-  await page.goto("/signup?next=/groups");
-  await page.getByLabel("Name").fill("Player A");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(
+    page,
+    { email: ownerEmail, name: "Player A" },
+    "/groups",
+  );
 
   await expect(page).toHaveURL("/groups");
   await page.getByLabel("Group Name").fill(groupName);
@@ -1017,13 +1155,17 @@ test("event managers can move and publish pod assignments", async ({
     const memberPage = await memberContext.newPage();
     const memberEmail = `${playerName.toLowerCase().replaceAll(" ", "-")}-${suffix}@example.test`;
 
-    await memberPage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
-    await memberPage.getByLabel("Name").fill(playerName);
-    await memberPage.getByLabel("Email").fill(memberEmail);
-    await memberPage.getByLabel("Password").fill("correct-horse-battery");
-    await memberPage.getByRole("button", { name: "Create Account" }).click();
-    await expect(memberPage).toHaveURL(invitePath);
-    await memberPage.getByRole("button", { name: "Join Group" }).click();
+    await signUpVerifyAndLogin(
+      memberPage,
+      { email: memberEmail, name: playerName },
+      invitePath,
+    );
+    await addUserToPlaygroupFixture({
+      email: memberEmail,
+      displayName: playerName,
+      groupName,
+    });
+    await memberPage.goto("/groups");
     await expect(memberPage).toHaveURL("/groups");
 
     await memberPage.goto("/game-night");
@@ -1048,55 +1190,74 @@ test("event managers can move and publish pod assignments", async ({
   const podOne = eventCard.getByLabel("Pod 1 pod assignment");
   const podTwo = eventCard.getByLabel("Pod 2 pod assignment");
 
-  await expect(
-    podOne.locator("li").filter({ hasText: "Player A" }),
-  ).toBeVisible();
-  await expect(
-    podTwo.locator("li").filter({ hasText: "Player B" }),
-  ).toBeVisible();
+  await expect(podOne.locator("li").first()).toBeVisible();
+  const movableSeat = podTwo.locator("li").first();
+  const movablePlayerName = await movableSeat.locator("p").first().innerText();
+
+  await expect(movableSeat).toBeVisible();
   await expect(
     eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
   ).toHaveCount(0);
 
-  let playerBSeat = podTwo.locator("li").filter({ hasText: "Player B" });
+  let movablePlayerSeat = podTwo
+    .locator("li")
+    .filter({ hasText: movablePlayerName });
 
-  await playerBSeat.getByRole("button", { name: "Lock Player B" }).click();
-  await expect(playerBSeat.getByText("Locked Player B.")).toBeVisible();
-  await expect(playerBSeat.getByText("Locked seat")).toBeVisible();
-  await expect(playerBSeat.getByLabel("Move Player B to pod")).toHaveCount(0);
+  await movablePlayerSeat
+    .getByRole("button", { name: `Lock ${movablePlayerName}` })
+    .click();
+  await expect(
+    movablePlayerSeat.getByText(`Locked ${movablePlayerName}.`),
+  ).toBeVisible();
+  await expect(movablePlayerSeat.getByText("Locked seat")).toBeVisible();
+  await expect(
+    movablePlayerSeat.getByLabel(`Move ${movablePlayerName} to pod`),
+  ).toHaveCount(0);
   await eventCard.getByRole("button", { name: "Generate Draft Pods" }).click();
   await expect(
     eventCard.getByText("Unlock draft pod seats before regenerating pods."),
   ).toBeVisible();
 
-  await playerBSeat.getByRole("button", { name: "Unlock Player B" }).click();
-  await expect(playerBSeat.getByText("Unlocked Player B.")).toBeVisible();
-  await expect(playerBSeat.getByText("Locked seat")).toHaveCount(0);
-  await expect(playerBSeat.getByLabel("Move Player B to pod")).toBeVisible();
-
-  await playerBSeat.getByLabel("Move Player B to pod").selectOption({
-    label: "Pod 1",
-  });
-  await playerBSeat.getByLabel("Move Player B to seat").fill("2");
-  await playerBSeat.getByRole("button", { name: "Move Player B" }).click();
+  await movablePlayerSeat
+    .getByRole("button", { name: `Unlock ${movablePlayerName}` })
+    .click();
   await expect(
-    podOne.locator("li").filter({ hasText: "Player B" }),
+    movablePlayerSeat.getByText(`Unlocked ${movablePlayerName}.`),
+  ).toBeVisible();
+  await expect(movablePlayerSeat.getByText("Locked seat")).toHaveCount(0);
+  await expect(
+    movablePlayerSeat.getByLabel(`Move ${movablePlayerName} to pod`),
+  ).toBeVisible();
+
+  await movablePlayerSeat
+    .getByLabel(`Move ${movablePlayerName} to pod`)
+    .selectOption({
+      label: "Pod 1",
+    });
+  await movablePlayerSeat
+    .getByLabel(`Move ${movablePlayerName} to seat`)
+    .fill("2");
+  await movablePlayerSeat
+    .getByRole("button", { name: `Move ${movablePlayerName}` })
+    .click();
+  await expect(
+    podOne.locator("li").filter({ hasText: movablePlayerName }),
   ).toBeVisible();
 
   await page.reload();
   eventCard = page.locator("article").filter({ hasText: eventTitle });
-  playerBSeat = eventCard
+  movablePlayerSeat = eventCard
     .getByLabel("Pod 1 pod assignment")
     .locator("li")
-    .filter({ hasText: "Player B" });
+    .filter({ hasText: movablePlayerName });
 
-  await expect(playerBSeat).toBeVisible();
-  await expect(playerBSeat.getByText("Locked seat")).toHaveCount(0);
+  await expect(movablePlayerSeat).toBeVisible();
+  await expect(movablePlayerSeat.getByText("Locked seat")).toHaveCount(0);
   await expect(
     eventCard
       .getByLabel("Pod 2 pod assignment")
       .locator("li")
-      .filter({ hasText: "Player B" }),
+      .filter({ hasText: movablePlayerName }),
   ).toHaveCount(0);
 
   await eventCard.getByRole("button", { name: "Publish Pods" }).click();
@@ -1107,7 +1268,9 @@ test("event managers can move and publish pod assignments", async ({
   await expect(
     eventCard.getByRole("button", { name: "Unpublish Pods" }),
   ).toBeVisible();
-  await expect(eventCard.getByLabel("Move Player B to pod")).toHaveCount(0);
+  await expect(
+    eventCard.getByLabel(`Move ${movablePlayerName} to pod`),
+  ).toHaveCount(0);
   await expect(
     eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
   ).toHaveAttribute("href", podLifeHrefPattern);
@@ -1124,7 +1287,7 @@ test("event managers can move and publish pod assignments", async ({
     eventCard
       .getByLabel("Pod 1 pod assignment")
       .locator("li")
-      .filter({ hasText: "Player B" }),
+      .filter({ hasText: movablePlayerName }),
   ).toBeVisible();
   await expect(
     eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
@@ -1133,13 +1296,17 @@ test("event managers can move and publish pod assignments", async ({
   const observerContext = await browser.newContext();
   const observerPage = await observerContext.newPage();
 
-  await observerPage.goto(`/signup?next=${encodeURIComponent(invitePath)}`);
-  await observerPage.getByLabel("Name").fill("Observer H");
-  await observerPage.getByLabel("Email").fill(observerEmail);
-  await observerPage.getByLabel("Password").fill("correct-horse-battery");
-  await observerPage.getByRole("button", { name: "Create Account" }).click();
-  await expect(observerPage).toHaveURL(invitePath);
-  await observerPage.getByRole("button", { name: "Join Group" }).click();
+  await signUpVerifyAndLogin(
+    observerPage,
+    { email: observerEmail, name: "Observer H" },
+    invitePath,
+  );
+  await addUserToPlaygroupFixture({
+    email: observerEmail,
+    displayName: "Observer H",
+    groupName,
+  });
+  await observerPage.goto("/groups");
   await expect(observerPage).toHaveURL("/groups");
   await observerPage.goto("/game-night");
 
@@ -1154,7 +1321,7 @@ test("event managers can move and publish pod assignments", async ({
     observerEventCard
       .getByLabel("Pod 1 pod assignment")
       .locator("li")
-      .filter({ hasText: "Player B" }),
+      .filter({ hasText: movablePlayerName }),
   ).toBeVisible();
   await expect(
     observerEventCard.getByRole("button", { name: "Unpublish Pods" }),
@@ -1172,11 +1339,11 @@ test("event managers can move and publish pod assignments", async ({
   const outsiderContext = await browser.newContext();
   const outsiderPage = await outsiderContext.newPage();
 
-  await outsiderPage.goto("/signup?next=/game-night");
-  await outsiderPage.getByLabel("Name").fill("Outsider");
-  await outsiderPage.getByLabel("Email").fill(outsiderEmail);
-  await outsiderPage.getByLabel("Password").fill("correct-horse-battery");
-  await outsiderPage.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(
+    outsiderPage,
+    { email: outsiderEmail, name: "Outsider" },
+    "/game-night",
+  );
   await expect(outsiderPage).toHaveURL("/game-night");
   await expect(outsiderPage.getByText(eventTitle)).toHaveCount(0);
   await outsiderContext.close();
@@ -1188,7 +1355,9 @@ test("event managers can move and publish pod assignments", async ({
   await expect(
     eventCard.getByRole("heading", { name: "Draft Pods" }),
   ).toBeVisible();
-  await expect(eventCard.getByLabel("Move Player B to pod")).toBeVisible();
+  await expect(
+    eventCard.getByLabel(`Move ${movablePlayerName} to pod`),
+  ).toBeVisible();
 });
 
 test("authenticated group owners can create an event and RSVP", async ({
@@ -1203,11 +1372,7 @@ test("authenticated group owners can create an event and RSVP", async ({
   const eventTitle = `Saturday Commander ${suffix}`;
   const editedEventTitle = `Sunday Commander ${suffix}`;
 
-  await page.goto("/signup?next=/groups");
-  await page.getByLabel("Name").fill("Riley Chen");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Create Account" }).click();
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
 
   await expect(page).toHaveURL("/groups");
   await page.getByLabel("Group Name").fill(groupName);

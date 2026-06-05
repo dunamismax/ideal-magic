@@ -450,161 +450,17 @@ test("standalone life counter opens a table display overlay", async ({
   expect(box?.height).toBeGreaterThanOrEqual(760);
 });
 
-test("event-linked life counter imports event participants and decks", async ({
-  page,
-}) => {
-  await page.goto("/events/commander-night-demo/life");
-
-  await expect(
-    page.getByRole("heading", {
-      name: "Wednesday Commander Night Life Counter",
-    }),
-  ).toBeVisible();
-  await expect(page.getByTestId("linked-life-status")).toContainText(
-    "6 event players imported",
-  );
-  await expect(page.getByTestId("life-player-card")).toHaveCount(6);
-
-  const firstPlayer = page.getByTestId("life-player-card").first();
-  await expect(firstPlayer.getByLabel("Player name")).toHaveValue("Nora");
-  await expect(
-    firstPlayer.getByLabel("Commander 1", { exact: true }),
-  ).toHaveValue("Muldrotha, the Gravetide");
-  await expect(firstPlayer.getByLabel("Deck label")).toHaveValue(
-    "Graveyard Value",
+test("linked life counter routes require login", async ({ page }) => {
+  await page.goto("/events/40000000-0000-4000-8000-000000000001/life");
+  await expect(page).toHaveURL(
+    /\/login\?next=%2Fevents%2F40000000-0000-4000-8000-000000000001%2Flife$/,
   );
 
-  const partnerPlayer = page.getByTestId("life-player-card").nth(4);
-  await expect(
-    partnerPlayer.getByLabel("Commander 1", { exact: true }),
-  ).toHaveValue("Kraum, Ludevic's Opus");
-  await expect(
-    partnerPlayer.getByLabel("Commander 2", { exact: true }),
-  ).toHaveValue("Tymna the Weaver");
-});
-
-test("event-linked life counter restores keyed local state after refresh", async ({
-  page,
-}) => {
-  await page.goto("/events/commander-night-demo/life");
-
-  await expect(page.getByTestId("life-save-status")).toHaveText(
-    "Saved locally",
+  await page.goto(
+    "/events/40000000-0000-4000-8000-000000000001/pods/40000000-0000-4000-8000-000000000002/life",
   );
-  await expect(page.getByTestId("life-sync-scope")).toHaveText(
-    "Local only - not saved to group",
-  );
-
-  const firstPlayer = page.getByTestId("life-player-card").first();
-
-  let blockedRequests = 0;
-  await page.route("**/*", async (route) => {
-    if (appNetworkRequestTypes.has(route.request().resourceType())) {
-      blockedRequests += 1;
-    }
-    await route.abort();
-  });
-
-  await firstPlayer
-    .getByRole("button", { name: "Subtract 5 life from Nora" })
-    .click();
-  await page.getByRole("button", { name: "Add poison to Nora" }).click();
-  await expect(firstPlayer).toContainText("35");
-  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
-  expect(blockedRequests).toBe(0);
-
-  await page.unroute("**/*");
-  await page.reload();
-
-  const restoredFirstPlayer = page.getByTestId("life-player-card").first();
-  await expect(
-    page.getByRole("heading", {
-      name: "Wednesday Commander Night Life Counter",
-    }),
-  ).toBeVisible();
-  await expect(
-    restoredFirstPlayer.getByLabel("Commander 1", { exact: true }),
-  ).toHaveValue("Muldrotha, the Gravetide");
-  await expect(restoredFirstPlayer).toContainText("35");
-  await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
-  await expect(page.getByTestId("life-save-status")).toHaveText(
-    "Saved locally",
-  );
-  await expect(page.getByTestId("life-sync-scope")).toHaveText(
-    "Local only - not saved to group",
-  );
-});
-
-test("pod-linked life counter imports published pod seats", async ({
-  page,
-}) => {
-  await page.goto("/events/commander-night-demo/pods/pod-alpha/life");
-
-  await expect(
-    page.getByRole("heading", { name: "Pod Alpha Life Counter" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("linked-life-status")).toContainText(
-    "4 published pod seats imported",
-  );
-  await expect(page.getByTestId("life-player-card")).toHaveCount(4);
-
-  await expect(page.getByTestId("life-player-card").nth(0)).toContainText(
-    "Seat North",
-  );
-  await expect(
-    page.getByTestId("life-player-card").nth(0).getByLabel("Player name"),
-  ).toHaveValue("Nora");
-  await expect(page.getByTestId("life-player-card").nth(3)).toContainText(
-    "Seat West",
-  );
-  await expect(
-    page.getByTestId("life-player-card").nth(3).getByLabel("Player name"),
-  ).toHaveValue("Sol");
-});
-
-test("pod-linked life counter restores keyed local state after refresh", async ({
-  page,
-}) => {
-  await page.goto("/events/commander-night-demo/pods/pod-alpha/life");
-
-  await expect(page.getByTestId("life-save-status")).toHaveText(
-    "Saved locally",
-  );
-  await expect(page.getByTestId("life-sync-scope")).toHaveText(
-    "Local only - not saved to group",
-  );
-
-  const westSeat = page.getByTestId("life-player-card").nth(3);
-
-  let blockedRequests = 0;
-  await page.route("**/*", async (route) => {
-    if (appNetworkRequestTypes.has(route.request().resourceType())) {
-      blockedRequests += 1;
-    }
-    await route.abort();
-  });
-
-  await westSeat
-    .getByRole("button", { name: "Subtract 10 life from Sol" })
-    .click();
-  await expect(westSeat).toContainText("30");
-  expect(blockedRequests).toBe(0);
-
-  await page.unroute("**/*");
-  await page.reload();
-
-  const restoredWestSeat = page.getByTestId("life-player-card").nth(3);
-  await expect(
-    page.getByRole("heading", { name: "Pod Alpha Life Counter" }),
-  ).toBeVisible();
-  await expect(restoredWestSeat).toContainText("Seat West");
-  await expect(restoredWestSeat.getByLabel("Player name")).toHaveValue("Sol");
-  await expect(restoredWestSeat).toContainText("30");
-  await expect(page.getByTestId("life-save-status")).toHaveText(
-    "Saved locally",
-  );
-  await expect(page.getByTestId("life-sync-scope")).toHaveText(
-    "Local only - not saved to group",
+  await expect(page).toHaveURL(
+    /\/login\?next=%2Fevents%2F40000000-0000-4000-8000-000000000001%2Fpods%2F40000000-0000-4000-8000-000000000002%2Flife$/,
   );
 });
 

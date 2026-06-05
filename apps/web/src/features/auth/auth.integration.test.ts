@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { accounts, users, verifications } from "@/db/schema";
+import { accounts, auditEvents, users, verifications } from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import type { TransactionalEmail } from "@/features/email/smtp2go";
 import { createPodTrackerAuth } from "./server";
@@ -130,6 +130,67 @@ describe("Better Auth integration", () => {
 
       expect(loginResponse.status).toBe(200);
       expect(loginSession?.user.email).toBe(email);
+
+      const auditRows = await db
+        .select({
+          action: auditEvents.action,
+          actorUserId: auditEvents.actorUserId,
+          targetType: auditEvents.targetType,
+          targetId: auditEvents.targetId,
+          metadata: auditEvents.metadata,
+        })
+        .from(auditEvents)
+        .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+      expect(auditRows).toHaveLength(6);
+      expect(auditRows).toEqual(
+        expect.arrayContaining([
+          {
+            action: "auth.signup",
+            actorUserId: userRow.id,
+            targetType: "user",
+            targetId: userRow.id,
+            metadata: { provider: "credential", source: "signup" },
+          },
+          {
+            action: "auth.email_verification_requested",
+            actorUserId: null,
+            targetType: "user",
+            targetId: userRow.id,
+            metadata: { source: "signup" },
+          },
+          {
+            action: "auth.login",
+            actorUserId: userRow.id,
+            targetType: "session",
+            targetId: expect.any(String),
+            metadata: { remembered: true, source: "email_verification" },
+          },
+          {
+            action: "auth.email_verified",
+            actorUserId: userRow.id,
+            targetType: "user",
+            targetId: userRow.id,
+            metadata: { source: "email_verification" },
+          },
+          {
+            action: "auth.logout",
+            actorUserId: userRow.id,
+            targetType: "session",
+            targetId: expect.any(String),
+            metadata: { remembered: true, source: "signout" },
+          },
+          {
+            action: "auth.login",
+            actorUserId: userRow.id,
+            targetType: "session",
+            targetId: expect.any(String),
+            metadata: { remembered: true, source: "password" },
+          },
+        ]),
+      );
+      expect(JSON.stringify(auditRows)).not.toContain(email);
+      expect(JSON.stringify(auditRows)).not.toContain(password);
     },
     pgliteAuthTestTimeout,
   );
@@ -186,6 +247,7 @@ describe("Better Auth integration", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: true });
     expect(sentEmail.messages).toHaveLength(0);
+    expect(await db.select().from(auditEvents)).toHaveLength(0);
   });
 
   test("sends password reset email and accepts the reset token", async () => {
@@ -259,6 +321,41 @@ describe("Better Auth integration", () => {
 
     expect(oldLoginResponse.status).not.toBe(200);
     expect(newLoginResponse.status).toBe(200);
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+    const auditActions = auditRows.map((row) => row.action);
+
+    expect(auditActions).toContain("auth.password_reset_requested");
+    expect(auditActions).toContain("auth.password_reset_completed");
+    expect(
+      auditRows.filter((row) => row.action === "auth.password_reset_requested"),
+    ).toEqual([
+      {
+        action: "auth.password_reset_requested",
+        targetId: expect.any(String),
+        metadata: { source: "password_reset" },
+      },
+    ]);
+    expect(
+      auditRows.filter((row) => row.action === "auth.password_reset_completed"),
+    ).toEqual([
+      {
+        action: "auth.password_reset_completed",
+        targetId: expect.any(String),
+        metadata: { source: "password_reset" },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain(email);
+    expect(JSON.stringify(auditRows)).not.toContain(oldPassword);
+    expect(JSON.stringify(auditRows)).not.toContain(newPassword);
+    expect(JSON.stringify(auditRows)).not.toContain(resetToken);
   });
 
   test("confirms email changes before updating the account email", async () => {
@@ -327,6 +424,42 @@ describe("Better Auth integration", () => {
       email: nextEmail,
       emailVerified: true,
     });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+    const emailChangeRows = auditRows.filter(
+      (row) => row.action === "auth.email_change_requested",
+    );
+    const emailVerifiedRows = auditRows.filter(
+      (row) => row.action === "auth.email_verified",
+    );
+
+    expect(emailChangeRows).toEqual([
+      {
+        action: "auth.email_change_requested",
+        actorUserId: expect.any(String),
+        targetType: "user",
+        targetId: expect.any(String),
+        metadata: { source: "email_change" },
+      },
+    ]);
+    expect(emailVerifiedRows.at(-1)).toMatchObject({
+      action: "auth.email_verified",
+      actorUserId: expect.any(String),
+      targetType: "user",
+      targetId: expect.any(String),
+      metadata: { source: "email_verification" },
+    });
+    expect(JSON.stringify(auditRows)).not.toContain(currentEmail);
+    expect(JSON.stringify(auditRows)).not.toContain(nextEmail);
   });
 
   test("does not leave reset verifications after password reset", async () => {

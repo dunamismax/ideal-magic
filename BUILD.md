@@ -236,8 +236,12 @@ agent session.
   changes.
 - [x] Verify implemented audit-event coverage with focused
   unit/integration tests plus signup/login/logout Playwright smoke.
+- [x] Add production-relevant auth audit events for Better Auth signup,
+  session creation/revocation, password reset requested/completed, email
+  verification requested/completed, and email change requested without
+  storing emails, tokens, passwords, IPs, user agents, or raw payloads.
 - [ ] Add audit events for event location changes once location edit
-  flows exist, plus production-relevant auth events.
+  flows exist.
 
 ## Pass 2 - Host Locations And Event Operations
 

@@ -7,6 +7,13 @@ export type SaveEventLifeGameInput = {
   notes: string;
 };
 
+export type SaveEventLifeGameActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof SaveEventLifeGameInput, string>>;
+  fields: SaveEventLifeGameInput;
+};
+
 export type SaveEventLifeGameValidationResult =
   | {
       ok: true;

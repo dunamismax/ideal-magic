@@ -779,6 +779,20 @@ export async function saveCompletedEventLifeCounterGame(
   });
 }
 
+export async function saveCompletedStandaloneLifeCounterGame(
+  db: GameWriteDatabase,
+  input: {
+    viewerUserId: string;
+    eventId: string;
+    resultType: GameResultType;
+    winnerParticipantIds?: readonly string[];
+    notes?: string;
+    completedAt?: Date;
+  },
+): Promise<LoggedEventGameSummary> {
+  return saveCompletedEventLifeCounterGame(db, input);
+}
+
 async function getPublishedPodLoggingContext(
   db: GameReadDatabase,
   input: {

@@ -34,6 +34,7 @@ import {
   PodGameLoggingBlockedError,
   saveCompletedEventLifeCounterGame,
   saveCompletedPodLifeCounterGame,
+  saveCompletedStandaloneLifeCounterGame,
 } from "./games";
 import { createPlaygroupForUser } from "./playgroups";
 import {
@@ -1039,6 +1040,182 @@ describe("game logging data access", () => {
       winningDeckId: null,
       winningTeam: null,
     });
+  });
+
+  test("saves standalone attached life counter games through event roster mapping", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const participants = await listEventLifeCounterParticipantsForViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const memberParticipant = participants.find(
+      (participant) => participant.participantName === "Member 1",
+    );
+    const guestParticipant = participants.find(
+      (participant) => participant.participantName === "Guest RSVP",
+    );
+
+    if (!memberParticipant || !guestParticipant) {
+      throw new Error("Expected member and guest event participants.");
+    }
+
+    await expect(
+      saveCompletedStandaloneLifeCounterGame(db, {
+        viewerUserId: fixture.outsiderId,
+        eventId: fixture.eventId,
+        resultType: "normal_win",
+        winnerParticipantIds: [memberParticipant.id],
+      }),
+    ).rejects.toBeInstanceOf(EventGameLoggingAuthorizationError);
+
+    const logged = await saveCompletedStandaloneLifeCounterGame(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "team_win",
+      winnerParticipantIds: [memberParticipant.id, guestParticipant.id],
+      notes: "  Saved from standalone counter.  ",
+      completedAt: new Date("2030-06-15T07:00:00.000Z"),
+    });
+
+    expect(logged).toMatchObject({
+      eventId: fixture.eventId,
+      resultType: "team_win",
+      notes: "Saved from standalone counter.",
+    });
+    expect(
+      logged.players
+        .filter((player) => player.isWinner)
+        .map((player) => player.participantName),
+    ).toEqual(["Member 1", "Guest RSVP"]);
+    expect(JSON.stringify(logged)).not.toContain("Private Guest");
+    expect(JSON.stringify(logged)).not.toContain("@example.test");
+    expect(JSON.stringify(logged)).not.toContain("token");
+
+    const [gameRow] = await db
+      .select({
+        podId: games.podId,
+        resultType: games.resultType,
+        notes: games.notes,
+      })
+      .from(games)
+      .where(eq(games.id, logged.id));
+
+    expect(gameRow).toEqual({
+      podId: null,
+      resultType: "team_win",
+      notes: "Saved from standalone counter.",
+    });
+
+    const persistedPlayers = await db
+      .select({
+        podSeatId: gamePlayers.podSeatId,
+        guestName: gamePlayers.guestName,
+        participantNameSnapshot: gamePlayers.participantNameSnapshot,
+        deckNameSnapshot: gamePlayers.deckNameSnapshot,
+        isWinner: gamePlayers.isWinner,
+        team: gamePlayers.team,
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.gameId, logged.id))
+      .orderBy(asc(gamePlayers.seatPosition));
+
+    expect(persistedPlayers.every((player) => player.podSeatId === null)).toBe(
+      true,
+    );
+    expect(persistedPlayers.find((player) => player.isWinner)).toMatchObject({
+      participantNameSnapshot: "Member 1",
+      deckNameSnapshot: "Member 1 Deck",
+      team: "winning_team",
+    });
+    expect(
+      persistedPlayers.find((player) => player.guestName !== null),
+    ).toMatchObject({
+      guestName: "Private Guest",
+      participantNameSnapshot: "Private Guest",
+      isWinner: true,
+      team: "winning_team",
+    });
+
+    const [resultRow] = await db
+      .select({
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+        notes: gameResults.notes,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toEqual({
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: "winning_team",
+      notes: "Saved from standalone counter.",
+    });
+
+    const matchupRows = await db
+      .select({
+        leftUserId: matchupHistory.leftUserId,
+        rightUserId: matchupHistory.rightUserId,
+        leftDeckId: matchupHistory.leftDeckId,
+        rightDeckId: matchupHistory.rightDeckId,
+      })
+      .from(matchupHistory)
+      .where(eq(matchupHistory.gameId, logged.id));
+
+    expect(matchupRows).toHaveLength(3);
+    expect(
+      matchupRows.every(
+        (row) =>
+          row.leftUserId &&
+          row.rightUserId &&
+          row.leftDeckId &&
+          row.rightDeckId,
+      ),
+    ).toBe(true);
+
+    const draw = await saveCompletedStandaloneLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "Standalone draw.",
+      completedAt: new Date("2030-06-15T08:00:00.000Z"),
+    });
+    const [drawResult] = await db
+      .select({
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, draw.id));
+
+    expect(draw.players.every((player) => !player.isWinner)).toBe(true);
+    expect(drawResult).toEqual({
+      winnerUserId: null,
+      winningDeckId: null,
+      winningTeam: null,
+    });
+
+    const [eventHistory] = await listLoggedGamesForEventViewer(db, {
+      eventId: fixture.eventId,
+      viewerUserId: fixture.ownerId,
+    });
+    const payload = JSON.stringify(eventHistory);
+
+    expect(eventHistory).toMatchObject({
+      id: draw.id,
+      pod: null,
+      resultType: "draw",
+      notes: "Standalone draw.",
+    });
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+    expect(payload).not.toContain("token");
   });
 
   test("denies event life counter saves from non-members and invalid winners", async () => {

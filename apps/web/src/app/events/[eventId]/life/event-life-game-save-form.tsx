@@ -6,10 +6,8 @@ import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import type { EventLifeCounterParticipantSummary } from "@/db/queries/event-planning";
-import {
-  saveEventLifeGameAction,
-  type SaveEventLifeGameActionState,
-} from "./actions";
+import type { SaveEventLifeGameActionState } from "@/features/life/event-game-save";
+import { saveEventLifeGameAction } from "./actions";
 
 type EventLifeGameSaveFormProps = {
   eventId: string;

@@ -6,7 +6,7 @@ import { createDatabase } from "@/db/client";
 import {
   EventGameLoggingAuthorizationError,
   EventGameLoggingBlockedError,
-  saveCompletedEventLifeCounterGame,
+  saveCompletedStandaloneLifeCounterGame,
 } from "@/db/queries/games";
 import { requireServerSession } from "@/features/auth/server";
 import {
@@ -15,12 +15,15 @@ import {
   validateSaveEventLifeGameInput,
 } from "@/features/life/event-game-save";
 
-export async function saveEventLifeGameAction(
+export async function saveStandaloneLifeGameAction(
   _previousState: SaveEventLifeGameActionState,
   formData: FormData,
 ): Promise<SaveEventLifeGameActionState> {
   const eventId = String(formData.get("eventId") ?? "");
-  const session = await requireServerSession(`/events/${eventId}/life`);
+  const nextPath = eventId
+    ? `/life?eventId=${encodeURIComponent(eventId)}`
+    : "/life";
+  const session = await requireServerSession(nextPath);
   const fields: SaveEventLifeGameInput = {
     eventId,
     resultType: normalizeLifeGameResultType(formData.get("resultType")),
@@ -46,14 +49,17 @@ export async function saveEventLifeGameAction(
   }
 
   try {
-    const logged = await saveCompletedEventLifeCounterGame(createDatabase(), {
-      viewerUserId: session.user.id,
-      ...validation.input,
-    });
+    const logged = await saveCompletedStandaloneLifeCounterGame(
+      createDatabase(),
+      {
+        viewerUserId: session.user.id,
+        ...validation.input,
+      },
+    );
 
+    revalidatePath("/life");
     revalidatePath("/game-night");
     revalidatePath("/history");
-    revalidatePath(`/events/${eventId}/life`);
 
     return {
       message: `Saved ${logged.players.length}-player game to history.`,
@@ -82,7 +88,7 @@ export async function saveEventLifeGameAction(
       };
     }
 
-    console.error("Event life game save failed", error);
+    console.error("Standalone life game save failed", error);
 
     return {
       message: "Could not save the game. Try again.",

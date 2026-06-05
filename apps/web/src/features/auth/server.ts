@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 
 import { createDatabase, type AppDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
+import { getAppBaseUrl, getTrustedOrigins } from "@/features/security/origin";
 
 type AuthDatabase = Pick<
   AppDatabase,
@@ -26,8 +27,9 @@ export function createPodTrackerAuth(
 ) {
   const authOptions = {
     appName: "Pod Tracker",
-    baseURL: options.baseURL ?? getAuthBaseUrl(),
+    baseURL: options.baseURL ?? getAppBaseUrl(),
     secret: options.secret ?? getAuthSecret(),
+    trustedOrigins: getTrustedOrigins(options.baseURL ?? getAppBaseUrl()),
     database: drizzleAdapter(db, {
       provider: "pg",
       transaction: true,
@@ -42,11 +44,24 @@ export function createPodTrackerAuth(
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
+      minPasswordLength: 10,
+      maxPasswordLength: 128,
       autoSignIn: true,
+    },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
     },
     advanced: {
       cookiePrefix: "pod-tracker",
       useSecureCookies: process.env.NODE_ENV === "production",
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      },
       database: {
         generateId: "uuid",
       },
@@ -88,14 +103,6 @@ export function getLoginRedirectPath(nextPath: string) {
       : "/account";
 
   return `/login?next=${encodeURIComponent(safeNextPath)}`;
-}
-
-function getAuthBaseUrl() {
-  return (
-    process.env.BETTER_AUTH_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000"
-  );
 }
 
 function getAuthSecret() {

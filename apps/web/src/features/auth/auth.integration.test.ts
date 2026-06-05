@@ -1,11 +1,15 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { accounts, users } from "@/db/schema";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import { createPodTrackerAuth } from "./server";
 
 describe("Better Auth integration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("signs up, reads a cookie session, logs out, and logs back in", async () => {
     const { db } = await createMigratedPgliteDatabase();
     const auth = createPodTrackerAuth(db, {
@@ -96,18 +100,50 @@ describe("Better Auth integration", () => {
     expect(loginResponse.status).toBe(200);
     expect(loginSession?.user.email).toBe(email);
   });
+
+  test("sets hardened production session cookie attributes", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { db } = await createMigratedPgliteDatabase();
+    const auth = createPodTrackerAuth(db, {
+      baseURL: "https://pod-tracker.example.test",
+      secret: "pod-tracker-production-cookie-test-secret",
+    });
+
+    const signupResponse = await auth.handler(
+      authRequest(
+        "/api/auth/sign-up/email",
+        {
+          email: "cookie-check@example.test",
+          password: "correct-horse-battery",
+          name: "Cookie Check",
+        },
+        undefined,
+        "https://pod-tracker.example.test",
+      ),
+    );
+    const sessionCookie = getSetCookies(signupResponse).find((cookie) =>
+      cookie.startsWith("pod-tracker.session_token="),
+    );
+
+    expect(signupResponse.status).toBe(200);
+    expect(sessionCookie).toBeDefined();
+    expect(sessionCookie).toContain("HttpOnly");
+    expect(sessionCookie).toContain("SameSite=Lax");
+    expect(sessionCookie).toContain("Secure");
+  });
 });
 
 function authRequest(
   path: string,
   body?: Record<string, string>,
   cookie?: string,
+  baseURL = "http://127.0.0.1:3100",
 ) {
-  return new Request(`http://127.0.0.1:3100${path}`, {
+  return new Request(`${baseURL}${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      origin: "http://127.0.0.1:3100",
+      origin: baseURL,
       ...(cookie ? { cookie } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -115,15 +151,18 @@ function authRequest(
 }
 
 function getCookieHeader(response: Response) {
-  const headers = response.headers as Headers & {
-    getSetCookie?: () => string[];
-  };
-  const setCookies = headers.getSetCookie?.() ?? [
-    response.headers.get("set-cookie") ?? "",
-  ];
-
-  return setCookies
+  return getSetCookies(response)
     .filter(Boolean)
     .map((cookie) => cookie.split(";")[0])
     .join("; ");
+}
+
+function getSetCookies(response: Response) {
+  const headers = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+
+  return headers.getSetCookie?.() ?? [
+    response.headers.get("set-cookie") ?? "",
+  ];
 }

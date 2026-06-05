@@ -49,14 +49,30 @@ command is idempotent and inserts only fake `example.test` identities,
 synthetic playgroup planning data, hashed fake event-token values, and a
 clearly fake location.
 
+Production auth requires `BETTER_AUTH_SECRET` and an HTTPS
+`BETTER_AUTH_URL` or `NEXT_PUBLIC_APP_URL` matching the public Caddy or
+Cloudflare origin. Add comma-separated HTTPS origins to
+`POD_TRACKER_TRUSTED_ORIGINS` only when the same deployment must accept
+server actions or Better Auth requests through additional trusted
+hostnames. Better Auth cookies are host-only, `HttpOnly`, `SameSite=Lax`,
+and `Secure` in production.
+
+Password reset is intentionally not enabled until the TypeScript app has
+an approved email delivery path. Self-hosted recovery before then is an
+operator task: verify the account owner out of band, perform the change
+through a maintenance procedure, and record the action without exposing
+passwords, reset tokens, email contents, or private user data in git or
+logs.
+
 The database query layer includes scoped event-planning reads and
-token-scoped public-safe event and guest RSVP aggregate reads. The
-read-only public invite route at `/invites/events/[inviteToken]` uses the
-public-safe event API at `/api/public-events/[inviteToken]` for aggregate
-event timing, location name, RSVP counts, guest counts, deck declaration
-counts, pod counts, and logged-game counts. It does not implement guest
-RSVP writes, authenticated RSVP flows, address disclosure, or Postgres
-event mutations yet.
+token-scoped public-safe event reads and guest RSVP writes. The public
+invite route at `/invites/events/[inviteToken]` uses the public-safe event
+API at `/api/public-events/[inviteToken]` for aggregate event timing,
+location name, RSVP counts, guest counts, deck declaration counts, pod
+counts, and logged-game counts. Guest RSVP writes are origin-checked and
+return aggregate-only public data. Authenticated RSVP flows, address
+disclosure, and broader Postgres event mutations are implemented through
+the logged-in Game Night surfaces.
 
 This app is intentionally side-by-side with the Rust V1 workspace until
 the TypeScript core flows are implemented, verified, and approved for

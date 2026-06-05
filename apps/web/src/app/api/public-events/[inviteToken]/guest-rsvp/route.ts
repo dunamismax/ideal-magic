@@ -4,6 +4,7 @@ import {
   PublicGuestRsvpValidationError,
   type PublicGuestRsvpInput,
 } from "@/features/events/public-event";
+import { isTrustedRequestOrigin } from "@/features/security/origin";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,13 @@ export async function POST(
   const { inviteToken } = await params;
   let payload: PublicGuestRsvpInput;
   let connection;
+
+  if (!isTrustedRequestOrigin(request)) {
+    return Response.json(
+      { error: "Guest RSVP origin is not allowed" },
+      { status: 403 },
+    );
+  }
 
   try {
     payload = (await request.json()) as PublicGuestRsvpInput;

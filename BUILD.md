@@ -219,9 +219,9 @@ agent session.
 
 ## Pass 1 - Production Auth And Abuse Hardening
 
-- [ ] Decide and implement password reset or explicitly document the
+- [x] Decide and implement password reset or explicitly document the
   self-hosted account recovery policy.
-- [ ] Audit Better Auth cookie/session settings for the production
+- [x] Audit Better Auth cookie/session settings for the production
   Docker/Caddy/Cloudflare shape.
 - [ ] Add CSRF coverage where Better Auth does not already cover the
   app's server actions/forms.

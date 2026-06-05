@@ -74,6 +74,7 @@ import {
   validatePodSeatLockInput,
 } from "@/features/pods/pod-form";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
+import { rateLimitPolicies } from "@/features/security/rate-limit";
 
 export type CreateEventActionState = {
   message: string | null;
@@ -155,7 +156,10 @@ export async function createEventAction(
   _previousState: CreateEventActionState,
   formData: FormData,
 ): Promise<CreateEventActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "events", "create"],
+  });
 
   const session = await requireServerSession("/game-night");
   const validation = validateCreateEventInput({
@@ -214,7 +218,10 @@ export async function updateMemberRsvpAction(
   _previousState: UpdateMemberRsvpActionState,
   formData: FormData,
 ): Promise<UpdateMemberRsvpActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "rsvp", "member"],
+  });
 
   const session = await requireServerSession("/game-night");
   const validation = validateMemberRsvpInput({
@@ -274,7 +281,10 @@ export async function updateEventAction(
   _previousState: UpdateEventActionState,
   formData: FormData,
 ): Promise<UpdateEventActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "events", "update"],
+  });
 
   const session = await requireServerSession("/game-night");
   const validation = validateUpdateEventInput({
@@ -344,7 +354,10 @@ export async function updateEventStatusAction(
   _previousState: EventStatusActionState,
   formData: FormData,
 ): Promise<EventStatusActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "events", "status"],
+  });
 
   const session = await requireServerSession("/game-night");
   const validation = validateEventStatusInput({
@@ -405,7 +418,10 @@ export async function declareDeckAction(
   _previousState: DeckDeclarationActionState,
   formData: FormData,
 ): Promise<DeckDeclarationActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "decks", "declare"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: DeckDeclarationInput = {
@@ -476,7 +492,10 @@ export async function undeclareDeckAction(
   _previousState: UndeclareDeckActionState,
   formData: FormData,
 ): Promise<UndeclareDeckActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "decks", "undeclare"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: UndeclareDeckInput = {
@@ -534,7 +553,10 @@ export async function generatePodsAction(
   _previousState: GeneratePodsActionState,
   formData: FormData,
 ): Promise<GeneratePodsActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "pods", "generate"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: GeneratePodsInput = {
@@ -613,7 +635,10 @@ export async function movePodSeatAction(
   _previousState: MovePodSeatActionState,
   formData: FormData,
 ): Promise<MovePodSeatActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "pods", "move-seat"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: MovePodSeatInput = {
@@ -695,7 +720,10 @@ export async function updatePodSeatLockAction(
   _previousState: PodSeatLockActionState,
   formData: FormData,
 ): Promise<PodSeatLockActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "pods", "seat-lock"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: PodSeatLockInput = {
@@ -777,7 +805,10 @@ export async function updatePodPublicationAction(
   _previousState: PodPublicationActionState,
   formData: FormData,
 ): Promise<PodPublicationActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "pods", "publication"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: PodPublicationInput = {
@@ -861,7 +892,10 @@ export async function logPodGameAction(
   _previousState: LogPodGameActionState,
   formData: FormData,
 ): Promise<LogPodGameActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["game-night", "games", "log-pod"],
+  });
 
   const session = await requireServerSession("/game-night");
   const fields: LogPodGameInput = {

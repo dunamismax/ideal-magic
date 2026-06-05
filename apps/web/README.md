@@ -64,6 +64,13 @@ Better Auth uses SMTP2GO for account verification, password reset,
 verification resend during unverified login, and confirmed email-change
 flows. Tests use fakes and must not send real mail by default.
 
+Set `VALKEY_URL` to a Redis-compatible Valkey endpoint to enable
+production rate limiting for Better Auth writes, public guest RSVP
+writes, group invites, and app-owned write actions. Local development
+and tests fall back to in-memory counters when `VALKEY_URL` is unset;
+production treats a missing or unavailable limiter as a request
+protection failure.
+
 Do not commit API keys, reset tokens, email contents, or private user
 data. Password reset is enabled only through Better Auth's tokenized
 email flow.

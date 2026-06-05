@@ -229,7 +229,7 @@ agent session.
   real mail by default.
 - [x] Add CSRF coverage where Better Auth does not already cover the
   app's server actions/forms.
-- [ ] Add Valkey-backed rate limiting for auth, invite, public RSVP, and
+- [x] Add Valkey-backed rate limiting for auth, invite, public RSVP, and
   write-heavy routes.
 - [ ] Add audit events for sensitive changes: invite creation/revocation,
   member role changes/removal, event visibility/location changes, and

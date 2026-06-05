@@ -5,6 +5,11 @@ import {
   type PublicGuestRsvpInput,
 } from "@/features/events/public-event";
 import { isTrustedRequestOrigin } from "@/features/security/origin";
+import {
+  enforceRateLimitForRequest,
+  rateLimitPolicies,
+  rateLimitResponse,
+} from "@/features/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +25,19 @@ export async function POST(
     return Response.json(
       { error: "Guest RSVP origin is not allowed" },
       { status: 403 },
+    );
+  }
+
+  try {
+    await enforceRateLimitForRequest(
+      request,
+      rateLimitPolicies.publicGuestRsvp,
+      ["public-events", "guest-rsvp", inviteToken],
+    );
+  } catch (error) {
+    return rateLimitResponse(
+      error,
+      "Too many guest RSVP attempts. Try again later.",
     );
   }
 

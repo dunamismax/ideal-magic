@@ -1,6 +1,25 @@
 import { getAuth } from "@/features/auth/server";
+import {
+  enforceRateLimitForRequest,
+  rateLimitPolicies,
+  rateLimitResponse,
+} from "@/features/security/rate-limit";
 
-function handleAuthRequest(request: Request) {
+async function handleAuthRequest(request: Request) {
+  if (request.method !== "GET") {
+    try {
+      await enforceRateLimitForRequest(request, rateLimitPolicies.auth, [
+        "auth",
+        new URL(request.url).pathname,
+      ]);
+    } catch (error) {
+      return rateLimitResponse(
+        error,
+        "Too many auth attempts. Try again later.",
+      );
+    }
+  }
+
   return getAuth().handler(request);
 }
 

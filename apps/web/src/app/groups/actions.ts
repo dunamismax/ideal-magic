@@ -32,6 +32,7 @@ import {
   validateRemoveGroupMemberInput,
 } from "@/features/groups/group-member-management";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
+import { rateLimitPolicies } from "@/features/security/rate-limit";
 
 export type CreateGroupActionState = {
   message: string | null;
@@ -75,7 +76,10 @@ export async function createGroupAction(
   _previousState: CreateGroupActionState,
   formData: FormData,
 ): Promise<CreateGroupActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["groups", "create"],
+  });
 
   const session = await requireServerSession("/groups");
   const validation = validateCreateGroupInput({
@@ -118,7 +122,10 @@ export async function createGroupInviteAction(
   _previousState: CreateGroupInviteActionState,
   formData: FormData,
 ): Promise<CreateGroupInviteActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.invite,
+    scope: ["groups", "invite", "create"],
+  });
 
   const session = await requireServerSession("/groups");
   const validation = validateCreateGroupInviteInput({
@@ -182,7 +189,10 @@ export async function revokeGroupInviteAction(
   _previousState: RevokeGroupInviteActionState,
   formData: FormData,
 ): Promise<RevokeGroupInviteActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.invite,
+    scope: ["groups", "invite", "revoke"],
+  });
 
   const session = await requireServerSession("/groups");
   const validation = validateRevokeGroupInviteInput({
@@ -239,7 +249,10 @@ export async function changeGroupMemberRoleAction(
   _previousState: ChangeGroupMemberRoleActionState,
   formData: FormData,
 ): Promise<ChangeGroupMemberRoleActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["groups", "members", "role"],
+  });
 
   const session = await requireServerSession("/groups");
   const validation = validateChangeGroupMemberRoleInput({
@@ -312,7 +325,10 @@ export async function removeGroupMemberAction(
   _previousState: RemoveGroupMemberActionState,
   formData: FormData,
 ): Promise<RemoveGroupMemberActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["groups", "members", "remove"],
+  });
 
   const session = await requireServerSession("/groups");
   const validation = validateRemoveGroupMemberInput({

@@ -40,6 +40,11 @@ vi.mock("@/features/auth/server", () => ({
 }));
 
 import { createGroupAction } from "./actions";
+import {
+  rateLimitPolicies,
+  resetMemoryRateLimitStoreForTests,
+  setRateLimitStoreForTests,
+} from "@/features/security/rate-limit";
 
 describe("group server actions CSRF coverage", () => {
   beforeEach(() => {
@@ -59,6 +64,8 @@ describe("group server actions CSRF coverage", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    setRateLimitStoreForTests(null);
+    resetMemoryRateLimitStoreForTests();
     vi.unstubAllEnvs();
   });
 
@@ -108,6 +115,32 @@ describe("group server actions CSRF coverage", () => {
         formData,
       ),
     ).rejects.toThrow("Request origin is not allowed");
+
+    expect(mocks.requireServerSession).not.toHaveBeenCalled();
+    expect(mocks.createDatabase).not.toHaveBeenCalled();
+    expect(mocks.createPlaygroupForUser).not.toHaveBeenCalled();
+  });
+
+  test("rejects an over-limit group creation write before auth or database work", async () => {
+    setRateLimitStoreForTests({
+      hit: vi.fn().mockResolvedValue({
+        count: rateLimitPolicies.write.max + 1,
+        ttlSeconds: 22,
+      }),
+    });
+    const formData = new FormData();
+    formData.set("name", "Friday Commander");
+
+    await expect(
+      createGroupAction(
+        {
+          message: null,
+          fieldErrors: {},
+          fields: { name: "", description: "" },
+        },
+        formData,
+      ),
+    ).rejects.toThrow("Too many requests");
 
     expect(mocks.requireServerSession).not.toHaveBeenCalled();
     expect(mocks.createDatabase).not.toHaveBeenCalled();

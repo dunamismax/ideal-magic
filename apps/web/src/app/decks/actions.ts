@@ -21,6 +21,7 @@ import {
   validateUpdateDeckInput,
 } from "@/features/decks/deck-form";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
+import { rateLimitPolicies } from "@/features/security/rate-limit";
 
 export type CreateDeckActionState = {
   message: string | null;
@@ -49,7 +50,10 @@ export async function createDeckAction(
   _previousState: CreateDeckActionState,
   formData: FormData,
 ): Promise<CreateDeckActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["decks", "create"],
+  });
 
   const session = await requireServerSession("/decks");
   const validation = validateCreateDeckInput({
@@ -123,7 +127,10 @@ export async function updateDeckAction(
   _previousState: UpdateDeckActionState,
   formData: FormData,
 ): Promise<UpdateDeckActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["decks", "update"],
+  });
 
   const session = await requireServerSession("/decks");
   const validation = validateUpdateDeckInput({
@@ -197,7 +204,10 @@ export async function retireDeckAction(
   _previousState: RetireDeckActionState,
   formData: FormData,
 ): Promise<RetireDeckActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["decks", "retire"],
+  });
 
   const session = await requireServerSession("/decks");
   const validation = validateRetireDeckInput({

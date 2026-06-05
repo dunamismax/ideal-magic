@@ -1,6 +1,10 @@
 import { headers } from "next/headers";
 
 import { isTrustedHeadersOrigin } from "@/features/security/origin";
+import {
+  enforceRateLimitForHeaders,
+  type RateLimitPolicy,
+} from "@/features/security/rate-limit";
 
 export class CsrfError extends Error {
   constructor() {
@@ -9,8 +13,25 @@ export class CsrfError extends Error {
   }
 }
 
-export async function assertSameOriginServerAction() {
-  if (!isTrustedHeadersOrigin(await headers())) {
+type ServerActionSecurityOptions = {
+  rateLimit?: RateLimitPolicy;
+  scope?: string[];
+};
+
+export async function assertSameOriginServerAction(
+  options: ServerActionSecurityOptions = {},
+) {
+  const requestHeaders = await headers();
+
+  if (!isTrustedHeadersOrigin(requestHeaders)) {
     throw new CsrfError();
+  }
+
+  if (options.rateLimit) {
+    await enforceRateLimitForHeaders(
+      requestHeaders,
+      options.rateLimit,
+      options.scope,
+    );
   }
 }

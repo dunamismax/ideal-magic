@@ -15,12 +15,16 @@ import {
   validateSaveEventLifeGameInput,
 } from "@/features/life/event-game-save";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
+import { rateLimitPolicies } from "@/features/security/rate-limit";
 
 export async function saveEventLifeGameAction(
   _previousState: SaveEventLifeGameActionState,
   formData: FormData,
 ): Promise<SaveEventLifeGameActionState> {
-  await assertSameOriginServerAction();
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["life", "event", "save-game"],
+  });
 
   const eventId = String(formData.get("eventId") ?? "");
   const session = await requireServerSession(`/events/${eventId}/life`);

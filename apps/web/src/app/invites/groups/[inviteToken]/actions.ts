@@ -9,11 +9,16 @@ import {
 } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
+import { rateLimitPolicies } from "@/features/security/rate-limit";
 
 export async function acceptGroupInviteAction(formData: FormData) {
-  await assertSameOriginServerAction();
-
   const inviteToken = String(formData.get("inviteToken") ?? "").trim();
+
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.invite,
+    scope: ["groups", "invite", "accept", inviteToken],
+  });
+
   const session = await requireServerSession(`/invites/groups/${inviteToken}`);
 
   try {

@@ -23,10 +23,17 @@ vi.mock("@/features/events/public-event", () => ({
 }));
 
 import { POST } from "./route";
+import {
+  rateLimitPolicies,
+  resetMemoryRateLimitStoreForTests,
+  setRateLimitStoreForTests,
+} from "@/features/security/rate-limit";
 
 describe("public guest RSVP route", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    setRateLimitStoreForTests(null);
+    resetMemoryRateLimitStoreForTests();
     vi.unstubAllEnvs();
   });
 
@@ -102,6 +109,40 @@ describe("public guest RSVP route", () => {
       error: "Guest RSVP origin is not allowed",
     });
     expect(response.status).toBe(403);
+    expect(mocks.createDatabaseConnection).not.toHaveBeenCalled();
+    expect(mocks.createPublicGuestRsvp).not.toHaveBeenCalled();
+  });
+
+  test("rejects over-limit RSVP writes before parsing or opening the database", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://pod-tracker.example.test");
+    const hit = vi.fn().mockResolvedValue({
+      count: rateLimitPolicies.publicGuestRsvp.max + 1,
+      ttlSeconds: 37,
+    });
+    setRateLimitStoreForTests({ hit });
+
+    const response = await POST(
+      new Request(
+        "https://pod-tracker.example.test/api/public-events/invite/guest-rsvp",
+        {
+          method: "POST",
+          headers: {
+            origin: "https://pod-tracker.example.test",
+            "content-type": "application/json",
+            "x-forwarded-for": "198.51.100.50",
+          },
+          body: "not-json",
+        },
+      ),
+      { params: Promise.resolve({ inviteToken: "public-test-token" }) },
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Too many guest RSVP attempts. Try again later.",
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("37");
+    expect(hit).toHaveBeenCalledWith(expect.any(String), 60);
     expect(mocks.createDatabaseConnection).not.toHaveBeenCalled();
     expect(mocks.createPublicGuestRsvp).not.toHaveBeenCalled();
   });

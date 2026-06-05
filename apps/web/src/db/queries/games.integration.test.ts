@@ -24,6 +24,7 @@ import {
   upsertMemberRsvpForEvent,
 } from "./event-planning";
 import {
+  listLoggedGamesForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
 } from "./games";
@@ -251,6 +252,163 @@ describe("game logging data access", () => {
     expect(payload).not.toContain("Private Guest");
     expect(payload).not.toContain("Private guest RSVP note");
     expect(payload).not.toContain("@example.test");
+  });
+
+  test("lists logged game history for scoped members and managers with safe pod context", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+
+    if (!ownerSeat) {
+      throw new Error("Expected owner seat in published pod.");
+    }
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "normal_win",
+      winnerSeatIds: [ownerSeat.id],
+      notes: "Scoped game note",
+      completedAt: new Date("2030-06-15T03:30:00.000Z"),
+    });
+
+    const managerHistory = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.ownerId,
+    });
+    const memberHistory = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+
+    expect(managerHistory).toHaveLength(1);
+    expect(memberHistory).toHaveLength(1);
+    expect(memberHistory[0]).toMatchObject({
+      event: {
+        id: fixture.eventId,
+        title: "Published Pod Game Night",
+      },
+      playgroup: {
+        id: fixture.playgroupId,
+        name: "Game Log Group",
+      },
+      pod: {
+        id: fixture.publishedPod.id,
+        name: fixture.publishedPod.name,
+      },
+      resultType: "normal_win",
+      notes: "Scoped game note",
+    });
+    expect(memberHistory[0]?.players).toHaveLength(4);
+    expect(memberHistory[0]?.winners).toEqual([
+      {
+        id: expect.any(String),
+        participantName: "Owner Player",
+        deckNameSnapshot: "Owner Deck",
+      },
+    ]);
+  });
+
+  test("rejects logged game history for non-members", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const winnerSeat = fixture.publishedPod.seats[0];
+
+    if (!winnerSeat) {
+      throw new Error("Expected winner seat in published pod.");
+    }
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "normal_win",
+      winnerSeatIds: [winnerSeat.id],
+    });
+
+    await expect(
+      listLoggedGamesForViewer(db, {
+        viewerUserId: fixture.outsiderId,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  test("redacts guest details in logged game history projections", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "draw",
+      notes: "Shared table note",
+    });
+
+    const history = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.ownerId,
+    });
+    const payload = JSON.stringify(history);
+
+    expect(payload).toContain("Guest RSVP");
+    expect(payload).toContain("Shared table note");
+    expect(payload).not.toContain("Private Guest");
+    expect(payload).not.toContain("Private guest RSVP note");
+    expect(payload).not.toContain("@example.test");
+  });
+
+  test("keeps history deck snapshots immutable after later deck edits", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+
+    if (!ownerSeat) {
+      throw new Error("Expected owner seat in published pod.");
+    }
+
+    await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "combat_win",
+      winnerSeatIds: [ownerSeat.id],
+    });
+
+    await updateDeckForUser(db, {
+      ownerUserId: fixture.ownerId,
+      deckId: fixture.ownerDeckId,
+      name: "Edited After History",
+      commanders: ["Edited History Commander"],
+      colorIdentity: "WUBRG",
+      bracket: "5",
+      powerEstimate: 10,
+      archetype: "Edited",
+      tags: ["edited"],
+      visibility: "playgroup",
+      playgroupId: fixture.playgroupId,
+      externalUrl: null,
+    });
+
+    const [logged] = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.ownerId,
+    });
+    const ownerPlayer = logged?.players.find(
+      (player) => player.participantName === "Owner Player",
+    );
+
+    expect(ownerPlayer?.deck).toMatchObject({
+      deckNameSnapshot: "Owner Deck",
+      commanderSnapshot: ["Owner Commander"],
+      colorIdentitySnapshot: "WUB",
+      bracketSnapshot: "2",
+      powerEstimateSnapshot: 7,
+      archetypeSnapshot: "Control",
+    });
+    expect(JSON.stringify(logged)).not.toContain("Edited After History");
+    expect(JSON.stringify(logged)).not.toContain("Edited History Commander");
   });
 });
 

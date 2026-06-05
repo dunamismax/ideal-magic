@@ -689,14 +689,29 @@ user/deck pairs, and transitions the pod to `completed` so it cannot be
 quick-logged again or unpublished as a live assignment. The `/game-night`
 published pod card now has a manager-facing quick-log form for result
 type, optional winner seat, and optional notes. Guest names remain
-internal; the quick-log response and participant pod summaries redact
-guest seats as `Guest RSVP`. Focused PGlite tests cover published-pod
-logging, participant authorization, non-member denial, immutable
-deck/commander snapshots after later deck edits, guest redaction, and
-matchup-history writes. Life-counter-session game saves, finish order,
-elimination detail, poison/commander-damage loss detail, public/history
-views, meta health summaries, materialized summary views, and Playwright
-coverage for the quick-log UI remain unimplemented.
+internal; the quick-log response, participant pod summaries, and logged
+history projections redact guest seats as `Guest RSVP`.
+
+The TypeScript rewrite now also has a scoped logged-game history
+data-access surface plus a protected `/history` page. Owners, admins,
+hosts, and members can list recent logged games across playgroups where
+they hold one of those roles; non-members and outsider users receive no
+rows. History summaries include event title/start time, playgroup name,
+completed time, result type, linked pod name when present, safe winner
+display, participant-safe names, deck/commander/color/bracket/power/
+archetype snapshots, and game notes for authenticated scoped members.
+The projection omits emails, invite tokens, token hashes, host
+addresses, RSVP notes, private guest names/details, and private contact
+data. Focused PGlite tests cover published-pod logging, participant
+authorization, non-member denial, logged history listing for scoped
+members and managers, immutable history snapshots after later deck
+edits, guest redaction in history projections, pod context for completed
+pod games, and matchup-history writes. Focused component tests cover the
+`/history` game list and empty state. Life-counter-session game saves,
+finish order beyond winner marking, elimination detail,
+poison/commander-damage loss detail, event-specific history pages, public
+history views, meta health summaries, materialized summary views, and
+Playwright coverage for the quick-log/history UI remain unimplemented.
 
 ## Phase 11 - Simplification And Removal
 

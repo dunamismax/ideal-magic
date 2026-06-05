@@ -1,7 +1,8 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
+import { normalizePageRequest, type PageRequest } from "../pagination";
 import {
   eventDeckDeclarations,
   events,
@@ -10,6 +11,7 @@ import {
   games,
   matchupHistory,
   playgroupMemberships,
+  playgroups,
   podSeats,
   pods,
   users,
@@ -58,6 +60,48 @@ export type LoggedPodGameSummary = {
   }[];
 };
 
+export type LoggedGameHistorySummary = {
+  id: string;
+  event: {
+    id: string;
+    title: string;
+    startsAt: Date;
+  };
+  playgroup: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  pod: {
+    id: string;
+    name: string;
+  } | null;
+  resultType: GameResultType;
+  notes: string;
+  completedAt: Date;
+  winners: {
+    id: string;
+    participantName: string;
+    deckNameSnapshot: string;
+  }[];
+  players: {
+    id: string;
+    participantName: string;
+    seatPosition: number;
+    finishPosition: number | null;
+    isWinner: boolean;
+    deck: {
+      deckId: string;
+      deckNameSnapshot: string;
+      commanderSnapshot: string[];
+      colorIdentitySnapshot: string;
+      bracketSnapshot: "1" | "2" | "3" | "4" | "5" | null;
+      powerEstimateSnapshot: number | null;
+      archetypeSnapshot: string;
+    } | null;
+  }[];
+};
+
 export class PodGameLoggingAuthorizationError extends Error {
   constructor() {
     super("Viewer cannot log a game from this pod.");
@@ -92,6 +136,141 @@ const playgroupRoles = [
   "viewer",
 ] as const;
 const brackets = ["1", "2", "3", "4", "5"] as const;
+const loggedGameViewerRoles = ["owner", "admin", "host", "member"] as const;
+
+export async function listLoggedGamesForViewer(
+  db: GameReadDatabase,
+  input: {
+    viewerUserId: string;
+    page?: PageRequest;
+  },
+): Promise<LoggedGameHistorySummary[]> {
+  const page = normalizePageRequest(input.page);
+  const gameRows = await db
+    .select({
+      id: games.id,
+      eventId: games.eventId,
+      eventTitle: events.title,
+      eventStartsAt: events.startsAt,
+      playgroupId: playgroups.id,
+      playgroupName: playgroups.name,
+      playgroupSlug: playgroups.slug,
+      podId: games.podId,
+      podName: pods.name,
+      resultType: games.resultType,
+      notes: games.notes,
+      completedAt: games.completedAt,
+    })
+    .from(games)
+    .innerJoin(events, eq(events.id, games.eventId))
+    .innerJoin(playgroups, eq(playgroups.id, events.playgroupId))
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, events.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .leftJoin(pods, eq(pods.id, games.podId))
+    .where(inArray(playgroupMemberships.role, loggedGameViewerRoles))
+    .orderBy(desc(games.completedAt), desc(games.id))
+    .limit(page.limit)
+    .offset(page.offset);
+
+  if (gameRows.length === 0) {
+    return [];
+  }
+
+  const gameIds = gameRows.map((game) => game.id);
+  const playerRows = await db
+    .select({
+      id: gamePlayers.id,
+      gameId: gamePlayers.gameId,
+      guestName: gamePlayers.guestName,
+      participantNameSnapshot: gamePlayers.participantNameSnapshot,
+      deckId: gamePlayers.deckId,
+      deckNameSnapshot: gamePlayers.deckNameSnapshot,
+      commanderSnapshot: gamePlayers.commanderSnapshot,
+      colorIdentitySnapshot: gamePlayers.colorIdentitySnapshot,
+      bracketSnapshot: gamePlayers.bracketSnapshot,
+      powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
+      archetypeSnapshot: gamePlayers.archetypeSnapshot,
+      seatPosition: gamePlayers.seatPosition,
+      finishPosition: gamePlayers.finishPosition,
+      isWinner: gamePlayers.isWinner,
+    })
+    .from(gamePlayers)
+    .where(inArray(gamePlayers.gameId, gameIds))
+    .orderBy(asc(gamePlayers.seatPosition), asc(gamePlayers.id));
+
+  const playersByGameId = new Map<string, typeof playerRows>();
+
+  for (const player of playerRows) {
+    const players = playersByGameId.get(player.gameId) ?? [];
+    players.push(player);
+    playersByGameId.set(player.gameId, players);
+  }
+
+  return gameRows.map((game) => {
+    const players = (playersByGameId.get(game.id) ?? []).map((player) => {
+      const participantName =
+        player.guestName === null
+          ? player.participantNameSnapshot || "Player"
+          : "Guest RSVP";
+
+      return {
+        id: player.id,
+        participantName,
+        seatPosition: player.seatPosition,
+        finishPosition: player.finishPosition,
+        isWinner: player.isWinner,
+        deck: player.deckId
+          ? {
+              deckId: player.deckId,
+              deckNameSnapshot: player.deckNameSnapshot,
+              commanderSnapshot: player.commanderSnapshot,
+              colorIdentitySnapshot: player.colorIdentitySnapshot,
+              bracketSnapshot: asBracket(player.bracketSnapshot),
+              powerEstimateSnapshot: player.powerEstimateSnapshot,
+              archetypeSnapshot: player.archetypeSnapshot,
+            }
+          : null,
+      };
+    });
+
+    return {
+      id: game.id,
+      event: {
+        id: game.eventId,
+        title: game.eventTitle,
+        startsAt: game.eventStartsAt,
+      },
+      playgroup: {
+        id: game.playgroupId,
+        name: game.playgroupName,
+        slug: game.playgroupSlug,
+      },
+      pod:
+        game.podId && game.podName
+          ? {
+              id: game.podId,
+              name: game.podName,
+            }
+          : null,
+      resultType: asGameResultType(game.resultType),
+      notes: game.notes,
+      completedAt: game.completedAt,
+      winners: players
+        .filter((player) => player.isWinner)
+        .map((player) => ({
+          id: player.id,
+          participantName: player.participantName,
+          deckNameSnapshot: player.deck?.deckNameSnapshot ?? "",
+        })),
+      players,
+    };
+  });
+}
 
 export async function logGameFromPublishedPod(
   db: GameWriteDatabase,

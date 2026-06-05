@@ -324,6 +324,12 @@ describe("event card", () => {
     expect(
       screen.getByRole("link", { name: "Launch Pod 1 life counter" }),
     ).toHaveAttribute("href", `/events/${baseEvent.id}/pods/${pod.id}/life`);
+    expect(screen.getByLabelText("Result for Pod 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Winner for Pod 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Notes for Pod 1")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Log game for Pod 1" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Move Riley Chen to pod"),
     ).not.toBeInTheDocument();
@@ -371,6 +377,9 @@ describe("event card", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Unpublish Pods" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Log game for Pod 1" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Move Riley Chen to pod"),

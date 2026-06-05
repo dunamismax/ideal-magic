@@ -92,6 +92,20 @@ export const gamePlayers = core.table(
     deckId: uuid("deck_id").references(() => decks.id, {
       onDelete: "set null",
     }),
+    participantNameSnapshot: text("participant_name_snapshot")
+      .notNull()
+      .default(""),
+    deckNameSnapshot: text("deck_name_snapshot").notNull().default(""),
+    commanderSnapshot: text("commander_snapshot")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    colorIdentitySnapshot: text("color_identity_snapshot")
+      .notNull()
+      .default(""),
+    bracketSnapshot: text("bracket_snapshot"),
+    powerEstimateSnapshot: integer("power_estimate_snapshot"),
+    archetypeSnapshot: text("archetype_snapshot").notNull().default(""),
     seatPosition: integer("seat_position").notNull(),
     finishPosition: integer("finish_position"),
     eliminationOrder: integer("elimination_order"),
@@ -131,6 +145,18 @@ export const gamePlayers = core.table(
     check(
       "game_players_user_or_guest_name",
       sql`(${table.userId} is not null and ${table.guestName} is null) or (${table.userId} is null and ${table.guestName} is not null and length(btrim(${table.guestName})) > 0)`,
+    ),
+    check(
+      "game_players_color_identity_snapshot_check",
+      sql`${table.colorIdentitySnapshot} ~ '^[WUBRG]*$'`,
+    ),
+    check(
+      "game_players_bracket_snapshot_check",
+      sql`${table.bracketSnapshot} is null or ${table.bracketSnapshot} in ('1', '2', '3', '4', '5')`,
+    ),
+    check(
+      "game_players_power_estimate_snapshot_check",
+      sql`${table.powerEstimateSnapshot} is null or ${table.powerEstimateSnapshot} between 1 and 10`,
     ),
   ],
 );

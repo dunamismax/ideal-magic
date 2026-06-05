@@ -39,6 +39,15 @@ import {
   validateUndeclareDeckInput,
 } from "@/features/decks/deck-form";
 import {
+  logGameFromPublishedPod,
+  PodGameLoggingAuthorizationError,
+  PodGameLoggingBlockedError,
+} from "@/db/queries/games";
+import {
+  type LogPodGameInput,
+  validateLogPodGameInput,
+} from "@/features/games/game-form";
+import {
   generateDraftPodsForEvent,
   publishPodsForEventManager,
   PodGenerationAuthorizationError,
@@ -132,6 +141,13 @@ export type PodPublicationActionState = {
   saved: boolean;
   fieldErrors: Partial<Record<keyof PodPublicationInput, string>>;
   fields: PodPublicationInput;
+};
+
+export type LogPodGameActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof LogPodGameInput, string>>;
+  fields: LogPodGameInput;
 };
 
 export async function createEventAction(
@@ -816,6 +832,88 @@ export async function updatePodPublicationAction(
       saved: false,
       fieldErrors: {},
       fields: validation.input,
+    };
+  }
+}
+
+export async function logPodGameAction(
+  _previousState: LogPodGameActionState,
+  formData: FormData,
+): Promise<LogPodGameActionState> {
+  const session = await requireServerSession("/game-night");
+  const fields: LogPodGameInput = {
+    eventId: String(formData.get("eventId") ?? ""),
+    podId: String(formData.get("podId") ?? ""),
+    resultType:
+      String(formData.get("resultType") ?? "") === "draw"
+        ? "draw"
+        : String(formData.get("resultType") ?? "") === "time_called"
+          ? "time_called"
+          : String(formData.get("resultType") ?? "") === "unfinished"
+            ? "unfinished"
+            : "normal_win",
+    winnerSeatId: String(formData.get("winnerSeatId") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+  };
+  const validation = validateLogPodGameInput({
+    eventId: fields.eventId,
+    podId: fields.podId,
+    resultType: String(formData.get("resultType") ?? ""),
+    winnerSeatId: fields.winnerSeatId,
+    notes: fields.notes,
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a valid game result.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    const logged = await logGameFromPublishedPod(createDatabase(), {
+      viewerUserId: session.user.id,
+      ...validation.input,
+    });
+
+    revalidatePath("/game-night");
+
+    return {
+      message: `Logged ${logged.players.length}-player game.`,
+      saved: true,
+      fieldErrors: {},
+      fields,
+    };
+  } catch (error) {
+    if (error instanceof PodGameLoggingAuthorizationError) {
+      return {
+        message: "You cannot log a game from that pod.",
+        saved: false,
+        fieldErrors: {
+          podId: "Choose one of your pod assignments.",
+        },
+        fields,
+      };
+    }
+
+    if (error instanceof PodGameLoggingBlockedError) {
+      return {
+        message: error.message,
+        saved: false,
+        fieldErrors: {},
+        fields,
+      };
+    }
+
+    console.error("Pod game logging failed", error);
+
+    return {
+      message: "Could not log the pod game. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields,
     };
   }
 }

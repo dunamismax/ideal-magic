@@ -6,6 +6,7 @@ import {
   Lock,
   PlayCircle,
   Shuffle,
+  Trophy,
   Unlock,
   UsersRound,
 } from "lucide-react";
@@ -17,10 +18,12 @@ import { Button } from "@/components/ui/button";
 import type { EventPodSummary } from "@/db/queries/pods";
 import {
   generatePodsAction,
+  logPodGameAction,
   movePodSeatAction,
   updatePodSeatLockAction,
   updatePodPublicationAction,
   type GeneratePodsActionState,
+  type LogPodGameActionState,
   type MovePodSeatActionState,
   type PodPublicationActionState,
   type PodSeatLockActionState,
@@ -271,6 +274,10 @@ function PodBlock({
         </div>
       </div>
 
+      {canManageEvent && canLaunchLifeCounter ? (
+        <LogPodGameForm eventId={eventId} pod={pod} />
+      ) : null}
+
       <ol className="mt-3 grid gap-2">
         {pod.seats.map((seat) => (
           <li
@@ -318,6 +325,123 @@ function PodBlock({
         ))}
       </ol>
     </div>
+  );
+}
+
+function createLogPodGameInitialState(input: {
+  eventId: string;
+  podId: string;
+}): LogPodGameActionState {
+  return {
+    message: null,
+    saved: false,
+    fieldErrors: {},
+    fields: {
+      eventId: input.eventId,
+      podId: input.podId,
+      resultType: "normal_win",
+      winnerSeatId: "",
+      notes: "",
+    },
+  };
+}
+
+function LogPodGameForm({
+  eventId,
+  pod,
+}: {
+  eventId: string;
+  pod: EventPodSummary;
+}) {
+  const [state, formAction] = useActionState(
+    logPodGameAction,
+    createLogPodGameInitialState({
+      eventId,
+      podId: pod.id,
+    }),
+  );
+
+  return (
+    <form
+      action={formAction}
+      className="mt-3 grid gap-2 rounded-control border border-border bg-surface px-3 py-2 lg:grid-cols-[10rem_1fr_1fr_auto] lg:items-center"
+    >
+      <input name="eventId" type="hidden" value={state.fields.eventId} />
+      <input name="podId" type="hidden" value={state.fields.podId} />
+      <select
+        aria-label={`Result for ${pod.name}`}
+        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+        defaultValue={state.fields.resultType}
+        name="resultType"
+      >
+        <option value="normal_win">Normal win</option>
+        <option value="draw">Draw</option>
+        <option value="time_called">Time called</option>
+        <option value="unfinished">Unfinished</option>
+      </select>
+      <select
+        aria-label={`Winner for ${pod.name}`}
+        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+        defaultValue={state.fields.winnerSeatId}
+        name="winnerSeatId"
+      >
+        <option value="">No winner logged</option>
+        {pod.seats.map((seat) => (
+          <option key={seat.id} value={seat.id}>
+            Seat {seat.seatPosition}: {seat.participantName}
+          </option>
+        ))}
+      </select>
+      <input
+        aria-label={`Notes for ${pod.name}`}
+        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+        defaultValue={state.fields.notes}
+        name="notes"
+        placeholder="Notes"
+      />
+      <LogPodGameButton podName={pod.name} />
+      {state.message ? (
+        <p
+          className={
+            state.saved
+              ? "text-xs font-bold text-accent lg:col-span-4"
+              : "text-xs font-bold text-danger lg:col-span-4"
+          }
+          role="status"
+        >
+          {state.message}
+        </p>
+      ) : null}
+      {state.fieldErrors.eventId ||
+      state.fieldErrors.podId ||
+      state.fieldErrors.resultType ||
+      state.fieldErrors.winnerSeatId ? (
+        <p className="text-xs font-bold text-danger lg:col-span-4">
+          {state.fieldErrors.eventId ??
+            state.fieldErrors.podId ??
+            state.fieldErrors.resultType ??
+            state.fieldErrors.winnerSeatId}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function LogPodGameButton({ podName }: { podName: string }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      aria-label={`Log game for ${podName}`}
+      className="w-full justify-center lg:w-auto"
+      disabled={pending}
+      title={`Log game for ${podName}`}
+      type="submit"
+      variant="primary"
+    >
+      <Trophy className="size-4" aria-hidden="true" />
+      {pending ? "Logging" : "Log Game"}
+    </Button>
   );
 }
 

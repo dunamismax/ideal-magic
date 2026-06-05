@@ -656,11 +656,11 @@ cover draft generation, scoring-driven repeat-pair avoidance, guest RSVP
 distribution and redaction, display, manual movement, locking,
 unlocking, publishing, unpublishing, scoped participant visibility,
 launch-link visibility, and non-member denial. Host overrides, plus-one
-guest seating, and game logging remain unimplemented.
+guest seating, and life-counter-to-game logging remain unimplemented.
 
 ## Phase 10 - Game Logging And Meta Health
 
-- [ ] Build quick game logging from an event pod.
+- [x] Build quick game logging from an event pod.
 - [ ] Build game logging from a completed life counter session.
 - [ ] Store result type, winner or winners, participants, commanders,
   decks, finish order, eliminations, commander-damage losses, poison
@@ -674,6 +674,29 @@ guest seating, and game logging remain unimplemented.
   and freshness needs are clear.
 - [ ] Verify game logging and meta summaries with database tests and
   Playwright.
+
+Current Phase 10 start adds schema-backed quick logging from a published
+locked pod in the TypeScript rewrite. Event managers and authenticated
+user-backed seats in the scoped pod can log a published pod game;
+non-members are denied. Logging creates `games`, `game_players`, and
+`game_results` rows, snapshots participant names, guest names internally,
+deck names, commanders, color identity, bracket, power estimate, and
+archetype from the published pod seats and declaration snapshots, trims
+safe notes into the game/result rows, marks selected winner seats in
+`game_players`, stores the single user-backed winner in `game_results`
+when exactly one is known, writes `matchup_history` rows for logged
+user/deck pairs, and transitions the pod to `completed` so it cannot be
+quick-logged again or unpublished as a live assignment. The `/game-night`
+published pod card now has a manager-facing quick-log form for result
+type, optional winner seat, and optional notes. Guest names remain
+internal; the quick-log response and participant pod summaries redact
+guest seats as `Guest RSVP`. Focused PGlite tests cover published-pod
+logging, participant authorization, non-member denial, immutable
+deck/commander snapshots after later deck edits, guest redaction, and
+matchup-history writes. Life-counter-session game saves, finish order,
+elimination detail, poison/commander-damage loss detail, public/history
+views, meta health summaries, materialized summary views, and Playwright
+coverage for the quick-log UI remain unimplemented.
 
 ## Phase 11 - Simplification And Removal
 

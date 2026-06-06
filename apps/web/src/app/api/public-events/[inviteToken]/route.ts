@@ -1,5 +1,6 @@
 import { createDatabaseConnection } from "@/db/client";
 import { getPublicEventInviteView } from "@/features/events/public-event";
+import { logServerError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +23,10 @@ export async function GET(
     }
 
     return Response.json({ event });
-  } catch {
-    console.error("Public event invite lookup failed");
+  } catch (error) {
+    logServerError("public_event_invite_lookup_failed", error, {
+      component: "public-events",
+    });
 
     return Response.json(
       { error: "Event invite lookup is unavailable" },

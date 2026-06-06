@@ -43,6 +43,25 @@ docker compose --profile errors up -d glitchtip
 Optional services should stay behind profiles or clear documentation so a
 minimal local app can run without every service.
 
+For production-shaped self-hosting, run the Next.js app as the web
+service with `NODE_ENV=production`, `HOSTNAME=127.0.0.1`, `PORT=3000`,
+and the placeholder-only environment shape in
+`deploy/env/production.env.example`. Build and start from `apps/web`:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --dir apps/web build
+pnpm --dir apps/web start
+```
+
+PostgreSQL is required for cutover traffic. Valkey is required when
+production rate-limited routes are enabled. MinIO is optional until the
+app stores runtime objects outside the database/static assets. Umami and
+GlitchTip/Sentry-compatible reporting are optional observability
+endpoints and are disabled when their environment variables are unset.
+Caddy should be the public reverse proxy in front of the local Next.js
+service.
+
 ## Caddy And Cloudflare
 
 The checked-in Caddyfile is a production-shape example that proxies to a
@@ -67,9 +86,12 @@ The app exposes:
 ```
 
 These endpoints should prove the process and the route handler are alive.
-As Postgres, Valkey, object storage, analytics, and error reporting
-become required runtime dependencies, readiness should check only the
-services required to serve user traffic safely.
+`/healthz` is a cheap liveness check and reports whether the required
+database URL is configured. `/readyz` checks Next.js route readiness plus
+a PostgreSQL `select 1`; it returns `503` when the database URL is
+missing or PostgreSQL is unavailable. Valkey, object storage, analytics,
+and error reporting stay out of readiness until they are required to
+serve cutover traffic safely.
 
 ## Backup And Restore
 
@@ -81,6 +103,11 @@ repository. The scripts under `deploy/scripts/` use
 Run restore drills only against non-production databases unless Stephen
 has approved a production maintenance window and a specific recovery
 plan.
+
+Use `pg_dump` and `pg_restore` from the same PostgreSQL major version as
+the target server, or a newer compatible client. The current Compose
+PostgreSQL service is version 18; PostgreSQL 17 client tools will not run
+the local drill against it.
 
 Local drill outline:
 

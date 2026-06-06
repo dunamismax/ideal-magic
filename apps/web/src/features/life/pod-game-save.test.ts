@@ -19,6 +19,7 @@ describe("pod life game save validation", () => {
         podId: "50000000-0000-4000-8000-000000000002",
         resultType: "combat_win",
         winnerSeatIds: ["50000000-0000-4000-8000-000000000003"],
+        playerOutcomes: [],
         notes: "Saved from counter.",
       },
     });

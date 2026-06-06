@@ -85,6 +85,8 @@ import {
 } from "@/features/pods/pod-form";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export type CreateEventActionState = {
   message: string | null;
@@ -237,7 +239,7 @@ export async function createEventAction(
       };
     }
 
-    console.error("Event creation failed", error);
+    logServerError("event_creation_failed", error, { component: "game-night" });
 
     return {
       message: "Could not create the event. Try again.",
@@ -251,6 +253,7 @@ export async function createEventAction(
 
   revalidatePath("/game-night");
   revalidatePath("/groups");
+  void trackAnalyticsEvent("event_created");
   redirect("/game-night");
 }
 
@@ -297,7 +300,7 @@ export async function updateMemberRsvpAction(
       };
     }
 
-    console.error("Member RSVP failed", error);
+    logServerError("member_rsvp_failed", error, { component: "game-night" });
 
     return {
       message: "Could not save your RSVP. Try again.",
@@ -308,6 +311,7 @@ export async function updateMemberRsvpAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("member_rsvp_saved");
 
   return {
     message: "RSVP saved.",
@@ -381,7 +385,7 @@ export async function updateEventAction(
       };
     }
 
-    console.error("Event update failed", error);
+    logServerError("event_update_failed", error, { component: "game-night" });
 
     return {
       message: "Could not update the event. Try again.",
@@ -395,6 +399,7 @@ export async function updateEventAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("event_updated");
 
   return {
     message: "Event updated.",
@@ -455,7 +460,9 @@ export async function createHostLocationAction(
       };
     }
 
-    console.error("Host location creation failed", error);
+    logServerError("host_location_creation_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not save the location. Try again.",
@@ -466,6 +473,7 @@ export async function createHostLocationAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("host_location_created");
 
   return {
     message: "Location saved.",
@@ -538,7 +546,9 @@ export async function updateHostLocationAction(
       };
     }
 
-    console.error("Host location update failed", error);
+    logServerError("host_location_update_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not update the location. Try again.",
@@ -549,6 +559,7 @@ export async function updateHostLocationAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("host_location_updated");
 
   return {
     message: "Location updated.",
@@ -598,7 +609,9 @@ export async function archiveHostLocationAction(
       };
     }
 
-    console.error("Host location archive failed", error);
+    logServerError("host_location_archive_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not archive the location. Try again.",
@@ -609,6 +622,7 @@ export async function archiveHostLocationAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("host_location_archived");
 
   return {
     message: "Location archived.",
@@ -659,7 +673,9 @@ export async function updateEventStatusAction(
       };
     }
 
-    console.error("Event status update failed", error);
+    logServerError("event_status_update_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not update event status. Try again.",
@@ -670,6 +686,11 @@ export async function updateEventStatusAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent(
+    validation.input.status === "cancelled"
+      ? "event_cancelled"
+      : "event_archived",
+  );
 
   return {
     message:
@@ -736,7 +757,9 @@ export async function declareDeckAction(
       };
     }
 
-    console.error("Deck declaration failed", error);
+    logServerError("deck_declaration_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not declare the deck. Try again.",
@@ -747,6 +770,7 @@ export async function declareDeckAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("deck_declared");
 
   return {
     message: "Deck declared.",
@@ -797,7 +821,9 @@ export async function undeclareDeckAction(
       };
     }
 
-    console.error("Deck undeclaration failed", error);
+    logServerError("deck_undeclaration_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not remove the deck declaration. Try again.",
@@ -808,6 +834,7 @@ export async function undeclareDeckAction(
   }
 
   revalidatePath("/game-night");
+  void trackAnalyticsEvent("deck_undeclared");
 
   return {
     message: "Deck undeclared.",
@@ -848,6 +875,7 @@ export async function generatePodsAction(
     });
 
     revalidatePath("/game-night");
+    void trackAnalyticsEvent("pods_generated");
 
     return {
       message:
@@ -888,7 +916,7 @@ export async function generatePodsAction(
       };
     }
 
-    console.error("Pod generation failed", error);
+    logServerError("pod_generation_failed", error, { component: "game-night" });
 
     return {
       message: "Could not generate pods. Try again.",
@@ -942,6 +970,7 @@ export async function movePodSeatAction(
     );
 
     revalidatePath("/game-night");
+    void trackAnalyticsEvent("pod_seat_moved");
 
     return {
       message:
@@ -973,7 +1002,9 @@ export async function movePodSeatAction(
       };
     }
 
-    console.error("Pod seat movement failed", error);
+    logServerError("pod_seat_movement_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not move the pod seat. Try again.",
@@ -1027,6 +1058,7 @@ export async function updatePodSeatLockAction(
       .find((entry) => entry.id === validation.input.seatId);
 
     revalidatePath("/game-night");
+    void trackAnalyticsEvent("pod_seat_lock_updated");
 
     return {
       message:
@@ -1058,7 +1090,9 @@ export async function updatePodSeatLockAction(
       };
     }
 
-    console.error("Pod seat lock update failed", error);
+    logServerError("pod_seat_lock_update_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not update the seat lock. Try again.",
@@ -1114,6 +1148,11 @@ export async function updatePodPublicationAction(
     }
 
     revalidatePath("/game-night");
+    void trackAnalyticsEvent(
+      validation.input.intent === "publish"
+        ? "pods_published"
+        : "pods_unpublished",
+    );
 
     return {
       message:
@@ -1145,7 +1184,9 @@ export async function updatePodPublicationAction(
       };
     }
 
-    console.error("Pod publication failed", error);
+    logServerError("pod_publication_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not update pod publication. Try again.",
@@ -1199,6 +1240,7 @@ export async function logPodGameAction(
     });
 
     revalidatePath("/game-night");
+    void trackAnalyticsEvent("pod_game_logged");
 
     return {
       message: `Logged ${logged.players.length}-player game.`,
@@ -1227,7 +1269,9 @@ export async function logPodGameAction(
       };
     }
 
-    console.error("Pod game logging failed", error);
+    logServerError("pod_game_logging_failed", error, {
+      component: "game-night",
+    });
 
     return {
       message: "Could not log the pod game. Try again.",

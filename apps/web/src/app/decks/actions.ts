@@ -22,6 +22,8 @@ import {
 } from "@/features/decks/deck-form";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export type CreateDeckActionState = {
   message: string | null;
@@ -82,6 +84,7 @@ export async function createDeckAction(
       ownerUserId: session.user.id,
       ...validation.input,
     });
+    void trackAnalyticsEvent("deck_created");
   } catch (error) {
     if (error instanceof DeckPlaygroupAuthorizationError) {
       return {
@@ -101,7 +104,7 @@ export async function createDeckAction(
       };
     }
 
-    console.error("Deck creation failed", error);
+    logServerError("deck_creation_failed", error, { component: "decks" });
 
     return {
       message: "Could not create the deck. Try again.",
@@ -163,6 +166,7 @@ export async function updateDeckAction(
 
     revalidatePath("/decks");
     revalidatePath("/game-night");
+    void trackAnalyticsEvent("deck_updated");
 
     return {
       message: "Deck updated.",
@@ -190,7 +194,7 @@ export async function updateDeckAction(
       };
     }
 
-    console.error("Deck update failed", error);
+    logServerError("deck_update_failed", error, { component: "decks" });
 
     return {
       message: "Could not update the deck. Try again.",
@@ -227,6 +231,7 @@ export async function retireDeckAction(
       ownerUserId: session.user.id,
       deckId: validation.input.deckId,
     });
+    void trackAnalyticsEvent("deck_retired");
   } catch (error) {
     if (error instanceof DeckOwnershipAuthorizationError) {
       return {
@@ -238,7 +243,7 @@ export async function retireDeckAction(
       };
     }
 
-    console.error("Deck retirement failed", error);
+    logServerError("deck_retirement_failed", error, { component: "decks" });
 
     return {
       message: "Could not retire the deck. Try again.",

@@ -78,6 +78,15 @@ protection failure. Non-production smoke tests may raise local caps with
 `POD_TRACKER_WRITE_RATE_LIMIT_MAX`; unset values keep the documented
 defaults.
 
+Runtime failures are emitted as structured JSON logs with controlled
+event names and error class names only. Optional
+GlitchTip/Sentry-compatible reporting is enabled by
+`POD_TRACKER_ERROR_REPORTING_DSN`; unset values are a no-op. Optional
+Umami custom-event tracking is enabled by `POD_TRACKER_UMAMI_API_URL`
+and `POD_TRACKER_UMAMI_WEBSITE_ID`; the server sends coarse action names
+only and does not send tokenized routes, referrers, request payloads,
+notes, addresses, emails, IPs, user agents, or event data objects.
+
 Do not commit API keys, reset tokens, email contents, or private user
 data. Password reset is enabled only through Better Auth's tokenized
 email flow.

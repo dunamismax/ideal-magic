@@ -271,6 +271,11 @@ The TypeScript rewrite's Docker Compose PostgreSQL service publishes to
 `localhost:55432` by default. This avoids silently hitting a host
 PostgreSQL install or SSH tunnel on `5432` during migration smoke tests.
 
+Local backup/restore drills require `pg_dump` and `pg_restore` from the
+same PostgreSQL major version as the Compose PostgreSQL server, or a
+newer compatible client. Homebrew PostgreSQL 17 clients fail against the
+current PostgreSQL 18 Compose service.
+
 Expected coverage:
 
 - TypeScript unit and integration tests for new app code.

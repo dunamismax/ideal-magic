@@ -10,6 +10,7 @@ import {
 import { requireServerSession } from "@/features/auth/server";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { logServerError } from "@/lib/logger";
 
 export async function acceptGroupInviteAction(formData: FormData) {
   const inviteToken = String(formData.get("inviteToken") ?? "").trim();
@@ -32,7 +33,9 @@ export async function acceptGroupInviteAction(formData: FormData) {
       redirect(`/invites/groups/${inviteToken}?error=unavailable`);
     }
 
-    console.error("Playgroup invite acceptance failed", error);
+    logServerError("playgroup_invite_acceptance_failed", error, {
+      component: "groups",
+    });
     redirect(`/invites/groups/${inviteToken}?error=failed`);
   }
 

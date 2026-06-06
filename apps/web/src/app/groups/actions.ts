@@ -41,6 +41,8 @@ import {
 } from "@/features/groups/group-member-management";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export type CreateGroupActionState = {
   message: string | null;
@@ -123,8 +125,9 @@ export async function createGroupAction(
       ownerDisplayName: session.user.name,
       ...validation.input,
     });
+    void trackAnalyticsEvent("playgroup_created");
   } catch (error) {
-    console.error("Playgroup creation failed", error);
+    logServerError("playgroup_creation_failed", error, { component: "groups" });
 
     return {
       message: "Could not create the group. Try again.",
@@ -182,7 +185,7 @@ export async function updateGroupAction(
       };
     }
 
-    console.error("Playgroup update failed", error);
+    logServerError("playgroup_update_failed", error, { component: "groups" });
 
     return {
       message: "Could not update the group. Try again.",
@@ -193,6 +196,7 @@ export async function updateGroupAction(
   }
 
   revalidatePath("/groups");
+  void trackAnalyticsEvent("playgroup_updated");
 
   return {
     message: "Group updated.",
@@ -242,7 +246,7 @@ export async function archiveGroupAction(
       };
     }
 
-    console.error("Playgroup archive failed", error);
+    logServerError("playgroup_archive_failed", error, { component: "groups" });
 
     return {
       message: "Could not archive the group. Try again.",
@@ -255,6 +259,7 @@ export async function archiveGroupAction(
   revalidatePath("/groups");
   revalidatePath("/game-night");
   revalidatePath("/decks");
+  void trackAnalyticsEvent("playgroup_archived");
 
   return {
     message: "Group archived.",
@@ -295,6 +300,7 @@ export async function createGroupInviteAction(
     });
 
     revalidatePath("/groups");
+    void trackAnalyticsEvent("playgroup_invite_created");
 
     return {
       message: "Invite created.",
@@ -319,7 +325,9 @@ export async function createGroupInviteAction(
       };
     }
 
-    console.error("Playgroup invite creation failed", error);
+    logServerError("playgroup_invite_creation_failed", error, {
+      component: "groups",
+    });
 
     return {
       message: "Could not create the invite. Try again.",
@@ -371,7 +379,9 @@ export async function revokeGroupInviteAction(
       };
     }
 
-    console.error("Playgroup invite revocation failed", error);
+    logServerError("playgroup_invite_revocation_failed", error, {
+      component: "groups",
+    });
 
     return {
       message: "Could not revoke the invite. Try again.",
@@ -382,6 +392,7 @@ export async function revokeGroupInviteAction(
   }
 
   revalidatePath("/groups");
+  void trackAnalyticsEvent("playgroup_invite_revoked");
 
   return {
     message: "Invite revoked.",
@@ -447,7 +458,9 @@ export async function changeGroupMemberRoleAction(
       };
     }
 
-    console.error("Playgroup member role change failed", error);
+    logServerError("playgroup_member_role_change_failed", error, {
+      component: "groups",
+    });
 
     return {
       message: "Could not update the member role. Try again.",
@@ -458,6 +471,7 @@ export async function changeGroupMemberRoleAction(
   }
 
   revalidatePath("/groups");
+  void trackAnalyticsEvent("playgroup_member_role_changed");
 
   return {
     message: "Member role updated.",
@@ -518,7 +532,9 @@ export async function removeGroupMemberAction(
       };
     }
 
-    console.error("Playgroup member removal failed", error);
+    logServerError("playgroup_member_removal_failed", error, {
+      component: "groups",
+    });
 
     return {
       message: "Could not remove the member. Try again.",
@@ -529,6 +545,7 @@ export async function removeGroupMemberAction(
   }
 
   revalidatePath("/groups");
+  void trackAnalyticsEvent("playgroup_member_removed");
 
   return {
     message: "Member removed from group.",

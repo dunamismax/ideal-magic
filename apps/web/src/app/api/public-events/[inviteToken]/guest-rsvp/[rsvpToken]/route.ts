@@ -12,6 +12,8 @@ import {
   rateLimitPolicies,
   rateLimitResponse,
 } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +37,10 @@ export async function GET(
     }
 
     return Response.json(result);
-  } catch {
-    console.error("Public guest RSVP lookup failed");
+  } catch (error) {
+    logServerError("public_guest_rsvp_lookup_failed", error, {
+      component: "public-events",
+    });
 
     return Response.json(
       { error: "Guest RSVP is unavailable" },
@@ -97,6 +101,8 @@ export async function PATCH(
       return Response.json({ error: "Guest RSVP not found" }, { status: 404 });
     }
 
+    void trackAnalyticsEvent("guest_rsvp_updated");
+
     return Response.json(result);
   } catch (error) {
     if (error instanceof PublicGuestRsvpValidationError) {
@@ -109,7 +115,9 @@ export async function PATCH(
       );
     }
 
-    console.error("Public guest RSVP update failed");
+    logServerError("public_guest_rsvp_update_failed", error, {
+      component: "public-events",
+    });
 
     return Response.json(
       { error: "Guest RSVP is unavailable" },
@@ -159,9 +167,13 @@ export async function DELETE(
       return Response.json({ error: "Guest RSVP not found" }, { status: 404 });
     }
 
+    void trackAnalyticsEvent("guest_rsvp_cancelled");
+
     return Response.json(result);
-  } catch {
-    console.error("Public guest RSVP cancellation failed");
+  } catch (error) {
+    logServerError("public_guest_rsvp_cancellation_failed", error, {
+      component: "public-events",
+    });
 
     return Response.json(
       { error: "Guest RSVP is unavailable" },

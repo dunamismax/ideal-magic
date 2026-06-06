@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { createClient, type RedisClientType } from "redis";
 
+import { logServerError } from "@/lib/logger";
+
 type HeaderSource = Pick<Headers, "get">;
 
 export type RateLimitPolicy = {
@@ -159,7 +161,9 @@ function createValkeyRateLimitStore(url: string): RateLimitStore {
 
   client.on("error", () => {
     if (process.env.NODE_ENV !== "test") {
-      console.error("Valkey rate limit client error");
+      logServerError("valkey_rate_limit_client_error", undefined, {
+        component: "rate-limit",
+      });
     }
   });
 

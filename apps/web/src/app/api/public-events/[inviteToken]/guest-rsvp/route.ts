@@ -10,6 +10,8 @@ import {
   rateLimitPolicies,
   rateLimitResponse,
 } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +67,8 @@ export async function POST(
       );
     }
 
+    void trackAnalyticsEvent("guest_rsvp_created");
+
     return Response.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof PublicGuestRsvpValidationError) {
@@ -77,7 +81,9 @@ export async function POST(
       );
     }
 
-    console.error("Public guest RSVP write failed");
+    logServerError("public_guest_rsvp_write_failed", error, {
+      component: "public-events",
+    });
 
     return Response.json(
       { error: "Guest RSVP is unavailable" },

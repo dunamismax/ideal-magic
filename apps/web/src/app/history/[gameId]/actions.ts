@@ -16,6 +16,7 @@ import {
 import { readGamePlayerOutcomesFromFormData } from "@/features/games/player-outcomes";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { logServerError } from "@/lib/logger";
 
 export type CorrectGameResultActionState = {
   message: string | null;
@@ -96,7 +97,9 @@ export async function correctGameResultAction(
       };
     }
 
-    console.error("Game result correction failed", error);
+    logServerError("game_result_correction_failed", error, {
+      component: "history",
+    });
 
     return {
       message: "Could not correct the game result. Try again.",

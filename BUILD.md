@@ -3,7 +3,7 @@
 Completion roadmap for Pod Tracker. `README.md` describes the product
 and `AGENTS.md` is the binding repo policy.
 
-Last reviewed: 2026-06-05.
+Last reviewed: 2026-06-06.
 
 This file is a forward plan, not a changelog. Keep it short enough that
 future agents can scan it, choose the next unfinished box, implement it,
@@ -330,18 +330,18 @@ agent session.
 
 ## Pass 8 - Observability And Operations
 
-- [ ] Add structured logging without sensitive payloads.
-- [ ] Add GlitchTip/Sentry-compatible error reporting.
-- [ ] Add Umami analytics with respectful event names and no private
+- [x] Add structured logging without sensitive payloads.
+- [x] Add GlitchTip/Sentry-compatible error reporting.
+- [x] Add Umami analytics with respectful event names and no private
   payloads.
-- [ ] Add database-aware `/healthz` and `/readyz` checks for production
+- [x] Add database-aware `/healthz` and `/readyz` checks for production
   dependencies actually required at cutover.
-- [ ] Add production `.env.example` files with placeholders only.
-- [ ] Add Caddy config for the Next.js service.
-- [ ] Add Docker Compose production profile or deployment docs for
+- [x] Add production `.env.example` files with placeholders only.
+- [x] Add Caddy config for the Next.js service.
+- [x] Add Docker Compose production profile or deployment docs for
   Postgres, app, optional Valkey, optional MinIO, analytics, and error
   reporting.
-- [ ] Add backup and restore scripts for the TypeScript/Postgres shape.
+- [x] Add backup and restore scripts for the TypeScript/Postgres shape.
 - [ ] Run and document a local backup/restore drill.
 
 ## Pass 9 - End-To-End Release Candidate

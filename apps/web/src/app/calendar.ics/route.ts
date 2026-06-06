@@ -2,6 +2,7 @@ import { createDatabaseConnection } from "@/db/client";
 import { listCalendarEventsForViewer } from "@/db/queries/event-planning";
 import { getLoginRedirectPath, getServerSession } from "@/features/auth/server";
 import { renderCalendarExport } from "@/features/events/calendar-export";
+import { logServerError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,8 @@ export async function GET(request: Request) {
         "content-type": "text/calendar; charset=utf-8",
       },
     });
-  } catch {
-    console.error("Calendar export failed");
+  } catch (error) {
+    logServerError("calendar_export_failed", error, { component: "calendar" });
 
     return new Response("Calendar export is unavailable.", {
       status: 503,

@@ -16,6 +16,8 @@ import {
 import { readGamePlayerOutcomesFromFormData } from "@/features/games/player-outcomes";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export type SavePodLifeGameActionState = {
   message: string | null;
@@ -75,6 +77,7 @@ export async function savePodLifeGameAction(
     revalidatePath("/game-night");
     revalidatePath("/history");
     revalidatePath(`/events/${eventId}/pods/${podId}/life`);
+    void trackAnalyticsEvent("pod_life_game_saved");
 
     return {
       message: `Saved ${logged.players.length}-player game to history.`,
@@ -106,7 +109,9 @@ export async function savePodLifeGameAction(
       };
     }
 
-    console.error("Pod life game save failed", error);
+    logServerError("pod_life_game_save_failed", error, {
+      component: "life",
+    });
 
     return {
       message: "Could not save the game. Try again.",

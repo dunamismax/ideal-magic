@@ -11,6 +11,8 @@ import { requireServerSession } from "@/features/auth/server";
 import type { LifeCounterSession } from "@/features/life/session";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { logServerError } from "@/lib/logger";
 
 export type SyncLinkedLifeCounterSessionInput = {
   kind: LinkedLifeCounterKind;
@@ -63,6 +65,8 @@ export async function syncLinkedLifeCounterSessionAction(
       };
     }
 
+    void trackAnalyticsEvent("linked_life_counter_synced");
+
     return result;
   } catch (error) {
     if (error instanceof LinkedLifeCounterAuthorizationError) {
@@ -85,7 +89,9 @@ export async function syncLinkedLifeCounterSessionAction(
       };
     }
 
-    console.error("Linked life counter sync failed", error);
+    logServerError("linked_life_counter_sync_failed", error, {
+      component: "life",
+    });
 
     return {
       ok: false,

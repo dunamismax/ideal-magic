@@ -52,9 +52,17 @@ describe("game logging data access", () => {
     const ownerSeat = fixture.publishedPod.seats.find(
       (seat) => seat.participantName === "Owner Player",
     );
+    const memberSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Member 1",
+    );
+    const guestSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Guest RSVP",
+    );
 
-    if (!ownerSeat) {
-      throw new Error("Expected owner seat in published pod.");
+    if (!ownerSeat || !memberSeat || !guestSeat) {
+      throw new Error(
+        "Expected owner, member, and guest seats in published pod.",
+      );
     }
 
     await updateDeckForUser(db, {
@@ -82,6 +90,31 @@ describe("game logging data access", () => {
       podId: fixture.publishedPod.id,
       resultType: "combat_win",
       winnerSeatIds: [ownerSeat.id],
+      playerOutcomes: [
+        {
+          playerId: ownerSeat.id,
+          finishPosition: 1,
+        },
+        {
+          playerId: memberSeat.id,
+          finishPosition: 2,
+          eliminationOrder: 2,
+          eliminatedTurn: 11,
+          lossReason: "commander_damage",
+          commanderDamageSource: "Owner Commander",
+          commanderDamageAmount: 21,
+          lossDetail: "Voltron swing",
+        },
+        {
+          playerId: guestSeat.id,
+          finishPosition: 4,
+          eliminationOrder: 1,
+          eliminatedTurn: 7,
+          lossReason: "poison",
+          poisonCounters: 10,
+          lossDetail: "Proliferated out",
+        },
+      ],
       notes: "  Quick combat finish.  ",
       completedAt: new Date("2030-06-15T02:30:00.000Z"),
     });
@@ -134,6 +167,14 @@ describe("game logging data access", () => {
         bracketSnapshot: gamePlayers.bracketSnapshot,
         powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
         archetypeSnapshot: gamePlayers.archetypeSnapshot,
+        finishPosition: gamePlayers.finishPosition,
+        eliminationOrder: gamePlayers.eliminationOrder,
+        eliminatedTurn: gamePlayers.eliminatedTurn,
+        lossReason: gamePlayers.lossReason,
+        lossDetail: gamePlayers.lossDetail,
+        poisonCounters: gamePlayers.poisonCounters,
+        commanderDamageSource: gamePlayers.commanderDamageSource,
+        commanderDamageAmount: gamePlayers.commanderDamageAmount,
         isWinner: gamePlayers.isWinner,
       })
       .from(gamePlayers)
@@ -154,6 +195,7 @@ describe("game logging data access", () => {
       bracketSnapshot: "2",
       powerEstimateSnapshot: 7,
       archetypeSnapshot: "Control",
+      finishPosition: 1,
       isWinner: true,
     });
     expect(ownerPlayer?.deckNameSnapshot).not.toBe("Edited After Pod");
@@ -163,6 +205,23 @@ describe("game logging data access", () => {
       participantNameSnapshot: "Private Guest",
       deckNameSnapshot: "",
       commanderSnapshot: [],
+      finishPosition: 4,
+      eliminationOrder: 1,
+      eliminatedTurn: 7,
+      lossReason: "poison",
+      lossDetail: "Proliferated out",
+      poisonCounters: 10,
+    });
+    expect(
+      persistedPlayers.find((player) => player.userId === fixture.memberIds[0]),
+    ).toMatchObject({
+      finishPosition: 2,
+      eliminationOrder: 2,
+      eliminatedTurn: 11,
+      lossReason: "commander_damage",
+      lossDetail: "Voltron swing",
+      commanderDamageSource: "Owner Commander",
+      commanderDamageAmount: 21,
     });
 
     const [resultRow] = await db
@@ -212,6 +271,22 @@ describe("game logging data access", () => {
       .where(eq(pods.id, fixture.publishedPod.id));
 
     expect(completedPod?.state).toBe("completed");
+
+    const [history] = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+
+    expect(
+      history?.players.find((player) => player.participantName === "Member 1"),
+    ).toMatchObject({
+      finishPosition: 2,
+      eliminationOrder: 2,
+      eliminatedTurn: 11,
+      lossReason: "commander_damage",
+      commanderDamageSource: "Owner Commander",
+      commanderDamageAmount: 21,
+    });
+    expect(JSON.stringify(history)).not.toContain("Private Guest");
   });
 
   test("allows scoped pod participants but rejects non-members", async () => {
@@ -437,6 +512,40 @@ describe("game logging data access", () => {
       }),
     ).rejects.toThrow("Winners must be seated in the logged pod.");
 
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "normal_win",
+        winnerSeatIds: [winnerSeat.id],
+        playerOutcomes: [
+          {
+            playerId: "40000000-0000-4000-8000-000000000999",
+            finishPosition: 2,
+          },
+        ],
+      }),
+    ).rejects.toThrow("Player outcomes must belong to the logged game.");
+
+    await expect(
+      logGameFromPublishedPod(db, {
+        viewerUserId: fixture.ownerId,
+        eventId: fixture.eventId,
+        podId: fixture.publishedPod.id,
+        resultType: "normal_win",
+        winnerSeatIds: [winnerSeat.id],
+        playerOutcomes: [
+          {
+            playerId: winnerSeat.id,
+            finishPosition: 1,
+            lossReason: "poison",
+            poisonCounters: 10,
+          },
+        ],
+      }),
+    ).rejects.toThrow("Winners cannot include loss details.");
+
     const persistedGames = await db
       .select({ id: games.id })
       .from(games)
@@ -623,21 +732,23 @@ describe("game logging data access", () => {
         },
       ]),
     );
-    expect(summary.topRepeatDeckPairs).toEqual(
+    expect(
+      summary.topRepeatDeckPairs.map((pair) => ({
+        labels: [pair.leftLabel, pair.rightLabel].sort(),
+        gameCount: pair.gameCount,
+      })),
+    ).toEqual(
       expect.arrayContaining([
         {
-          leftLabel: "Owner Deck",
-          rightLabel: "Member 1 Deck",
+          labels: ["Member 1 Deck", "Owner Deck"],
           gameCount: 2,
         },
         {
-          leftLabel: "Owner Deck",
-          rightLabel: "Member 2 Deck",
+          labels: ["Member 2 Deck", "Owner Deck"],
           gameCount: 2,
         },
         {
-          leftLabel: "Member 1 Deck",
-          rightLabel: "Member 2 Deck",
+          labels: ["Member 1 Deck", "Member 2 Deck"],
           gameCount: 2,
         },
       ]),

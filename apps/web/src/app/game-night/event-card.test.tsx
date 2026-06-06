@@ -151,6 +151,13 @@ const loggedGame: LoggedGameHistorySummary = {
       participantName: "Riley Chen",
       seatPosition: 1,
       finishPosition: 1,
+      eliminationOrder: null,
+      eliminatedTurn: null,
+      lossReason: null,
+      lossDetail: "",
+      poisonCounters: null,
+      commanderDamageSource: "",
+      commanderDamageAmount: null,
       isWinner: true,
       deck: {
         deckId: viewerDeck.id,
@@ -167,6 +174,13 @@ const loggedGame: LoggedGameHistorySummary = {
       participantName: "Guest RSVP",
       seatPosition: 2,
       finishPosition: 1,
+      eliminationOrder: null,
+      eliminatedTurn: null,
+      lossReason: null,
+      lossDetail: "",
+      poisonCounters: null,
+      commanderDamageSource: "",
+      commanderDamageAmount: null,
       isWinner: true,
       deck: null,
     },
@@ -469,6 +483,16 @@ describe("event card", () => {
       "value",
       pod.seats[0]!.id,
     );
+    expect(screen.getByText("Finish and Loss Details")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Seat 1: Riley Chen finish position"),
+    ).toHaveAttribute("name", `finishPosition:${pod.seats[0]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 1: Riley Chen elimination order"),
+    ).toHaveAttribute("name", `eliminationOrder:${pod.seats[0]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 1: Riley Chen loss reason"),
+    ).toHaveAttribute("name", `lossReason:${pod.seats[0]!.id}`);
     expect(screen.getByLabelText("Notes for Pod 1")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Log game for Pod 1" }),

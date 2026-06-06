@@ -56,6 +56,7 @@ import {
   type LogPodGameInput,
   validateLogPodGameInput,
 } from "@/features/games/game-form";
+import { readGamePlayerOutcomesFromFormData } from "@/features/games/player-outcomes";
 import {
   generateDraftPodsForEvent,
   publishPodsForEventManager,
@@ -1170,6 +1171,7 @@ export async function logPodGameAction(
     podId: String(formData.get("podId") ?? ""),
     resultType: normalizeLogGameResultType(formData.get("resultType")),
     winnerSeatIds: formData.getAll("winnerSeatIds").map(String),
+    playerOutcomes: readGamePlayerOutcomesFromFormData(formData),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateLogPodGameInput({
@@ -1177,6 +1179,7 @@ export async function logPodGameAction(
     podId: fields.podId,
     resultType: String(formData.get("resultType") ?? ""),
     winnerSeatIds: fields.winnerSeatIds,
+    playerOutcomes: fields.playerOutcomes,
     notes: fields.notes,
   });
 

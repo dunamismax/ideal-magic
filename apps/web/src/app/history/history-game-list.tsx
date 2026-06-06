@@ -80,6 +80,11 @@ export function HistoryGameList({
                     No deck snapshot
                   </p>
                 )}
+                {formatOutcomeDetail(player) ? (
+                  <p className="mt-3 text-xs font-semibold text-muted">
+                    {formatOutcomeDetail(player)}
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>
@@ -93,6 +98,50 @@ export function HistoryGameList({
       ))}
     </div>
   );
+}
+
+function formatOutcomeDetail(
+  player: LoggedGameHistorySummary["players"][number],
+) {
+  const details = [
+    player.eliminationOrder ? `Elim ${player.eliminationOrder}` : null,
+    player.eliminatedTurn ? `Turn ${player.eliminatedTurn}` : null,
+    player.lossReason ? formatLossReason(player.lossReason) : null,
+    player.poisonCounters ? `${player.poisonCounters} poison` : null,
+    player.commanderDamageAmount
+      ? `${player.commanderDamageAmount} commander from ${player.commanderDamageSource || "unknown"}`
+      : null,
+    player.lossDetail || null,
+  ].filter((detail) => detail !== null);
+
+  return details.join(" - ");
+}
+
+function formatLossReason(
+  lossReason: NonNullable<
+    LoggedGameHistorySummary["players"][number]["lossReason"]
+  >,
+) {
+  switch (lossReason) {
+    case "combat_damage":
+      return "Combat loss";
+    case "commander_damage":
+      return "Commander loss";
+    case "poison":
+      return "Poison loss";
+    case "combo":
+      return "Combo loss";
+    case "concession":
+      return "Concession";
+    case "decked":
+      return "Decked";
+    case "life_total":
+      return "Life total";
+    case "other":
+      return "Other loss";
+    case "unknown":
+      return "Unknown loss";
+  }
 }
 
 function Badge({ value }: { value: string }) {

@@ -14,6 +14,7 @@ import {
   type SaveEventLifeGameInput,
   validateSaveEventLifeGameInput,
 } from "@/features/life/event-game-save";
+import { readGamePlayerOutcomesFromFormData } from "@/features/games/player-outcomes";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
 
@@ -32,12 +33,14 @@ export async function saveEventLifeGameAction(
     eventId,
     resultType: normalizeLifeGameResultType(formData.get("resultType")),
     winnerParticipantIds: formData.getAll("winnerParticipantIds").map(String),
+    playerOutcomes: readGamePlayerOutcomesFromFormData(formData),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateSaveEventLifeGameInput({
     eventId: fields.eventId,
     resultType: String(formData.get("resultType") ?? ""),
     winnerParticipantIds: fields.winnerParticipantIds,
+    playerOutcomes: fields.playerOutcomes,
     notes: fields.notes,
   });
 

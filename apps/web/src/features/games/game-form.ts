@@ -1,10 +1,17 @@
 import type { GameResultType } from "@/db/queries/games";
+import {
+  getPlayerOutcomeValidationError,
+  type GamePlayerOutcomeInput,
+  isUuid,
+  normalizeGamePlayerOutcomes,
+} from "./player-outcomes";
 
 export type LogPodGameInput = {
   eventId: string;
   podId: string;
   resultType: GameResultType;
   winnerSeatIds: string[];
+  playerOutcomes: GamePlayerOutcomeInput[];
   notes: string;
 };
 
@@ -16,6 +23,7 @@ export type LogPodGameValidationResult =
         podId: string;
         resultType: GameResultType;
         winnerSeatIds: string[];
+        playerOutcomes: GamePlayerOutcomeInput[];
         notes: string;
       };
     }
@@ -24,6 +32,15 @@ export type LogPodGameValidationResult =
       fieldErrors: Partial<Record<keyof LogPodGameInput, string>>;
       fields: LogPodGameInput;
     };
+
+type LogPodGameRawInput = Partial<
+  Record<
+    keyof Omit<LogPodGameInput, "playerOutcomes">,
+    FormDataEntryValue | string | readonly (FormDataEntryValue | string)[]
+  >
+> & {
+  playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
+};
 
 const resultTypes = [
   "normal_win",
@@ -50,18 +67,14 @@ const noWinnerResultTypes = [
 ] as const satisfies readonly GameResultType[];
 
 export function validateLogPodGameInput(
-  rawInput: Partial<
-    Record<
-      keyof LogPodGameInput,
-      FormDataEntryValue | string | readonly (FormDataEntryValue | string)[]
-    >
-  >,
+  rawInput: LogPodGameRawInput,
 ): LogPodGameValidationResult {
   const fields: LogPodGameInput = {
     eventId: normalizeText(rawInput.eventId),
     podId: normalizeText(rawInput.podId),
     resultType: normalizeResultType(rawInput.resultType),
     winnerSeatIds: normalizeWinnerSeatIds(rawInput.winnerSeatIds),
+    playerOutcomes: normalizeGamePlayerOutcomes(rawInput.playerOutcomes),
     notes: normalizeText(rawInput.notes),
   };
   const fieldErrors: Partial<Record<keyof LogPodGameInput, string>> = {};
@@ -95,6 +108,14 @@ export function validateLogPodGameInput(
     }
   }
 
+  const playerOutcomeError = getPlayerOutcomeValidationError(
+    fields.playerOutcomes,
+  );
+
+  if (playerOutcomeError) {
+    fieldErrors.playerOutcomes = playerOutcomeError;
+  }
+
   if (Object.keys(fieldErrors).length > 0) {
     return {
       ok: false,
@@ -110,6 +131,7 @@ export function validateLogPodGameInput(
       podId: fields.podId,
       resultType: fields.resultType,
       winnerSeatIds: fields.winnerSeatIds,
+      playerOutcomes: fields.playerOutcomes,
       notes: fields.notes,
     },
   };
@@ -164,12 +186,6 @@ function normalizeWinnerSeatIds(
   }
 
   return [...uniqueWinnerSeatIds];
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
 }
 
 function requiresSingleWinner(resultType: GameResultType) {

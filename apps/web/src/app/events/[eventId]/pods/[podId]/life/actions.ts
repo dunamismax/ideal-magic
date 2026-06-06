@@ -13,6 +13,7 @@ import {
   type SavePodLifeGameInput,
   validateSavePodLifeGameInput,
 } from "@/features/life/pod-game-save";
+import { readGamePlayerOutcomesFromFormData } from "@/features/games/player-outcomes";
 import { assertSameOriginServerAction } from "@/features/security/csrf";
 import { rateLimitPolicies } from "@/features/security/rate-limit";
 
@@ -42,6 +43,7 @@ export async function savePodLifeGameAction(
     podId,
     resultType: normalizeLifeGameResultType(formData.get("resultType")),
     winnerSeatIds: formData.getAll("winnerSeatIds").map(String),
+    playerOutcomes: readGamePlayerOutcomesFromFormData(formData),
     notes: String(formData.get("notes") ?? ""),
   };
   const validation = validateSavePodLifeGameInput({
@@ -49,6 +51,7 @@ export async function savePodLifeGameAction(
     podId: fields.podId,
     resultType: String(formData.get("resultType") ?? ""),
     winnerSeatIds: fields.winnerSeatIds,
+    playerOutcomes: fields.playerOutcomes,
     notes: fields.notes,
   });
 

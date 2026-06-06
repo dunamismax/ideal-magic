@@ -65,6 +65,22 @@ describe("pod life game save form", () => {
       screen.getByRole("checkbox", { name: "Seat 2: Guest RSVP" }),
     ).toHaveAttribute("value", pod.seats[1]!.id);
     expect(screen.getByLabelText("Notes for Pod 1")).toBeInTheDocument();
+    expect(screen.getByText("Finish and Loss Details")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Seat 1: Riley Chen finish position"),
+    ).toHaveAttribute("name", `finishPosition:${pod.seats[0]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 2: Guest RSVP elimination order"),
+    ).toHaveAttribute("name", `eliminationOrder:${pod.seats[1]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 2: Guest RSVP loss reason"),
+    ).toHaveAttribute("name", `lossReason:${pod.seats[1]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 2: Guest RSVP poison counters"),
+    ).toHaveAttribute("name", `poisonCounters:${pod.seats[1]!.id}`);
+    expect(
+      screen.getByLabelText("Seat 2: Guest RSVP commander damage amount"),
+    ).toHaveAttribute("name", `commanderDamageAmount:${pod.seats[1]!.id}`);
     expect(
       screen.getByRole("button", { name: "Save game for Pod 1" }),
     ).toBeInTheDocument();

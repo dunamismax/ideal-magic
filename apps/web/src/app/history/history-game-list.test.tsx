@@ -36,6 +36,13 @@ const loggedGame: LoggedGameHistorySummary = {
       participantName: "Riley Chen",
       seatPosition: 1,
       finishPosition: 1,
+      eliminationOrder: null,
+      eliminatedTurn: null,
+      lossReason: null,
+      lossDetail: "",
+      poisonCounters: null,
+      commanderDamageSource: "",
+      commanderDamageAmount: null,
       isWinner: true,
       deck: {
         deckId: "50000000-0000-4000-8000-000000000006",
@@ -51,7 +58,14 @@ const loggedGame: LoggedGameHistorySummary = {
       id: "50000000-0000-4000-8000-000000000007",
       participantName: "Guest RSVP",
       seatPosition: 2,
-      finishPosition: null,
+      finishPosition: 2,
+      eliminationOrder: 1,
+      eliminatedTurn: 8,
+      lossReason: "poison",
+      lossDetail: "Last blocker removed",
+      poisonCounters: 10,
+      commanderDamageSource: "",
+      commanderDamageAmount: null,
       isWinner: false,
       deck: null,
     },
@@ -83,6 +97,11 @@ describe("history game list", () => {
       screen.getByText("Colors WUBG - Bracket 3 - Power 7 - Counters"),
     ).toBeInTheDocument();
     expect(screen.getByText("Guest RSVP")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Elim 1 - Turn 8 - Poison loss - 10 poison - Last blocker removed",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Shared table note")).toBeInTheDocument();
     expect(screen.queryByText(/private guest/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
@@ -110,6 +129,13 @@ describe("history game list", () => {
                 id: "50000000-0000-4000-8000-000000000008",
                 isWinner: true,
                 finishPosition: 1,
+                eliminationOrder: null,
+                eliminatedTurn: null,
+                lossReason: null,
+                lossDetail: "",
+                poisonCounters: null,
+                commanderDamageSource: "",
+                commanderDamageAmount: null,
               },
             ],
           },

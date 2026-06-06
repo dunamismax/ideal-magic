@@ -17,6 +17,7 @@ describe("event life game save validation", () => {
         eventId: "50000000-0000-4000-8000-000000000001",
         resultType: "combat_win",
         winnerParticipantIds: ["50000000-0000-4000-8000-000000000002"],
+        playerOutcomes: [],
         notes: "Saved from event counter.",
       },
     });
@@ -58,5 +59,49 @@ describe("event life game save validation", () => {
         "Choose at least two winners for a team win.",
       );
     }
+  });
+
+  test("accepts finish order and commander damage loss details", () => {
+    const result = validateSaveEventLifeGameInput({
+      eventId: "50000000-0000-4000-8000-000000000001",
+      resultType: "combat_win",
+      winnerParticipantIds: ["50000000-0000-4000-8000-000000000002"],
+      playerOutcomes: [
+        {
+          playerId: "50000000-0000-4000-8000-000000000002",
+          finishPosition: 1,
+        },
+        {
+          playerId: "50000000-0000-4000-8000-000000000003",
+          finishPosition: 2,
+          eliminationOrder: 1,
+          eliminatedTurn: 9,
+          lossReason: "commander_damage",
+          commanderDamageSource: "Nekusar",
+          commanderDamageAmount: 21,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      input: {
+        playerOutcomes: [
+          {
+            playerId: "50000000-0000-4000-8000-000000000002",
+            finishPosition: 1,
+          },
+          {
+            playerId: "50000000-0000-4000-8000-000000000003",
+            finishPosition: 2,
+            eliminationOrder: 1,
+            eliminatedTurn: 9,
+            lossReason: "commander_damage",
+            commanderDamageSource: "Nekusar",
+            commanderDamageAmount: 21,
+          },
+        ],
+      },
+    });
   });
 });

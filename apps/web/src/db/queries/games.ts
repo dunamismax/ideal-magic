@@ -4,6 +4,11 @@ import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
 import { normalizePageRequest, type PageRequest } from "../pagination";
 import {
+  type GameLossReason,
+  type GamePlayerOutcomeInput,
+  normalizeGamePlayerOutcomes,
+} from "@/features/games/player-outcomes";
+import {
   eventDeckDeclarations,
   eventRsvps,
   events,
@@ -48,6 +53,14 @@ export type LoggedPodGameSummary = {
     podSeatId: string;
     participantName: string;
     seatPosition: number;
+    finishPosition: number | null;
+    eliminationOrder: number | null;
+    eliminatedTurn: number | null;
+    lossReason: GameLossReason | null;
+    lossDetail: string;
+    poisonCounters: number | null;
+    commanderDamageSource: string;
+    commanderDamageAmount: number | null;
     isWinner: boolean;
     deck: {
       deckId: string;
@@ -72,6 +85,14 @@ export type LoggedEventGameSummary = {
     participantId: string;
     participantName: string;
     seatPosition: number;
+    finishPosition: number | null;
+    eliminationOrder: number | null;
+    eliminatedTurn: number | null;
+    lossReason: GameLossReason | null;
+    lossDetail: string;
+    poisonCounters: number | null;
+    commanderDamageSource: string;
+    commanderDamageAmount: number | null;
     isWinner: boolean;
     deck: {
       deckId: string;
@@ -114,6 +135,13 @@ export type LoggedGameHistorySummary = {
     participantName: string;
     seatPosition: number;
     finishPosition: number | null;
+    eliminationOrder: number | null;
+    eliminatedTurn: number | null;
+    lossReason: GameLossReason | null;
+    lossDetail: string;
+    poisonCounters: number | null;
+    commanderDamageSource: string;
+    commanderDamageAmount: number | null;
     isWinner: boolean;
     deck: {
       deckId: string;
@@ -475,6 +503,13 @@ async function listScopedLoggedGames(
       archetypeSnapshot: gamePlayers.archetypeSnapshot,
       seatPosition: gamePlayers.seatPosition,
       finishPosition: gamePlayers.finishPosition,
+      eliminationOrder: gamePlayers.eliminationOrder,
+      eliminatedTurn: gamePlayers.eliminatedTurn,
+      lossReason: gamePlayers.lossReason,
+      lossDetail: gamePlayers.lossDetail,
+      poisonCounters: gamePlayers.poisonCounters,
+      commanderDamageSource: gamePlayers.commanderDamageSource,
+      commanderDamageAmount: gamePlayers.commanderDamageAmount,
       isWinner: gamePlayers.isWinner,
     })
     .from(gamePlayers)
@@ -501,6 +536,13 @@ async function listScopedLoggedGames(
         participantName,
         seatPosition: player.seatPosition,
         finishPosition: player.finishPosition,
+        eliminationOrder: player.eliminationOrder,
+        eliminatedTurn: player.eliminatedTurn,
+        lossReason: asGameLossReason(player.lossReason),
+        lossDetail: player.lossDetail,
+        poisonCounters: player.poisonCounters,
+        commanderDamageSource: player.commanderDamageSource,
+        commanderDamageAmount: player.commanderDamageAmount,
         isWinner: player.isWinner,
         deck: player.deckId
           ? {
@@ -693,6 +735,7 @@ export async function logGameFromPublishedPod(
     podId: string;
     resultType: GameResultType;
     winnerSeatIds?: readonly string[];
+    playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
     notes?: string;
     completedAt?: Date;
   },
@@ -762,6 +805,12 @@ export async function logGameFromPublishedPod(
         );
       }
     }
+    const outcomesBySeatId = validatePlayerOutcomesForCandidates({
+      outcomes: input.playerOutcomes,
+      candidateIds: seats.map((seat) => seat.id),
+      winnerIds: winnerSeatIds,
+      blockedError: (message) => new PodGameLoggingBlockedError(message),
+    });
 
     const notes = normalizeNotes(input.notes);
     const completedAt = input.completedAt ?? new Date();
@@ -792,6 +841,11 @@ export async function logGameFromPublishedPod(
       .insert(gamePlayers)
       .values(
         seats.map((seat) => ({
+          ...resolvePlayerOutcomeFields({
+            playerId: seat.id,
+            isWinner: winnerSeatIds.has(seat.id),
+            outcomesByPlayerId: outcomesBySeatId,
+          }),
           gameId: game.id,
           podSeatId: seat.id,
           userId: seat.userId,
@@ -805,7 +859,6 @@ export async function logGameFromPublishedPod(
           powerEstimateSnapshot: seat.powerEstimateSnapshot,
           archetypeSnapshot: seat.archetypeSnapshot ?? "",
           seatPosition: seat.seatPosition,
-          finishPosition: winnerSeatIds.has(seat.id) ? 1 : null,
           isWinner: winnerSeatIds.has(seat.id),
           team:
             input.resultType === "team_win" && winnerSeatIds.has(seat.id)
@@ -827,6 +880,14 @@ export async function logGameFromPublishedPod(
         powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
         archetypeSnapshot: gamePlayers.archetypeSnapshot,
         seatPosition: gamePlayers.seatPosition,
+        finishPosition: gamePlayers.finishPosition,
+        eliminationOrder: gamePlayers.eliminationOrder,
+        eliminatedTurn: gamePlayers.eliminatedTurn,
+        lossReason: gamePlayers.lossReason,
+        lossDetail: gamePlayers.lossDetail,
+        poisonCounters: gamePlayers.poisonCounters,
+        commanderDamageSource: gamePlayers.commanderDamageSource,
+        commanderDamageAmount: gamePlayers.commanderDamageAmount,
         isWinner: gamePlayers.isWinner,
       });
 
@@ -879,6 +940,14 @@ export async function logGameFromPublishedPod(
               ? player.participantNameSnapshot || "Player"
               : "Guest RSVP",
           seatPosition: player.seatPosition,
+          finishPosition: player.finishPosition,
+          eliminationOrder: player.eliminationOrder,
+          eliminatedTurn: player.eliminatedTurn,
+          lossReason: asGameLossReason(player.lossReason),
+          lossDetail: player.lossDetail,
+          poisonCounters: player.poisonCounters,
+          commanderDamageSource: player.commanderDamageSource,
+          commanderDamageAmount: player.commanderDamageAmount,
           isWinner: player.isWinner,
           deck: player.deckId
             ? {
@@ -904,6 +973,7 @@ export async function saveCompletedPodLifeCounterGame(
     podId: string;
     resultType: GameResultType;
     winnerSeatIds?: readonly string[];
+    playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
     notes?: string;
     completedAt?: Date;
   },
@@ -918,6 +988,7 @@ export async function saveCompletedEventLifeCounterGame(
     eventId: string;
     resultType: GameResultType;
     winnerParticipantIds?: readonly string[];
+    playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
     notes?: string;
     completedAt?: Date;
   },
@@ -986,6 +1057,12 @@ export async function saveCompletedEventLifeCounterGame(
         );
       }
     }
+    const outcomesByParticipantId = validatePlayerOutcomesForCandidates({
+      outcomes: input.playerOutcomes,
+      candidateIds: participants.map((participant) => participant.id),
+      winnerIds: winnerParticipantIds,
+      blockedError: (message) => new EventGameLoggingBlockedError(message),
+    });
 
     const notes = normalizeNotes(input.notes);
     const completedAt = input.completedAt ?? new Date();
@@ -1015,6 +1092,11 @@ export async function saveCompletedEventLifeCounterGame(
       .insert(gamePlayers)
       .values(
         participants.map((participant, index) => ({
+          ...resolvePlayerOutcomeFields({
+            playerId: participant.id,
+            isWinner: winnerParticipantIds.has(participant.id),
+            outcomesByPlayerId: outcomesByParticipantId,
+          }),
           gameId: game.id,
           podSeatId: null,
           userId: participant.userId,
@@ -1028,7 +1110,6 @@ export async function saveCompletedEventLifeCounterGame(
           powerEstimateSnapshot: participant.powerEstimateSnapshot,
           archetypeSnapshot: participant.archetypeSnapshot ?? "",
           seatPosition: index + 1,
-          finishPosition: winnerParticipantIds.has(participant.id) ? 1 : null,
           isWinner: winnerParticipantIds.has(participant.id),
           team:
             input.resultType === "team_win" &&
@@ -1050,6 +1131,14 @@ export async function saveCompletedEventLifeCounterGame(
         powerEstimateSnapshot: gamePlayers.powerEstimateSnapshot,
         archetypeSnapshot: gamePlayers.archetypeSnapshot,
         seatPosition: gamePlayers.seatPosition,
+        finishPosition: gamePlayers.finishPosition,
+        eliminationOrder: gamePlayers.eliminationOrder,
+        eliminatedTurn: gamePlayers.eliminatedTurn,
+        lossReason: gamePlayers.lossReason,
+        lossDetail: gamePlayers.lossDetail,
+        poisonCounters: gamePlayers.poisonCounters,
+        commanderDamageSource: gamePlayers.commanderDamageSource,
+        commanderDamageAmount: gamePlayers.commanderDamageAmount,
         isWinner: gamePlayers.isWinner,
       });
 
@@ -1097,6 +1186,14 @@ export async function saveCompletedEventLifeCounterGame(
               ? player.participantNameSnapshot || "Player"
               : "Guest RSVP",
           seatPosition: player.seatPosition,
+          finishPosition: player.finishPosition,
+          eliminationOrder: player.eliminationOrder,
+          eliminatedTurn: player.eliminatedTurn,
+          lossReason: asGameLossReason(player.lossReason),
+          lossDetail: player.lossDetail,
+          poisonCounters: player.poisonCounters,
+          commanderDamageSource: player.commanderDamageSource,
+          commanderDamageAmount: player.commanderDamageAmount,
           isWinner: player.isWinner,
           deck: player.deckId
             ? {
@@ -1121,6 +1218,7 @@ export async function saveCompletedStandaloneLifeCounterGame(
     eventId: string;
     resultType: GameResultType;
     winnerParticipantIds?: readonly string[];
+    playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
     notes?: string;
     completedAt?: Date;
   },
@@ -1418,10 +1516,99 @@ function normalizeNotes(notes: string | undefined) {
   return notes?.trim() ?? "";
 }
 
+function validatePlayerOutcomesForCandidates<TError extends Error>(input: {
+  outcomes: readonly Partial<GamePlayerOutcomeInput>[] | undefined;
+  candidateIds: readonly string[];
+  winnerIds: ReadonlySet<string>;
+  blockedError: (message: string) => TError;
+}) {
+  const outcomes = normalizeGamePlayerOutcomes(input.outcomes);
+  const candidateIds = new Set(input.candidateIds);
+  const outcomesByPlayerId = new Map<string, GamePlayerOutcomeInput>();
+
+  for (const outcome of outcomes) {
+    if (!candidateIds.has(outcome.playerId)) {
+      throw input.blockedError(
+        "Player outcomes must belong to the logged game.",
+      );
+    }
+
+    if (
+      input.winnerIds.has(outcome.playerId) &&
+      hasRecordedLossDetail(outcome)
+    ) {
+      throw input.blockedError("Winners cannot include loss details.");
+    }
+
+    if (outcome.lossReason === "poison" && !outcome.poisonCounters) {
+      throw input.blockedError("Poison losses need a poison counter total.");
+    }
+
+    if (
+      outcome.lossReason === "commander_damage" &&
+      (!outcome.commanderDamageSource || !outcome.commanderDamageAmount)
+    ) {
+      throw input.blockedError(
+        "Commander damage losses need a source and damage total.",
+      );
+    }
+
+    outcomesByPlayerId.set(outcome.playerId, outcome);
+  }
+
+  return outcomesByPlayerId;
+}
+
+function resolvePlayerOutcomeFields(input: {
+  playerId: string;
+  isWinner: boolean;
+  outcomesByPlayerId: Map<string, GamePlayerOutcomeInput>;
+}) {
+  const outcome = input.outcomesByPlayerId.get(input.playerId);
+
+  return {
+    finishPosition: outcome?.finishPosition ?? (input.isWinner ? 1 : null),
+    eliminationOrder: outcome?.eliminationOrder ?? null,
+    eliminatedTurn: outcome?.eliminatedTurn ?? null,
+    lossReason: outcome?.lossReason ?? null,
+    lossDetail: outcome?.lossDetail ?? "",
+    poisonCounters: outcome?.poisonCounters ?? null,
+    commanderDamageSource: outcome?.commanderDamageSource ?? "",
+    commanderDamageAmount: outcome?.commanderDamageAmount ?? null,
+  };
+}
+
+function hasRecordedLossDetail(outcome: GamePlayerOutcomeInput) {
+  return Boolean(
+    outcome.lossReason ||
+    outcome.lossDetail ||
+    outcome.poisonCounters ||
+    outcome.commanderDamageSource ||
+    outcome.commanderDamageAmount,
+  );
+}
+
 function asGameResultType(value: string): GameResultType {
   return resultTypes.includes(value as GameResultType)
     ? (value as GameResultType)
     : "unfinished";
+}
+
+function asGameLossReason(value: string | null): GameLossReason | null {
+  switch (value) {
+    case "combat_damage":
+    case "commander_damage":
+    case "poison":
+    case "combo":
+    case "concession":
+    case "decked":
+    case "life_total":
+    case "other":
+    case "unknown":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function validateWinnerCountForResult(input: {

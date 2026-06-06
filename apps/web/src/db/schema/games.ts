@@ -110,6 +110,13 @@ export const gamePlayers = core.table(
     finishPosition: integer("finish_position"),
     eliminationOrder: integer("elimination_order"),
     eliminatedTurn: integer("eliminated_turn"),
+    lossReason: text("loss_reason"),
+    lossDetail: text("loss_detail").notNull().default(""),
+    poisonCounters: integer("poison_counters"),
+    commanderDamageSource: text("commander_damage_source")
+      .notNull()
+      .default(""),
+    commanderDamageAmount: integer("commander_damage_amount"),
     isWinner: boolean("is_winner").notNull().default(false),
     team: text("team"),
     createdAt: createdAt(),
@@ -141,6 +148,26 @@ export const gamePlayers = core.table(
     check(
       "game_players_eliminated_turn_positive",
       sql`${table.eliminatedTurn} is null or ${table.eliminatedTurn} > 0`,
+    ),
+    check(
+      "game_players_loss_reason_check",
+      sql`${table.lossReason} is null or ${table.lossReason} in ('combat_damage', 'commander_damage', 'poison', 'combo', 'concession', 'decked', 'life_total', 'other', 'unknown')`,
+    ),
+    check(
+      "game_players_poison_counters_positive",
+      sql`${table.poisonCounters} is null or ${table.poisonCounters} > 0`,
+    ),
+    check(
+      "game_players_commander_damage_amount_positive",
+      sql`${table.commanderDamageAmount} is null or ${table.commanderDamageAmount} > 0`,
+    ),
+    check(
+      "game_players_poison_loss_has_counters",
+      sql`${table.lossReason} is distinct from 'poison' or ${table.poisonCounters} is not null`,
+    ),
+    check(
+      "game_players_commander_loss_has_details",
+      sql`${table.lossReason} is distinct from 'commander_damage' or (${table.commanderDamageAmount} is not null and length(btrim(${table.commanderDamageSource})) > 0)`,
     ),
     check(
       "game_players_user_or_guest_name",

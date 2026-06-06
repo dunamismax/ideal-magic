@@ -20,7 +20,7 @@ const loggedGame: LoggedGameHistorySummary = {
     id: "60000000-0000-4000-8000-000000000004",
     name: "Pod 1",
   },
-  resultType: "team_win",
+  resultType: "combat_win",
   notes: "Shared table note",
   completedAt: new Date("2030-06-15T03:30:00.000Z"),
   winners: [
@@ -29,11 +29,6 @@ const loggedGame: LoggedGameHistorySummary = {
       participantName: "Riley Chen",
       deckNameSnapshot: "Atraxa Counters",
     },
-    {
-      id: "60000000-0000-4000-8000-000000000006",
-      participantName: "Guest RSVP",
-      deckNameSnapshot: "",
-    },
   ],
   players: [
     {
@@ -41,6 +36,13 @@ const loggedGame: LoggedGameHistorySummary = {
       participantName: "Riley Chen",
       seatPosition: 1,
       finishPosition: 1,
+      eliminationOrder: null,
+      eliminatedTurn: null,
+      lossReason: null,
+      lossDetail: "",
+      poisonCounters: null,
+      commanderDamageSource: "",
+      commanderDamageAmount: null,
       isWinner: true,
       deck: {
         deckId: "60000000-0000-4000-8000-000000000007",
@@ -56,8 +58,15 @@ const loggedGame: LoggedGameHistorySummary = {
       id: "60000000-0000-4000-8000-000000000006",
       participantName: "Guest RSVP",
       seatPosition: 2,
-      finishPosition: 1,
-      isWinner: true,
+      finishPosition: 2,
+      eliminationOrder: 1,
+      eliminatedTurn: 9,
+      lossReason: "commander_damage",
+      lossDetail: "Copied draw trigger",
+      poisonCounters: null,
+      commanderDamageSource: "Nekusar",
+      commanderDamageAmount: 21,
+      isWinner: false,
       deck: null,
     },
   ],
@@ -74,10 +83,8 @@ describe("history game detail", () => {
     expect(screen.getByText("Saturday Hosts")).toBeInTheDocument();
     expect(screen.getByText("Saturday Commander")).toBeInTheDocument();
     expect(screen.getByText("Pod 1")).toBeInTheDocument();
-    expect(screen.getAllByText("Team Win").length).toBeGreaterThan(0);
-    expect(
-      screen.getByText("Winners: Riley Chen, Guest RSVP"),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("Combat Win").length).toBeGreaterThan(0);
+    expect(screen.getByText("Winner: Riley Chen")).toBeInTheDocument();
     expect(screen.getByText("Riley Chen")).toBeInTheDocument();
     expect(screen.getByText("Seat 1 - Finish 1")).toBeInTheDocument();
     expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
@@ -87,6 +94,11 @@ describe("history game detail", () => {
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("Counters")).toBeInTheDocument();
     expect(screen.getByText("Guest RSVP")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Elim 1 - Turn 9 - Commander loss - 21 commander from Nekusar - Copied draw trigger",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("No deck snapshot")).toBeInTheDocument();
     expect(screen.getByText("Shared table note")).toBeInTheDocument();
     expect(screen.queryByText(/private guest/i)).not.toBeInTheDocument();

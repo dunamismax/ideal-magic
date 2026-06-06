@@ -33,6 +33,7 @@ function createInitialState(input: {
       podId: input.podId,
       resultType: "normal_win",
       winnerSeatIds: [],
+      playerOutcomes: [],
       notes: "",
     },
   };
@@ -117,6 +118,24 @@ export function PodLifeGameSaveForm({
           </div>
         </fieldset>
 
+        <fieldset className="grid gap-2 rounded-control border border-border bg-background px-3 py-2 lg:col-span-4">
+          <legend className="sr-only">
+            Finish order and losses for {pod.name}
+          </legend>
+          <span className="text-[0.7rem] font-black uppercase text-muted">
+            Finish and Loss Details
+          </span>
+          <div className="grid gap-2">
+            {pod.seats.map((seat) => (
+              <OutcomeFields
+                key={seat.id}
+                label={`Seat ${seat.seatPosition}: ${seat.participantName}`}
+                playerId={seat.id}
+              />
+            ))}
+          </div>
+        </fieldset>
+
         <input
           aria-label={`Notes for ${pod.name}`}
           className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
@@ -146,16 +165,101 @@ export function PodLifeGameSaveForm({
         {state.fieldErrors.eventId ||
         state.fieldErrors.podId ||
         state.fieldErrors.resultType ||
-        state.fieldErrors.winnerSeatIds ? (
+        state.fieldErrors.winnerSeatIds ||
+        state.fieldErrors.playerOutcomes ? (
           <p className="text-xs font-bold text-danger lg:col-span-4">
             {state.fieldErrors.eventId ??
               state.fieldErrors.podId ??
               state.fieldErrors.resultType ??
-              state.fieldErrors.winnerSeatIds}
+              state.fieldErrors.winnerSeatIds ??
+              state.fieldErrors.playerOutcomes}
           </p>
         ) : null}
       </form>
     </section>
+  );
+}
+
+function OutcomeFields({
+  label,
+  playerId,
+}: {
+  label: string;
+  playerId: string;
+}) {
+  return (
+    <div className="grid gap-2 rounded-control border border-border/70 bg-surface p-2 md:grid-cols-[minmax(9rem,1fr)_5rem_5rem_5rem_8rem_minmax(8rem,1fr)_5rem_minmax(7rem,1fr)_5rem] md:items-center">
+      <input name="playerOutcomeIds" type="hidden" value={playerId} />
+      <p className="text-xs font-black text-foreground">{label}</p>
+      <input
+        aria-label={`${label} finish position`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        min={1}
+        name={`finishPosition:${playerId}`}
+        placeholder="Finish"
+        type="number"
+      />
+      <input
+        aria-label={`${label} elimination order`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        min={1}
+        name={`eliminationOrder:${playerId}`}
+        placeholder="Elim"
+        type="number"
+      />
+      <input
+        aria-label={`${label} eliminated turn`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        min={1}
+        name={`eliminatedTurn:${playerId}`}
+        placeholder="Turn"
+        type="number"
+      />
+      <select
+        aria-label={`${label} loss reason`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        name={`lossReason:${playerId}`}
+      >
+        <option value="">Loss</option>
+        <option value="combat_damage">Combat</option>
+        <option value="commander_damage">Commander</option>
+        <option value="poison">Poison</option>
+        <option value="combo">Combo</option>
+        <option value="concession">Concession</option>
+        <option value="decked">Decked</option>
+        <option value="life_total">Life</option>
+        <option value="other">Other</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <input
+        aria-label={`${label} loss detail`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        name={`lossDetail:${playerId}`}
+        placeholder="Detail"
+      />
+      <input
+        aria-label={`${label} poison counters`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        min={1}
+        name={`poisonCounters:${playerId}`}
+        placeholder="Poison"
+        type="number"
+      />
+      <input
+        aria-label={`${label} commander damage source`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        name={`commanderDamageSource:${playerId}`}
+        placeholder="Commander"
+      />
+      <input
+        aria-label={`${label} commander damage amount`}
+        className="h-8 rounded-control border border-border bg-background px-2 text-xs font-semibold text-foreground"
+        min={1}
+        name={`commanderDamageAmount:${playerId}`}
+        placeholder="Damage"
+        type="number"
+      />
+    </div>
   );
 }
 

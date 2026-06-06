@@ -1,9 +1,16 @@
 import type { GameResultType } from "@/db/queries/games";
+import {
+  getPlayerOutcomeValidationError,
+  type GamePlayerOutcomeInput,
+  isUuid,
+  normalizeGamePlayerOutcomes,
+} from "@/features/games/player-outcomes";
 
 export type SaveEventLifeGameInput = {
   eventId: string;
   resultType: GameResultType;
   winnerParticipantIds: string[];
+  playerOutcomes: GamePlayerOutcomeInput[];
   notes: string;
 };
 
@@ -24,6 +31,15 @@ export type SaveEventLifeGameValidationResult =
       fieldErrors: Partial<Record<keyof SaveEventLifeGameInput, string>>;
       fields: SaveEventLifeGameInput;
     };
+
+type SaveEventLifeGameRawInput = Partial<
+  Record<
+    keyof Omit<SaveEventLifeGameInput, "playerOutcomes">,
+    FormDataEntryValue | string | readonly (FormDataEntryValue | string)[]
+  >
+> & {
+  playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
+};
 
 const resultTypes = [
   "normal_win",
@@ -50,12 +66,7 @@ const noWinnerResultTypes = [
 ] as const satisfies readonly GameResultType[];
 
 export function validateSaveEventLifeGameInput(
-  rawInput: Partial<
-    Record<
-      keyof SaveEventLifeGameInput,
-      FormDataEntryValue | string | readonly (FormDataEntryValue | string)[]
-    >
-  >,
+  rawInput: SaveEventLifeGameRawInput,
 ): SaveEventLifeGameValidationResult {
   const fields: SaveEventLifeGameInput = {
     eventId: normalizeText(rawInput.eventId),
@@ -63,6 +74,7 @@ export function validateSaveEventLifeGameInput(
     winnerParticipantIds: normalizeWinnerParticipantIds(
       rawInput.winnerParticipantIds,
     ),
+    playerOutcomes: normalizeGamePlayerOutcomes(rawInput.playerOutcomes),
     notes: normalizeText(rawInput.notes),
   };
   const fieldErrors: Partial<Record<keyof SaveEventLifeGameInput, string>> = {};
@@ -97,6 +109,14 @@ export function validateSaveEventLifeGameInput(
       fieldErrors.winnerParticipantIds =
         "Draw, time called, and unfinished games do not use winners.";
     }
+  }
+
+  const playerOutcomeError = getPlayerOutcomeValidationError(
+    fields.playerOutcomes,
+  );
+
+  if (playerOutcomeError) {
+    fieldErrors.playerOutcomes = playerOutcomeError;
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -162,12 +182,6 @@ function normalizeWinnerParticipantIds(
   }
 
   return [...uniqueWinnerParticipantIds];
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
 }
 
 function requiresSingleWinner(resultType: GameResultType) {

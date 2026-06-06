@@ -64,6 +64,13 @@
       "when": 1780774800000,
       "tag": "0008_guest_rsvp_edit_token",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780746965538,
+      "tag": "0009_little_rockslide",
+      "breakpoints": true
     }
   ]
 }

@@ -258,14 +258,14 @@ agent session.
 
 ## Pass 3 - Game Logging Completeness
 
-- [ ] Add finish order beyond winner marking.
-- [ ] Add elimination detail, eliminated turn, and loss reason capture.
-- [ ] Add poison-loss and commander-damage-loss details.
+- [x] Add finish order beyond winner marking.
+- [x] Add elimination detail, eliminated turn, and loss reason capture.
+- [x] Add poison-loss and commander-damage-loss details.
 - [ ] Add result editing/correction rules for managers and scoped
   participants, including audit behavior.
-- [ ] Update quick-log, event-linked save, pod-linked save, standalone
+- [x] Update quick-log, event-linked save, pod-linked save, standalone
   attach save, history list, and detail projections for the new fields.
-- [ ] Preserve guest redaction and immutable deck/commander snapshots.
+- [x] Preserve guest redaction and immutable deck/commander snapshots.
 - [ ] Add focused PGlite, component, and Playwright coverage for actual
   game-save submissions.
 

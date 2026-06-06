@@ -19,6 +19,7 @@ describe("game log form validation", () => {
         podId: "50000000-0000-4000-8000-000000000002",
         resultType: "normal_win",
         winnerSeatIds: ["50000000-0000-4000-8000-000000000003"],
+        playerOutcomes: [],
         notes: "Fast finish.",
       },
     });
@@ -90,6 +91,7 @@ describe("game log form validation", () => {
         podId: "50000000-0000-4000-8000-000000000002",
         resultType: "draw",
         winnerSeatIds: [],
+        playerOutcomes: [],
         notes: "",
       },
     });
@@ -148,7 +150,91 @@ describe("game log form validation", () => {
           "50000000-0000-4000-8000-000000000003",
           "50000000-0000-4000-8000-000000000004",
         ],
+        playerOutcomes: [],
       },
     });
+  });
+
+  test("accepts structured finish order and loss details", () => {
+    const result = validateLogPodGameInput({
+      eventId: "50000000-0000-4000-8000-000000000001",
+      podId: "50000000-0000-4000-8000-000000000002",
+      resultType: "combat_win",
+      winnerSeatIds: ["50000000-0000-4000-8000-000000000003"],
+      playerOutcomes: [
+        {
+          playerId: "50000000-0000-4000-8000-000000000003",
+          finishPosition: 1,
+        },
+        {
+          playerId: "50000000-0000-4000-8000-000000000004",
+          finishPosition: 2,
+          eliminationOrder: 1,
+          eliminatedTurn: 8,
+          lossReason: "poison",
+          poisonCounters: 10,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      input: {
+        playerOutcomes: [
+          {
+            playerId: "50000000-0000-4000-8000-000000000003",
+            finishPosition: 1,
+          },
+          {
+            playerId: "50000000-0000-4000-8000-000000000004",
+            finishPosition: 2,
+            eliminationOrder: 1,
+            eliminatedTurn: 8,
+            lossReason: "poison",
+            poisonCounters: 10,
+          },
+        ],
+      },
+    });
+  });
+
+  test("requires poison and commander loss details when those reasons are selected", () => {
+    const poison = validateLogPodGameInput({
+      eventId: "50000000-0000-4000-8000-000000000001",
+      podId: "50000000-0000-4000-8000-000000000002",
+      resultType: "combat_win",
+      winnerSeatIds: ["50000000-0000-4000-8000-000000000003"],
+      playerOutcomes: [
+        {
+          playerId: "50000000-0000-4000-8000-000000000004",
+          lossReason: "poison",
+        },
+      ],
+    });
+    const commander = validateLogPodGameInput({
+      eventId: "50000000-0000-4000-8000-000000000001",
+      podId: "50000000-0000-4000-8000-000000000002",
+      resultType: "combat_win",
+      winnerSeatIds: ["50000000-0000-4000-8000-000000000003"],
+      playerOutcomes: [
+        {
+          playerId: "50000000-0000-4000-8000-000000000004",
+          lossReason: "commander_damage",
+          commanderDamageAmount: 21,
+        },
+      ],
+    });
+
+    expect(poison.ok).toBe(false);
+    expect(commander.ok).toBe(false);
+
+    if (!poison.ok && !commander.ok) {
+      expect(poison.fieldErrors.playerOutcomes).toBe(
+        "Poison losses need a poison counter total.",
+      );
+      expect(commander.fieldErrors.playerOutcomes).toBe(
+        "Commander damage losses need a source and damage total.",
+      );
+    }
   });
 });

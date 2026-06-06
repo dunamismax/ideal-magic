@@ -44,8 +44,15 @@ describe("public guest RSVP route", () => {
       close: mocks.close,
     });
     mocks.createPublicGuestRsvp.mockResolvedValue({
-      id: "event-1",
-      title: "Commander Night",
+      event: {
+        id: "event-1",
+        title: "Commander Night",
+      },
+      guestRsvp: {
+        rsvpToken: "rsvp-token",
+        guestName: "Riley",
+        status: "yes",
+      },
     });
 
     const response = await POST(
@@ -70,6 +77,11 @@ describe("public guest RSVP route", () => {
       event: {
         id: "event-1",
         title: "Commander Night",
+      },
+      guestRsvp: {
+        rsvpToken: "rsvp-token",
+        guestName: "Riley",
+        status: "yes",
       },
     });
     expect(response.status).toBe(201);

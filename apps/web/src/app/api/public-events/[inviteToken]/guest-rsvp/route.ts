@@ -52,20 +52,20 @@ export async function POST(
 
   try {
     connection = createDatabaseConnection();
-    const event = await createPublicGuestRsvp(
+    const result = await createPublicGuestRsvp(
       connection.db,
       inviteToken,
       payload,
     );
 
-    if (!event) {
+    if (!result) {
       return Response.json(
         { error: "Event invite not found" },
         { status: 404 },
       );
     }
 
-    return Response.json({ event }, { status: 201 });
+    return Response.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof PublicGuestRsvpValidationError) {
       return Response.json(

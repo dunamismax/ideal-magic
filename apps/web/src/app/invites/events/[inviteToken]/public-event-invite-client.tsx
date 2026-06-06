@@ -1,6 +1,13 @@
 "use client";
 
-import { CheckCircle2, CircleAlert, LoaderCircle, Send } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  LoaderCircle,
+  Save,
+  Send,
+  XCircle,
+} from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -13,6 +20,12 @@ type PublicEventInviteResponse = {
   event: PublicEventInviteView;
 };
 
+type GuestRsvpReceipt = {
+  rsvpToken: string;
+  guestName: string;
+  status: GuestRsvpStatus;
+};
+
 type GuestRsvpStatus = "yes" | "maybe" | "no" | "waitlist";
 
 type GuestRsvpFieldErrors = Partial<{
@@ -21,6 +34,7 @@ type GuestRsvpFieldErrors = Partial<{
 }>;
 
 type GuestRsvpResponse = Partial<PublicEventInviteResponse> & {
+  guestRsvp?: GuestRsvpReceipt;
   error?: string;
   fieldErrors?: GuestRsvpFieldErrors;
 };
@@ -36,8 +50,9 @@ export function PublicEventInviteClient({
   );
   const [guestName, setGuestName] = useState("");
   const [rsvpStatus, setRsvpStatus] = useState<GuestRsvpStatus>("yes");
+  const [guestRsvp, setGuestRsvp] = useState<GuestRsvpReceipt | null>(null);
   const [submitStatus, setSubmitStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
+    "idle" | "saving" | "saved" | "cancelled" | "error"
   >("idle");
   const [fieldErrors, setFieldErrors] = useState<GuestRsvpFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -68,6 +83,35 @@ export function PublicEventInviteClient({
           setEvent(payload.event);
           setStatus("ready");
         }
+
+        const storedRsvpToken = readStoredGuestRsvpToken(inviteToken);
+
+        if (!storedRsvpToken) {
+          return;
+        }
+
+        const rsvpResponse = await fetch(
+          `/api/public-events/${encodeURIComponent(inviteToken)}/guest-rsvp/${encodeURIComponent(storedRsvpToken)}`,
+          {
+            headers: {
+              accept: "application/json",
+            },
+          },
+        );
+
+        if (!rsvpResponse.ok) {
+          clearStoredGuestRsvpToken(inviteToken);
+          return;
+        }
+
+        const rsvpPayload = (await rsvpResponse.json()) as GuestRsvpResponse;
+
+        if (active && rsvpPayload.event && rsvpPayload.guestRsvp) {
+          setEvent(rsvpPayload.event);
+          setGuestRsvp(rsvpPayload.guestRsvp);
+          setGuestName(rsvpPayload.guestRsvp.guestName);
+          setRsvpStatus(rsvpPayload.guestRsvp.status);
+        }
       } catch {
         if (active) {
           setEvent(null);
@@ -91,9 +135,11 @@ export function PublicEventInviteClient({
 
     try {
       const response = await fetch(
-        `/api/public-events/${encodeURIComponent(inviteToken)}/guest-rsvp`,
+        guestRsvp
+          ? `/api/public-events/${encodeURIComponent(inviteToken)}/guest-rsvp/${encodeURIComponent(guestRsvp.rsvpToken)}`
+          : `/api/public-events/${encodeURIComponent(inviteToken)}/guest-rsvp`,
         {
-          method: "POST",
+          method: guestRsvp ? "PATCH" : "POST",
           headers: {
             accept: "application/json",
             "content-type": "application/json",
@@ -106,7 +152,7 @@ export function PublicEventInviteClient({
       );
       const payload = (await response.json()) as GuestRsvpResponse;
 
-      if (!response.ok || !payload.event) {
+      if (!response.ok || !payload.event || !payload.guestRsvp) {
         setFieldErrors(payload.fieldErrors ?? {});
         setFormError(payload.error ?? "Guest RSVP could not be saved.");
         setSubmitStatus("error");
@@ -114,11 +160,52 @@ export function PublicEventInviteClient({
       }
 
       setEvent(payload.event);
-      setGuestName("");
-      setRsvpStatus("yes");
+      setGuestRsvp(payload.guestRsvp);
+      setGuestName(payload.guestRsvp.guestName);
+      setRsvpStatus(payload.guestRsvp.status);
+      storeGuestRsvpToken(inviteToken, payload.guestRsvp.rsvpToken);
       setSubmitStatus("saved");
     } catch {
       setFormError("Guest RSVP could not be saved.");
+      setSubmitStatus("error");
+    }
+  }
+
+  async function cancelGuestRsvp() {
+    if (!guestRsvp) {
+      return;
+    }
+
+    setSubmitStatus("saving");
+    setFieldErrors({});
+    setFormError(null);
+
+    try {
+      const response = await fetch(
+        `/api/public-events/${encodeURIComponent(inviteToken)}/guest-rsvp/${encodeURIComponent(guestRsvp.rsvpToken)}`,
+        {
+          method: "DELETE",
+          headers: {
+            accept: "application/json",
+          },
+        },
+      );
+      const payload = (await response.json()) as GuestRsvpResponse;
+
+      if (!response.ok || !payload.event || !payload.guestRsvp) {
+        setFormError(payload.error ?? "Guest RSVP could not be cancelled.");
+        setSubmitStatus("error");
+        return;
+      }
+
+      setEvent(payload.event);
+      setGuestRsvp(payload.guestRsvp);
+      setGuestName(payload.guestRsvp.guestName);
+      setRsvpStatus(payload.guestRsvp.status);
+      storeGuestRsvpToken(inviteToken, payload.guestRsvp.rsvpToken);
+      setSubmitStatus("cancelled");
+    } catch {
+      setFormError("Guest RSVP could not be cancelled.");
       setSubmitStatus("error");
     }
   }
@@ -152,6 +239,8 @@ export function PublicEventInviteClient({
           fieldErrors={fieldErrors}
           formError={formError}
           guestName={guestName}
+          hasExistingRsvp={guestRsvp !== null}
+          onCancel={cancelGuestRsvp}
           onGuestNameChange={setGuestName}
           onSubmit={submitGuestRsvp}
           onStatusChange={setRsvpStatus}
@@ -167,6 +256,8 @@ function GuestRsvpForm({
   fieldErrors,
   formError,
   guestName,
+  hasExistingRsvp,
+  onCancel,
   onGuestNameChange,
   onStatusChange,
   onSubmit,
@@ -176,11 +267,13 @@ function GuestRsvpForm({
   fieldErrors: GuestRsvpFieldErrors;
   formError: string | null;
   guestName: string;
+  hasExistingRsvp: boolean;
+  onCancel: () => void;
   onGuestNameChange: (name: string) => void;
   onStatusChange: (status: GuestRsvpStatus) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   rsvpStatus: GuestRsvpStatus;
-  submitStatus: "idle" | "saving" | "saved" | "error";
+  submitStatus: "idle" | "saving" | "saved" | "cancelled" | "error";
 }) {
   return (
     <form
@@ -189,12 +282,20 @@ function GuestRsvpForm({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold">Guest RSVP</h2>
+          <h2 className="text-base font-bold">
+            {hasExistingRsvp ? "Your RSVP" : "Guest RSVP"}
+          </h2>
         </div>
         {submitStatus === "saved" ? (
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent">
             <CheckCircle2 className="size-4" aria-hidden="true" />
             Saved
+          </span>
+        ) : null}
+        {submitStatus === "cancelled" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-danger">
+            <XCircle className="size-4" aria-hidden="true" />
+            Cancelled
           </span>
         ) : null}
       </div>
@@ -233,12 +334,28 @@ function GuestRsvpForm({
         >
           {submitStatus === "saving" ? (
             <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+          ) : hasExistingRsvp ? (
+            <Save className="size-4" aria-hidden="true" />
           ) : (
             <Send className="size-4" aria-hidden="true" />
           )}
-          RSVP
+          {hasExistingRsvp ? "Save RSVP" : "RSVP"}
         </Button>
       </div>
+
+      {hasExistingRsvp ? (
+        <div className="mt-3">
+          <Button
+            disabled={submitStatus === "saving" || rsvpStatus === "no"}
+            onClick={onCancel}
+            type="button"
+            variant="ghost"
+          >
+            <XCircle className="size-4" aria-hidden="true" />
+            Cancel RSVP
+          </Button>
+        </div>
+      ) : null}
 
       {formError ? (
         <p className="mt-3 text-sm font-bold text-danger" role="alert">
@@ -247,4 +364,32 @@ function GuestRsvpForm({
       ) : null}
     </form>
   );
+}
+
+function guestRsvpStorageKey(inviteToken: string) {
+  return `pod-tracker:public-guest-rsvp:${inviteToken}`;
+}
+
+function readStoredGuestRsvpToken(inviteToken: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(guestRsvpStorageKey(inviteToken));
+}
+
+function storeGuestRsvpToken(inviteToken: string, rsvpToken: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(guestRsvpStorageKey(inviteToken), rsvpToken);
+}
+
+function clearStoredGuestRsvpToken(inviteToken: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(guestRsvpStorageKey(inviteToken));
 }

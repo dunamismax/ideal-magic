@@ -737,7 +737,7 @@ test("tokenized public event invite shows public-safe planning details", async (
   expect(publicText).not.toContain("Example Guest");
 });
 
-test("tokenized public event invite submits a guest RSVP and refreshes aggregates", async ({
+test("tokenized public event invite submits, edits, and cancels a guest RSVP", async ({
   page,
 }, testInfo) => {
   const suffix = `${Date.now()}-${testInfo.workerIndex}`;
@@ -755,23 +755,79 @@ test("tokenized public event invite submits a guest RSVP and refreshes aggregate
   await expect(page.getByRole("row", { name: "Yes 1" })).toBeVisible();
   await expect(page.getByText("1 players")).toBeVisible();
   await expect(page.getByText("Saved")).toBeVisible();
-  await expect(page.getByLabel("Name")).toHaveValue("");
+  await expect(page.getByRole("heading", { name: "Your RSVP" })).toBeVisible();
+  await expect(page.getByLabel("Name")).toHaveValue("Robin Vale");
 
   await withE2eSql(async (sql) => {
     const rows = await sql`
-      select guest_name, status
+      select guest_name, status, guest_edit_token_hash
       from core.event_rsvps
       where event_id = ${eventId}
     `;
 
-    expect(rows).toMatchObject([{ guest_name: "Robin Vale", status: "yes" }]);
+    expect(rows).toMatchObject([
+      {
+        guest_name: "Robin Vale",
+        status: "yes",
+        guest_edit_token_hash: expect.any(String),
+      },
+    ]);
   });
 
+  await page.getByLabel("Name").fill("Robin Night");
+  await page.getByLabel("Status").selectOption("maybe");
+  await page.getByRole("button", { name: "Save RSVP" }).click();
+
+  await expect(page.getByRole("row", { name: "Yes 0" })).toBeVisible();
+  await expect(page.getByRole("row", { name: "Maybe 1" })).toBeVisible();
+  await expect(page.getByText("1 players")).toBeVisible();
+  await expect(page.getByText("Saved")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Your RSVP" })).toBeVisible();
+  await expect(page.getByLabel("Name")).toHaveValue("Robin Night");
+  await expect(page.getByLabel("Status")).toHaveValue("maybe");
+
+  await page.getByRole("button", { name: "Cancel RSVP" }).click();
+
+  await expect(page.getByRole("row", { name: "Maybe 0" })).toBeVisible();
+  await expect(page.getByRole("row", { name: "No 1" })).toBeVisible();
+  await expect(page.getByText("0 players")).toBeVisible();
+  await expect(page.getByText("Cancelled")).toBeVisible();
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select guest_name, status, guest_edit_token_hash
+      from core.event_rsvps
+      where event_id = ${eventId}
+    `;
+
+    expect(rows).toMatchObject([
+      {
+        guest_name: "Robin Night",
+        status: "no",
+        guest_edit_token_hash: expect.any(String),
+      },
+    ]);
+  });
+
+  const storedRsvpToken = await page.evaluate(() => {
+    for (const [key, value] of Object.entries(window.localStorage)) {
+      if (key.startsWith("pod-tracker:public-guest-rsvp:")) {
+        return value;
+      }
+    }
+
+    return "";
+  });
+  expect(storedRsvpToken).toEqual(expect.any(String));
+  expect(storedRsvpToken.length).toBeGreaterThan(0);
   const publicText = await page.locator("body").innerText();
 
   expect(publicText).not.toContain("fixture-address-not-public");
   expect(publicText).not.toContain("Private fixture note");
   expect(publicText).not.toContain(inviteToken);
+  expect(publicText).not.toContain(storedRsvpToken);
   expect(publicText).not.toContain("Example Guest");
   expect(publicText).not.toContain("Robin Vale");
 });

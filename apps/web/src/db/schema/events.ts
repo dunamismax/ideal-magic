@@ -139,6 +139,7 @@ export const eventRsvps = core.table(
       onDelete: "cascade",
     }),
     guestName: text("guest_name"),
+    guestEditTokenHash: text("guest_edit_token_hash"),
     status: text("status").notNull(),
     arrivalTime: timestamp("arrival_time", { withTimezone: true }),
     leavingTime: timestamp("leaving_time", { withTimezone: true }),
@@ -152,6 +153,9 @@ export const eventRsvps = core.table(
     uniqueIndex("event_rsvps_event_user_key")
       .on(table.eventId, table.userId)
       .where(sql`${table.userId} is not null`),
+    uniqueIndex("event_rsvps_guest_edit_token_hash_key")
+      .on(table.guestEditTokenHash)
+      .where(sql`${table.guestEditTokenHash} is not null`),
     index("event_rsvps_event_id_idx").on(table.eventId),
     check(
       "event_rsvps_status_check",

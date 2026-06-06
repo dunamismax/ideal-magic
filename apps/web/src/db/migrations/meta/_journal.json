@@ -57,6 +57,13 @@
       "when": 1780771200000,
       "tag": "0007_group_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780774800000,
+      "tag": "0008_guest_rsvp_edit_token",
+      "breakpoints": true
     }
   ]
 }

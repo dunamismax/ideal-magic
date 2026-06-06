@@ -1,7 +1,5 @@
 # Pod Tracker
 
-**Live self-hosted V1 URL:** [https://pod-tracker.app/](https://pod-tracker.app/)
-
 Pod Tracker is a self-hosted Commander night operating system centered on
 two product pillars:
 
@@ -40,11 +38,9 @@ Pod Tracker is built around the live game-night loop:
 
 ## Current Status
 
-The existing Rust/Axum/Leptos/sqlx application is the production V1 and
-remains the reference implementation until the TypeScript replacement
-covers the core flows and Stephen approves cutover.
-
-V1 supports:
+The supported app lives in `apps/web` and uses Next.js, React,
+TypeScript, Tailwind CSS, Better Auth, Drizzle, Dexie, and PostgreSQL.
+The active product surfaces are:
 
 - Login and sessions.
 - Playgroups and memberships.
@@ -56,15 +52,12 @@ V1 supports:
 - Lightweight deck registry and event deck declarations.
 - Pod generation, manual edits, locking, and publishing.
 - Quick game logging.
-- Basic meta dashboard.
-- Scryfall import and card search.
+- History and meta-health views.
 - Health and readiness endpoints.
-- Backup, restore, Caddy, and systemd deployment documentation.
+- Local Docker Compose services for PostgreSQL and optional self-hosted
+  dependencies.
 
-## Rewrite Direction
-
-The TypeScript rewrite starts side-by-side in `apps/web` so the Rust app
-can keep running while the replacement is built and verified.
+## Development Direction
 
 Target stack:
 
@@ -86,10 +79,16 @@ Target stack:
 
 ## Development Status
 
-`BUILD.md` is the active phased roadmap for the rewrite. `AGENTS.md`
-holds repo-local operating rules. Rust V1 code and SQLx migrations should
-not be deleted or destabilized until equivalent TypeScript flows are
-implemented, verified, and approved for cutover.
+`BUILD.md` is the active phased roadmap. `AGENTS.md` holds repo-local
+operating rules. The default verification gate is the TypeScript app in
+`apps/web`:
+
+```sh
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+```
 
 ## License
 

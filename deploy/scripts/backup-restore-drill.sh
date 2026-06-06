@@ -6,15 +6,18 @@ timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 source_db="${POD_TRACKER_DRILL_SOURCE_DB:-pod_tracker_drill_source_${timestamp}}"
 restore_db="${POD_TRACKER_DRILL_RESTORE_DB:-pod_tracker_drill_restore_${timestamp}}"
 db_host="${POD_TRACKER_DRILL_DB_HOST:-localhost}"
-db_port="${POD_TRACKER_DRILL_DB_PORT:-5432}"
-db_user="${POD_TRACKER_DRILL_DB_USER:-$(whoami)}"
+db_port="${POD_TRACKER_DRILL_DB_PORT:-55432}"
+db_user="${POD_TRACKER_DRILL_DB_USER:-pod_tracker}"
+db_password="${POD_TRACKER_DRILL_DB_PASSWORD:-pod_tracker}"
 sslmode="${POD_TRACKER_DRILL_SSLMODE:-disable}"
 keep_artifacts="${POD_TRACKER_DRILL_KEEP_ARTIFACTS:-0}"
 
 backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/pod-tracker-restore-drill.XXXXXX")"
 env_file="${backup_dir}/drill.env"
-source_url="postgres://${db_user}@${db_host}:${db_port}/${source_db}?sslmode=${sslmode}"
-restore_url="postgres://${db_user}@${db_host}:${db_port}/${restore_db}?sslmode=${sslmode}"
+source_url="postgres://${db_user}:${db_password}@${db_host}:${db_port}/${source_db}?sslmode=${sslmode}"
+restore_url="postgres://${db_user}:${db_password}@${db_host}:${db_port}/${restore_db}?sslmode=${sslmode}"
+marker_stamp="$(printf '%s' "$timestamp" | tr '[:upper:]' '[:lower:]')"
+marker_slug="backup-restore-drill-${marker_stamp}"
 
 validate_drill_db_name() {
   local name="$1"
@@ -28,8 +31,8 @@ validate_drill_db_name() {
 cleanup() {
   local status=$?
   if [[ "$keep_artifacts" != "1" ]]; then
-    dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$source_db" >/dev/null 2>&1 || true
-    dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db" >/dev/null 2>&1 || true
+    PGPASSWORD="$db_password" dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$source_db" >/dev/null 2>&1 || true
+    PGPASSWORD="$db_password" dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db" >/dev/null 2>&1 || true
     rm -rf "$backup_dir"
   else
     printf 'kept drill artifacts in %s\n' "$backup_dir"
@@ -48,58 +51,10 @@ require_command() {
 apply_migrations() {
   local database_url="$1"
 
-  psql -v ON_ERROR_STOP=1 "$database_url" <<'SQL' >/dev/null
-create table if not exists public._sqlx_migrations (
-  version bigint primary key,
-  description text not null,
-  installed_on timestamptz not null default now(),
-  success boolean not null,
-  checksum bytea not null,
-  execution_time bigint not null
-);
-SQL
-
-  local migration migration_name version version_number description already_applied
-  for migration in "$repo_root"/crates/pod-db/migrations/*.sql; do
-    migration_name="$(basename "$migration")"
-    version="${migration_name%%_*}"
-    version_number="$((10#$version))"
-    description="${migration_name#*_}"
-    description="${description%.sql}"
-    already_applied="$(
-      psql \
-        -v ON_ERROR_STOP=1 \
-        -v version="$version_number" \
-        -At \
-        "$database_url" <<'SQL'
-select exists(
-  select 1
-  from public._sqlx_migrations
-  where version = :version
-    and success
-);
-SQL
-    )"
-    if [[ "$already_applied" == "t" ]]; then
-      continue
-    fi
-    psql -v ON_ERROR_STOP=1 "$database_url" -f "$migration" >/dev/null
-    psql \
-      -v ON_ERROR_STOP=1 \
-      -v version="$version_number" \
-      -v description="$description" \
-      "$database_url" <<'SQL' >/dev/null
-insert into public._sqlx_migrations (
-  version, description, installed_on, success, checksum, execution_time
-)
-values (:version, :'description', now(), true, '\x'::bytea, 0)
-on conflict (version) do update
-set description = excluded.description,
-    success = excluded.success,
-    checksum = excluded.checksum,
-    execution_time = excluded.execution_time;
-SQL
-  done
+  (
+    cd "$repo_root/apps/web"
+    POD_TRACKER_MIGRATION_DATABASE_URL="$database_url" pnpm db:migrate >/dev/null
+  )
 }
 
 validate_drill_db_name "$source_db"
@@ -109,23 +64,23 @@ if [[ "$source_db" == "$restore_db" ]]; then
   exit 1
 fi
 
-for command in createdb dropdb pg_dump pg_restore psql; do
+for command in createdb dropdb pg_dump pg_restore psql pnpm; do
   require_command "$command"
 done
 
 trap cleanup EXIT
 
-createdb --host "$db_host" --port "$db_port" --username "$db_user" "$source_db"
-createdb --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db"
+PGPASSWORD="$db_password" createdb --host "$db_host" --port "$db_port" --username "$db_user" "$source_db"
+PGPASSWORD="$db_password" createdb --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db"
 
 apply_migrations "$source_url"
 
-psql -v ON_ERROR_STOP=1 "$source_url" <<'SQL' >/dev/null
-insert into ops.background_jobs (queue, job_type, payload)
+psql -v ON_ERROR_STOP=1 "$source_url" <<SQL >/dev/null
+insert into core.playgroups (name, slug, description)
 values (
-  'maintenance',
-  'backup_restore_drill_marker',
-  '{"kind":"backup_restore_drill","sensitive":false}'::jsonb
+  'Backup Restore Drill',
+  '${marker_slug}',
+  'Non-sensitive restore drill marker'
 );
 SQL
 
@@ -146,16 +101,16 @@ POD_TRACKER_RESTORE_CONFIRM=RESTORE \
 
 apply_migrations "$restore_url"
 
-psql -v ON_ERROR_STOP=1 "$restore_url" <<'SQL' >/dev/null
+psql -v ON_ERROR_STOP=1 "$restore_url" <<SQL >/dev/null
 do $$
 begin
   if not exists (
     select 1
     from information_schema.tables
-    where table_schema = 'public'
-      and table_name = '_sqlx_migrations'
+    where table_schema = 'drizzle'
+      and table_name = '__drizzle_migrations'
   ) then
-    raise exception 'missing _sqlx_migrations table after restore';
+    raise exception 'missing drizzle.__drizzle_migrations after restore';
   end if;
 
   if not exists (
@@ -170,26 +125,17 @@ begin
   if not exists (
     select 1
     from information_schema.tables
-    where table_schema = 'ops'
-      and table_name = 'background_jobs'
+    where table_schema = 'core'
+      and table_name = 'playgroups'
   ) then
-    raise exception 'missing ops.background_jobs after restore';
+    raise exception 'missing core.playgroups after restore';
   end if;
 
   if not exists (
     select 1
-    from information_schema.tables
-    where table_schema = 'ops'
-      and table_name = 'email_deliveries'
-  ) then
-    raise exception 'missing ops.email_deliveries after restore';
-  end if;
-
-  if not exists (
-    select 1
-    from ops.background_jobs
-    where job_type = 'backup_restore_drill_marker'
-      and payload = '{"kind":"backup_restore_drill","sensitive":false}'::jsonb
+    from core.playgroups
+    where slug = '${marker_slug}'
+      and description = 'Non-sensitive restore drill marker'
   ) then
     raise exception 'missing restored drill marker row';
   end if;

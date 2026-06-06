@@ -14,9 +14,9 @@ verify it, and update only the relevant checkbox.
 ## Product Direction
 
 Pod Tracker is the self-hosted operating system and live life counter for
-Commander night. The TypeScript/Next.js app in `apps/web` is the
-replacement path. The Rust/Axum/Leptos/sqlx app remains production V1
-until the TypeScript app is verified and Stephen approves cutover.
+Commander night. The TypeScript/Next.js app in `apps/web` is the V2 app
+and the only supported product direction. The previous application is no
+longer a migration source or production reference.
 
 Primary product pillars:
 
@@ -79,7 +79,7 @@ Rules:
 
 ## Completion Definition
 
-The TypeScript app can replace Rust V1 only when all of these are true:
+The TypeScript V2 app is release-ready when all of these are true:
 
 - Core flows work end to end in Next.js: signup, login, group creation,
   event creation, RSVP, guest RSVP, deck declaration, pod generation,
@@ -91,10 +91,8 @@ The TypeScript app can replace Rust V1 only when all of these are true:
 - The app has production-ready environment examples, Caddy config,
   backup/restore scripts, health/readiness checks, and observability
   basics without committing secrets.
-- A migration/export/import plan for Rust production data is verified
-  against non-production data.
 - Playwright smoke coverage passes for the critical flows.
-- Stephen approves the cutover plan.
+- Stephen approves production deployment or live self-hosted cutover.
 
 ---
 
@@ -106,10 +104,9 @@ discovered required work into the remaining completion passes below.
 
 ## Phase 0 - Scope And Docs
 
-- [x] Align repo policy around the TypeScript/Next.js replacement path.
+- [x] Align repo policy around the TypeScript/Next.js product path.
 - [x] Document the two-pillar product thesis.
-- [x] Keep Rust V1 as production reference until cutover approval.
-- [x] Establish `apps/web` as the side-by-side rewrite location.
+- [x] Establish `apps/web` as the supported app location.
 - [x] Defer collection, full deckbuilder, billing, native mobile, AI/RAG,
   and broad card-search work.
 
@@ -153,7 +150,7 @@ discovered required work into the remaining completion passes below.
 - [x] Keep sensitive fields out of public-safe and participant-facing
   projections.
 
-## Phase 5 - Life Counter V1: Standalone
+## Phase 5 - Life Counter Standalone
 
 - [x] Build `/life` as a primary public route.
 - [x] Support 2 to 8 players, names, colors, seats, commanders, life,
@@ -164,7 +161,7 @@ discovered required work into the remaining completion passes below.
 - [x] Verify reload recovery, blocked-network behavior after load,
   accessibility basics, and responsive layouts.
 
-## Phase 6 - Life Counter V2: Event And Pod Integration
+## Phase 6 - Life Counter Event And Pod Integration
 
 - [x] Build event-linked and pod-linked life-counter routes.
 - [x] Import scoped event participants, declared decks, and published
@@ -301,7 +298,23 @@ agent session.
 - [x] Add a read-only table/spectator view only if it can be scoped and
   kept fast.
 
-## Pass 6 - Commander Lookup And Lightweight Data
+## Pass 6 - Legacy Removal And TypeScript Repo Reset
+
+- [x] Remove legacy application code, legacy migrations, legacy
+  deployment units, legacy build files, and legacy verification scripts.
+- [x] Remove or rewrite repo docs that describe the legacy app as
+  production, reference, migration source, or cutover dependency.
+- [x] Update root scripts, Docker/Compose/Caddy/systemd docs, README,
+  AGENTS.md, and operations material so the repo centers only on the
+  TypeScript V2 app.
+- [x] Remove legacy CI/check expectations and make TypeScript
+  verification the default repo gate.
+- [x] Verify no durable repo text still instructs agents to preserve,
+  migrate from, deploy, or reference the legacy app.
+- [x] Run docs/typecheck/lint checks appropriate to the removed files and
+  leave the worktree clean.
+
+## Pass 7 - Commander Lookup And Lightweight Data
 
 - [ ] Decide whether manual commander entry is enough for cutover.
 - [ ] If lookup is required, add a narrow commander lookup path without
@@ -311,7 +324,7 @@ agent session.
   Changers data.
 - [ ] Verify lookup performance, privacy, and failure behavior.
 
-## Pass 7 - Observability And Operations
+## Pass 8 - Observability And Operations
 
 - [ ] Add structured logging without sensitive payloads.
 - [ ] Add GlitchTip/Sentry-compatible error reporting.
@@ -327,18 +340,6 @@ agent session.
 - [ ] Add backup and restore scripts for the TypeScript/Postgres shape.
 - [ ] Run and document a local backup/restore drill.
 
-## Pass 8 - Migration From Rust V1
-
-- [ ] Inventory Rust production tables and TypeScript target tables.
-- [ ] Decide table-by-table migration versus typed export/import for each
-  domain.
-- [ ] Build idempotent migration/export/import scripts that avoid
-  secrets, production logs, invite tokens, and private dumps in git.
-- [ ] Verify against a non-production copy or synthetic Rust-shaped data.
-- [ ] Reconcile identity/user mapping and historical game/deck/event
-  snapshots.
-- [ ] Produce a rollback plan before any production migration.
-
 ## Pass 9 - End-To-End Release Candidate
 
 - [ ] Run full TypeScript unit, integration, lint, typecheck, migration,
@@ -353,24 +354,8 @@ agent session.
 - [ ] Run load/interaction checks for repeated live-counter tapping.
 - [ ] Run production-like Docker Compose startup, health/readiness,
   backup, restore, and restart checks.
-- [ ] Freeze Rust feature work except urgent production fixes.
-- [ ] Get Stephen's explicit approval for production migration and
-  cutover.
-
-## Pass 10 - Cutover And Rust Retirement
-
-- [ ] Execute approved production migration and deployment only after
-  Stephen approval.
-- [ ] Validate production signup/login, event planning, public invite,
-  life counter, game save, history, and backup immediately after cutover.
-- [ ] Keep rollback available until Stephen accepts the new production
-  app.
-- [ ] Archive or remove Rust deployment files only after the TypeScript
-  production app is stable.
-- [ ] Remove or archive Rust code only with explicit approval and after
-  needed historical export paths are preserved.
-- [ ] Update `README.md`, `AGENTS.md`, and operations docs to reflect the
-  new production reality.
+- [ ] Get Stephen's explicit approval for production deployment or live
+  self-hosted cutover.
 
 ---
 

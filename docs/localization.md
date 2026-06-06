@@ -11,9 +11,9 @@ Supported application locales:
 - `en-US`
 
 `en-US` is the only supported UI locale for now. New user-facing copy can
-remain inline in Rust/Leptos components until the product surface is more
+remain inline in React components until the product surface is more
 stable. Do not extract or translate broad UI copy before there is a
-clearer copy inventory and a Rust-owned localization workflow.
+clearer copy inventory and localization workflow.
 
 ## User Preferences
 

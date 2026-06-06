@@ -9,10 +9,10 @@ part of the active roadmap unless Stephen explicitly expands scope.
 
 ## Deferred Pgvector Notes
 
-The Rust-era pgvector work was optional and local. The default SQLx
-migrations do not create the extension or vector tables, and the
-application can use SQL/full-text/trigram and heuristic behavior without
-pgvector.
+Pgvector work is optional and outside the default schema. Drizzle
+migrations must not create the extension or vector tables unless this
+feature is explicitly revived. The application can use SQL,
+full-text/trigram, and heuristic behavior without pgvector.
 
 If this work is ever revived:
 

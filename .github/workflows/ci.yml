@@ -8,58 +8,36 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_DB: pod_tracker_ci
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/pod_tracker_ci?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          toolchain: 1.95.0
-          components: rustfmt, clippy
+          version: 10.32.1
+          run_install: false
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
 
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Apply SQLx migrations
-        run: |
-          for migration in crates/pod-db/migrations/*.sql; do
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
-          done
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: Rust tests
-        run: cargo test --workspace --all-features
-
-      - name: Rust build
-        run: cargo build --workspace
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Docs and whitespace check
         run: git diff --check
 
-      - name: SQLx migration source check
-        run: test -f crates/pod-db/migrations/001_extensions.sql
+      - name: TypeScript typecheck
+        run: pnpm --dir apps/web typecheck
 
-      - name: Frontend asset check
-        run: test -f crates/pod-web/assets/app.css
+      - name: Lint
+        run: pnpm --dir apps/web lint
+
+      - name: Unit tests
+        run: pnpm --dir apps/web test
+
+      - name: Integration tests
+        run: pnpm --dir apps/web test:integration

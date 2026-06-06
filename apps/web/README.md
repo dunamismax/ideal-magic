@@ -1,6 +1,6 @@
 # Pod Tracker Web
 
-Next.js App Router application for the TypeScript rewrite.
+Next.js App Router application for Pod Tracker.
 
 Run from the repo root:
 
@@ -32,7 +32,7 @@ colliding with host PostgreSQL installs or SSH tunnels on the default
 `5432` port. The local migration defaults use that port.
 
 Drizzle schema and migrations live under `src/db`. Generate and check the
-TypeScript rewrite schema from the repo root:
+schema from the repo root:
 
 ```sh
 pnpm db:generate
@@ -92,6 +92,4 @@ return aggregate-only public data. Authenticated RSVP flows, address
 disclosure, and broader Postgres event mutations are implemented through
 the logged-in Game Night surfaces.
 
-This app is intentionally side-by-side with the Rust V1 workspace until
-the TypeScript core flows are implemented, verified, and approved for
-cutover.
+This is the supported Pod Tracker application.

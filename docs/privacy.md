@@ -82,9 +82,9 @@ but must not render street address fields.
 
 ## Calendar Feeds
 
-Calendar output is authenticated in the current Rust surface. Calendar
-events may include location names, but must not include private street
-addresses unless the requesting user is authorized to see the address.
+Calendar output may include location names, but must not include private
+street addresses unless the requesting user is authorized to see the
+address.
 
 Future tokenized calendar feeds should use independently revocable tokens
 and the same address visibility rules.
@@ -103,10 +103,10 @@ closed.
 
 ## Database Boundaries
 
-The Rust app currently relies on scoped repository queries and
-route-level authorization checks. The TypeScript rewrite should use RLS,
-public-safe views, or equivalent scoped-query tests before claiming
-tenant isolation as a database-enforced guarantee.
+The app currently relies on scoped query paths and route-level
+authorization checks. Use RLS, public-safe views, or equivalent
+scoped-query tests before claiming tenant isolation as a
+database-enforced guarantee.
 
 Public-safe views remain the preferred shape for tokenized public event
 and guest surfaces as the schema matures.

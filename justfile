@@ -1,32 +1,46 @@
 set dotenv-load := true
 
-database_url := env_var_or_default("POD_TRACKER_DATABASE_URL", "postgres://pod_tracker:pod_tracker@localhost:5432/pod_tracker?sslmode=disable")
-migration_database_url := env_var_or_default("POD_TRACKER_MIGRATION_DATABASE_URL", database_url)
-export DATABASE_URL := env_var_or_default("DATABASE_URL", database_url)
-
 default:
   just --list
 
-run:
-  cargo run -p pod-web --bin pod-tracker-web
+dev:
+  pnpm --dir apps/web dev
 
-worker:
-  cargo run -p pod-worker --bin pod-tracker-worker
+build:
+  pnpm --dir apps/web build
 
-release:
-  cargo build --locked --release -p pod-web --bin pod-tracker-web -p pod-worker --bin pod-tracker-worker -p pod-db --bin pod-tracker-migrate
+lint:
+  pnpm --dir apps/web lint
 
-fmt:
-  cargo fmt --all
-
-check:
-  cargo fmt --all --check
-  cargo clippy --workspace --all-targets --all-features -- -D warnings
-  cargo test --workspace --all-features
-  cargo build --workspace
+typecheck:
+  pnpm --dir apps/web typecheck
 
 test:
-  cargo test --workspace --all-features
+  pnpm --dir apps/web test
+
+test-integration:
+  pnpm --dir apps/web test:integration
+
+test-e2e:
+  pnpm --dir apps/web test:e2e
+
+check:
+  git diff --check
+  pnpm --dir apps/web typecheck
+  pnpm --dir apps/web lint
+  pnpm --dir apps/web test
+
+db-check:
+  pnpm --dir apps/web db:check
+
+db-migrate:
+  pnpm --dir apps/web db:migrate
+
+db-seed:
+  pnpm --dir apps/web db:seed
+
+db-test:
+  pnpm --dir apps/web db:test
 
 caddy-validate:
   #!/usr/bin/env bash
@@ -36,66 +50,6 @@ caddy-validate:
     exit 127
   fi
   caddy validate --adapter caddyfile --config deploy/caddy/Caddyfile
-
-systemd-verify:
-  #!/usr/bin/env bash
-  set -euo pipefail
-  if command -v systemd-analyze >/dev/null 2>&1; then
-    systemd-analyze verify deploy/systemd/pod-tracker-web.service deploy/systemd/pod-tracker-worker.service deploy/systemd/pod-tracker-backup.service
-  else
-    grep -q '^ExecStart=/opt/pod-tracker/current/bin/pod-tracker-web$' deploy/systemd/pod-tracker-web.service
-    grep -q '^ExecStart=/opt/pod-tracker/current/bin/pod-tracker-worker$' deploy/systemd/pod-tracker-worker.service
-    grep -q '^EnvironmentFile=/etc/pod-tracker/env$' deploy/systemd/pod-tracker-web.service
-    grep -q '^EnvironmentFile=/etc/pod-tracker/env$' deploy/systemd/pod-tracker-worker.service
-  fi
-
-db-create:
-  createdb pod_tracker
-
-db-drop:
-  dropdb --if-exists pod_tracker
-
-db-reset: db-drop db-create migrate-up
-
-migrate-up:
-  POD_TRACKER_MIGRATION_DATABASE_URL="{{migration_database_url}}" cargo run -p pod-db --bin pod-tracker-migrate -- up
-
-migrate-status:
-  POD_TRACKER_MIGRATION_DATABASE_URL="{{migration_database_url}}" cargo run -p pod-db --bin pod-tracker-migrate -- status
-
-migrate-down:
-  @echo "SQLx migrations are forward-only; write a new migration instead." >&2
-  @exit 1
-
-migrate-smoke:
-  #!/usr/bin/env bash
-  set -euo pipefail
-  db="pod_tracker_smoke_$(date +%s)"
-  createdb "$db"
-  trap 'dropdb --if-exists "$db" >/dev/null' EXIT
-  for migration in crates/pod-db/migrations/*.sql; do
-    psql -v ON_ERROR_STOP=1 -d "$db" -f "$migration" >/dev/null
-  done
-  psql -d "$db" -Atc "select extname from pg_extension where extname in ('pgcrypto','pg_trgm','pg_stat_statements','btree_gin') order by extname"
-
-sqlx-migrate-smoke:
-  #!/usr/bin/env bash
-  set -euo pipefail
-  db="pod_tracker_sqlx_smoke_$(date +%s)"
-  createdb "$db"
-  trap 'dropdb --if-exists "$db" >/dev/null' EXIT
-  for migration in crates/pod-db/migrations/*.sql; do
-    psql -v ON_ERROR_STOP=1 -d "$db" -f "$migration" >/dev/null
-  done
-  psql -d "$db" -Atc "select extname from pg_extension where extname in ('pgcrypto','pg_trgm','pg_stat_statements','btree_gin') order by extname"
-  DATABASE_URL="postgres://$(whoami)@localhost:5432/$db?sslmode=disable" cargo check -p pod-db --all-targets --all-features
-
-pgvector-migrate-up:
-  #!/usr/bin/env bash
-  set -euo pipefail
-  for migration in crates/pod-db/optional-migrations/pgvector/*.sql; do
-    psql -v ON_ERROR_STOP=1 "{{migration_database_url}}" -f "$migration"
-  done
 
 backup-restore-drill:
   deploy/scripts/backup-restore-drill.sh

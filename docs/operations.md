@@ -1,42 +1,11 @@
 # Operations
 
-Pod Tracker is in a side-by-side rewrite period. The Rust deployment is
-the live production shape until the TypeScript app is complete, verified,
-and approved for cutover.
+Pod Tracker is a self-hosted TypeScript/Next.js application backed by
+PostgreSQL. Production actions still require Stephen's explicit approval
+before deploying, migrating, restarting services, changing Caddy or
+Cloudflare, sending messages, or accessing private production data.
 
-Production actions still require explicit approval before deploying,
-migrating, restarting services, changing Caddy or Cloudflare, or
-accessing private production data.
-
-## Current Rust V1 Shape
-
-```text
-Cloudflare DNS
-  -> Ubuntu VM
-  -> Caddy
-  -> pod-tracker-web
-  -> pod-tracker-worker
-  -> PostgreSQL service
-```
-
-Current paths:
-
-```text
-/opt/pod-tracker/releases/       immutable release directories
-/opt/pod-tracker/current         symlink to active release
-/etc/pod-tracker/env             production environment file
-/var/lib/pod-tracker             app-owned durable files if needed
-/var/log/pod-tracker             app logs if file logging is added later
-/var/backups/pod-tracker         PostgreSQL dump files
-```
-
-The checked-in Rust deploy assets under `deploy/` remain valid for V1.
-Do not remove systemd, Caddy, backup, restore, or Rust deployment files
-until the TypeScript production cutover is approved and stable.
-
-## Future TypeScript Shape
-
-Target production shape:
+## Target Shape
 
 ```text
 Cloudflare DNS or Cloudflare Tunnel
@@ -56,95 +25,70 @@ rate limiting, queues, object storage, analytics, or error capture.
 Keep runtime credentials separate from migration/admin credentials. Never
 commit production environment values, database URLs, invite tokens,
 private Caddy fragments, Cloudflare tokens, analytics credentials, error
-reporting DSNs, database dumps, or production logs.
+reporting DSNs, database dumps, backups, or production logs.
 
-## Docker Compose Direction
+## Docker Compose
 
-The TypeScript deployment target uses Docker Compose for local and
-self-hosted service orchestration. Compose should eventually cover:
+Docker Compose is the local and self-hosted service orchestration path.
+The current root `compose.yaml` provides PostgreSQL and optional Valkey,
+MinIO, Umami, and GlitchTip services.
 
-- `web`: the Next.js app.
-- `postgres`: the app database.
-- `valkey`: cache, rate limiting, and later queue support.
-- `minio`: S3-compatible object storage when needed.
-- `umami`: respectful analytics without private payloads.
-- `glitchtip` or equivalent Sentry-compatible service for error
-  reporting.
-- `caddy`: reverse proxy and TLS boundary.
+```sh
+docker compose up -d postgres
+docker compose --profile optional up -d valkey minio
+docker compose --profile analytics up -d umami
+docker compose --profile errors up -d glitchtip
+```
 
-Optional services should use profiles or clear documentation so a minimal
-local app can run without every service.
+Optional services should stay behind profiles or clear documentation so a
+minimal local app can run without every service.
 
 ## Caddy And Cloudflare
 
-Caddy should proxy to the Next.js service only after the TypeScript
-service has health checks and a verified non-production deployment.
-Cloudflare DNS/proxy or Tunnel changes require explicit approval.
-
-Future Caddy config must be validated locally before production use:
+The checked-in Caddyfile is a production-shape example that proxies to a
+local Next.js service on `127.0.0.1:3000`. Validate it locally before
+production use:
 
 ```sh
-caddy validate --config deploy/caddy/Caddyfile
+caddy validate --adapter caddyfile --config deploy/caddy/Caddyfile
 ```
 
-Do not commit Cloudflare tokens, Tunnel credentials, real hostnames beyond
-publicly intended names, or private origin details.
+Cloudflare DNS/proxy or Tunnel changes require explicit approval. Do not
+commit Cloudflare tokens, Tunnel credentials, private hostnames, or
+private origin details.
 
 ## Health And Readiness
 
-The TypeScript app exposes:
+The app exposes:
 
 ```text
 /healthz
 /readyz
 ```
 
-At scaffold time these prove the Next.js process and route handler are
-alive. As Postgres, Valkey, object storage, analytics, and error reporting
+These endpoints should prove the process and the route handler are alive.
+As Postgres, Valkey, object storage, analytics, and error reporting
 become required runtime dependencies, readiness should check only the
 services required to serve user traffic safely.
 
 ## Backup And Restore
 
-Rust V1 backup and restore scripts remain under `deploy/scripts/`.
 Backups are sensitive production data and must stay outside the
-repository.
+repository. The scripts under `deploy/scripts/` use
+`POD_TRACKER_DATABASE_URL` for backup and
+`POD_TRACKER_RESTORE_DATABASE_URL` for restore targets.
 
-The TypeScript deployment shape needs a fresh backup and restore drill
-before production cutover:
+Run restore drills only against non-production databases unless Stephen
+has approved a production maintenance window and a specific recovery
+plan.
 
-1. Create a non-production database.
+Local drill outline:
+
+1. Create a non-production source database.
 2. Apply Drizzle migrations.
 3. Insert non-sensitive marker data.
-4. Take a backup through the future compose/Postgres backup path.
+4. Take a backup.
 5. Restore into a second non-production database.
 6. Re-run migrations.
-7. Verify readiness-critical tables, migration history, and marker data.
-
-## Rust V1 Deploy Reference
-
-Run from a clean checkout on the VM only with approval:
-
-```sh
-sudo deploy/scripts/deploy.sh
-```
-
-The Rust deploy script creates an immutable release directory, copies the
-Rust workspace and deploy assets, builds `pod-tracker-web`,
-`pod-tracker-worker`, and `pod-tracker-migrate` with Cargo, applies SQLx
-migrations with `POD_TRACKER_MIGRATION_DATABASE_URL`, advances
-`/opt/pod-tracker/current`, restarts the web and worker services, and
-reloads Caddy.
-
-Check Rust V1 health:
-
-```sh
-systemctl status pod-tracker-web.service
-systemctl status pod-tracker-worker.service
-curl -fsS https://pod-tracker.app/healthz
-curl -fsS https://pod-tracker.app/readyz
-```
-
-Production restore requires an explicit maintenance window, a fresh
-backup, stopped services, and confirmation that the target URL is the
-intended database.
+7. Verify readiness-critical tables, Drizzle migration history, and the
+   marker data.

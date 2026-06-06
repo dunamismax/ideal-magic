@@ -82,8 +82,8 @@ replacement.
 
 ## Stack Rules
 
-Target stack for new rewrite work unless `BUILD.md` or Stephen's
-explicit direction changes it:
+Target stack unless `BUILD.md` or Stephen's explicit direction changes
+it:
 
 - Next.js App Router for the public site and logged-in app.
 - React with TypeScript strict mode.
@@ -106,14 +106,10 @@ explicit direction changes it:
 
 Current repo reality:
 
-- The existing Rust/Axum/Leptos/sqlx workspace is the V1 implementation
-  and production reference until the TypeScript replacement is verified.
-- The TypeScript/Next.js rewrite has started side-by-side in `apps/web`
-  so Rust V1 can remain stable during migration.
-- Do not delete or destabilize the Rust app until equivalent TypeScript
-  core flows are implemented, verified, and Stephen approves cutover.
-- Use Rust-era verification when touching Rust code or SQLx migrations.
-- Use the TypeScript target stack for new product implementation.
+- The TypeScript/Next.js app in `apps/web` is the supported product.
+- The repository no longer carries a legacy application implementation,
+  legacy deployment path, or legacy migration source.
+- Use the TypeScript target stack for product implementation.
 
 Default against:
 
@@ -125,8 +121,8 @@ Default against:
 - AI/RAG, full card inventory, or deckbuilder complexity before the life
   counter and game-night planning pillars are excellent.
 
-The future product path is Next.js, React, TypeScript, Tailwind, Better
-Auth, Drizzle, Dexie, PostgreSQL, Docker Compose, Caddy, and focused
+The product path is Next.js, React, TypeScript, Tailwind, Better Auth,
+Drizzle, Dexie, PostgreSQL, Docker Compose, Caddy, and focused
 self-hosted services.
 
 ---
@@ -134,9 +130,7 @@ self-hosted services.
 ## Database Rules
 
 - PostgreSQL is product architecture, not just storage.
-- Drizzle migrations are the target schema history for the TypeScript
-  rewrite. SQLx migrations remain the Rust V1 schema history until
-  cutover.
+- Drizzle migrations are the schema history.
 - Useful extensions may include `pgcrypto`, `pg_trgm`,
   `pg_stat_statements`, and `btree_gin`; add extensions only when the
   target schema actually uses them.
@@ -257,21 +251,7 @@ Docs-only work:
 git diff --check
 ```
 
-When touching current Rust V1 code:
-
-```sh
-just fmt
-just check
-just test
-```
-
-SQLx compile checks need `DATABASE_URL` to point at a migrated database
-whose role can introspect the `core` and `ops` schemas. If the persistent
-local app database is stale, use a freshly migrated temporary local
-database for verification instead of loosening production-like app
-credentials.
-
-When TypeScript scripts exist, normal TypeScript gate:
+Normal TypeScript gate:
 
 ```sh
 pnpm lint
@@ -297,7 +277,6 @@ Expected coverage:
 - Testing Library coverage for important components and forms.
 - Migration tests against real PostgreSQL.
 - Drizzle schema/migration checks for the rewrite.
-- Rust tests and SQLx query/migration checks when touching Rust V1.
 - Server startup smoke.
 - `/healthz` and `/readyz`.
 - React page/component rendering tests.

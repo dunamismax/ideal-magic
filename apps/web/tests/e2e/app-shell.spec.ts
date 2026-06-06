@@ -1912,6 +1912,133 @@ test("event managers can submit a published pod game save into history", async (
   });
 });
 
+test("event and pod linked life counters import players and save games", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `linked-life-owner-${suffix}@example.test`;
+  const groupName = `Linked Life Pods ${suffix}`;
+  const eventTitle = `Linked Life Event ${suffix}`;
+  const eventNote = `Event linked save ${suffix}`;
+  const podNote = `Pod linked save ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  await createOwnedPlaygroupFixture({
+    email,
+    groupName,
+    description: "Linked life counter smoke.",
+  });
+  const fixture = await createPublishedPodLogFixture({
+    email,
+    eventTitle,
+    groupName,
+  });
+
+  await page.goto(`/events/${fixture.eventId}/life`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: `${eventTitle} Life Counter` }),
+  ).toBeVisible();
+  await expect(page.getByTestId("linked-life-status")).toHaveText(
+    "2 event players imported from RSVPs and declared decks. Save a completed result when the game is ready for group history.",
+  );
+  await expect(page.getByTestId("life-player-card")).toHaveCount(2);
+
+  const eventFirstPlayer = page.getByTestId("life-player-card").first();
+
+  await expect(
+    eventFirstPlayer.getByRole("heading", { name: "Riley Chen" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Guest RSVP" }).first(),
+  ).toBeVisible();
+  await eventFirstPlayer
+    .getByRole("button", { name: "Subtract 5 life from Riley Chen" })
+    .click();
+  await expect(eventFirstPlayer).toContainText("35");
+  await page.getByLabel(`Result for ${eventTitle}`).selectOption("draw");
+  await page.getByLabel("Seat 1: Riley Chen finish position").fill("1");
+  await page.getByLabel("Seat 2: Guest RSVP finish position").fill("2");
+  await page.getByLabel(`Notes for ${eventTitle}`).fill(eventNote);
+  await page
+    .getByRole("button", { name: `Save game for ${eventTitle}` })
+    .click();
+  await expect(page.getByText("Saved 2-player game to history.")).toBeVisible();
+
+  await page.goto(`/events/${fixture.eventId}/pods/${fixture.podId}/life`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Pod 1 Life Counter" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("linked-life-status")).toHaveText(
+    "2 published pod seats imported in table order. Save a completed result when the game is ready for group history.",
+  );
+  await expect(page.getByTestId("life-player-card")).toHaveCount(2);
+
+  const podFirstPlayer = page.getByTestId("life-player-card").first();
+
+  await expect(
+    podFirstPlayer.getByRole("heading", { name: "Riley Chen" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Guest RSVP" }).first(),
+  ).toBeVisible();
+  await podFirstPlayer
+    .getByRole("button", { name: "Mark Riley Chen as winner" })
+    .click();
+  await expect(page.getByTestId("life-game-result")).toHaveText(
+    "Riley Chen wins",
+  );
+  await page.getByLabel("Result for Pod 1").selectOption("normal_win");
+  await page
+    .getByLabel("Seat 1: Riley Chen", { exact: true })
+    .check();
+  await page.getByLabel("Seat 1: Riley Chen finish position").fill("1");
+  await page.getByLabel("Seat 2: Guest RSVP finish position").fill("2");
+  await page.getByLabel("Notes for Pod 1").fill(podNote);
+  await page.getByRole("button", { name: "Save game for Pod 1" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save game for Pod 1" }),
+  ).toHaveCount(0);
+
+  await page.goto("/history");
+  await expect(
+    page.locator("article").filter({ hasText: eventNote }),
+  ).toBeVisible();
+  await expect(
+    page.locator("article").filter({ hasText: podNote }),
+  ).toBeVisible();
+  await expect(page.getByText("Guest RSVP").first()).toBeVisible();
+  await expect(page.getByText("Private E2E Guest")).toHaveCount(0);
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select
+        result_type,
+        notes,
+        pod_id is not null as has_pod,
+        count(*) over ()::int as total_count
+      from core.games
+      where event_id = ${fixture.eventId}
+        and notes in (${eventNote}, ${podNote})
+      order by notes
+    `;
+
+    expect(rows).toMatchObject([
+      {
+        result_type: "draw",
+        notes: eventNote,
+        has_pod: false,
+        total_count: 2,
+      },
+      {
+        result_type: "normal_win",
+        notes: podNote,
+        has_pod: true,
+        total_count: 2,
+      },
+    ]);
+  });
+});
+
 test("history meta filters by scoped playgroup and event", async ({
   page,
 }, testInfo) => {

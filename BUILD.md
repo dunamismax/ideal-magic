@@ -348,7 +348,7 @@ agent session.
 
 - [x] Run full TypeScript unit, integration, lint, typecheck, migration,
   and Playwright suites.
-- [ ] Run critical browser smoke flows: signup, login, logout, group
+- [x] Run critical browser smoke flows: signup, login, logout, group
   create/edit, invite, event create/edit, RSVP, guest RSVP, deck create,
   deck declaration, pod generation/manual adjustment/lock/publish,
   standalone life counter, event-linked counter, pod-linked counter, game

@@ -8,11 +8,23 @@ const e2eDatabaseUrl =
   process.env.POD_TRACKER_DATABASE_URL ??
   "postgres://pod_tracker:pod_tracker@127.0.0.1:55432/pod_tracker";
 const testPassword = "correct-horse-battery";
+const responsiveViewports = [
+  { name: "phone", width: 390, height: 844 },
+  { name: "tablet", width: 820, height: 1180 },
+  { name: "laptop", width: 1366, height: 768 },
+  { name: "wide", width: 1920, height: 1080 },
+] as const;
 
 type TestUser = {
   email: string;
   name: string;
   password?: string;
+};
+
+type ResponsiveRouteCheck = {
+  name: string;
+  path: string;
+  assertReady: () => Promise<void>;
 };
 
 async function signUpVerifyAndLogin(
@@ -185,6 +197,63 @@ async function createOwnedPlaygroupFixture(input: {
 
   return {
     playgroupId,
+  };
+}
+
+async function createOwnedDeckFixture(input: {
+  email: string;
+  groupName: string;
+  deckName: string;
+}) {
+  const deckId = randomUUID();
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql<{ playgroup_id: string; user_id: string }[]>`
+      select p.id as playgroup_id, u.id as user_id
+      from core.playgroups p
+      cross join core.users u
+      where p.name = ${input.groupName}
+        and u.email = ${input.email.toLowerCase()}
+      limit 1
+    `;
+    const row = rows[0];
+
+    expect(row).toBeTruthy();
+
+    await sql`
+      insert into core.decks (
+        id,
+        owner_user_id,
+        playgroup_id,
+        name,
+        commanders,
+        color_identity,
+        bracket,
+        power_estimate,
+        archetype,
+        tags,
+        visibility,
+        external_url
+      )
+      values (
+        ${deckId},
+        ${row?.user_id},
+        ${row?.playgroup_id},
+        ${input.deckName},
+        array['Atraxa, Grand Unifier']::text[],
+        'WUBG',
+        '3',
+        7,
+        'Counters',
+        array['responsive', 'smoke']::text[],
+        'playgroup',
+        'https://example.test/decks/responsive'
+      )
+    `;
+  });
+
+  return {
+    deckId,
   };
 }
 
@@ -448,6 +517,157 @@ function hashInviteToken(token: string) {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+async function expectResponsiveViewport(page: Page) {
+  const horizontalOverflow = await page.evaluate(() => {
+    const root = document.scrollingElement ?? document.documentElement;
+    const viewportWidth = window.innerWidth;
+    const scrollWidth = Math.max(
+      root.scrollWidth,
+      document.documentElement.scrollWidth,
+      document.body?.scrollWidth ?? 0,
+    );
+    const offenders = Array.from(document.querySelectorAll("body *"))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+
+        return {
+          className: element.getAttribute("class") ?? "",
+          label: (
+            element.getAttribute("aria-label") ??
+            element.textContent ??
+            element.tagName.toLowerCase()
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 80),
+          overflowX: style.overflowX,
+          right: Math.ceil(rect.right),
+          scrollWidth: element.scrollWidth,
+          tagName: element.tagName.toLowerCase(),
+          width: Math.ceil(rect.width),
+        };
+      })
+      .filter(
+        (element) =>
+          element.width > 0 &&
+          (element.right > viewportWidth + 2 ||
+            element.scrollWidth > element.width + 2),
+      )
+      .sort(
+        (left, right) =>
+          Math.max(right.right - viewportWidth, right.scrollWidth - right.width) -
+          Math.max(left.right - viewportWidth, left.scrollWidth - left.width),
+      )
+      .slice(0, 5);
+
+    return {
+      offenders,
+      scrollWidth: Math.ceil(scrollWidth),
+      viewportWidth: Math.ceil(viewportWidth),
+    };
+  });
+
+  expect(
+    horizontalOverflow.scrollWidth,
+    JSON.stringify(horizontalOverflow.offenders, null, 2),
+  ).toBeLessThanOrEqual(horizontalOverflow.viewportWidth + 2);
+
+  const clippedControls = await page
+    .locator(
+      [
+        "header button",
+        "header a",
+        "header input",
+        "header select",
+        "header textarea",
+        "header [role='button']",
+        "header [role='link']",
+        "main button",
+        "main a",
+        "main input",
+        "main select",
+        "main textarea",
+        "main [role='button']",
+        "main [role='link']",
+      ].join(", "),
+    )
+    .evaluateAll((elements) => {
+      function getControlText(element: Element) {
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          return (
+            element.getAttribute("aria-label") ||
+            element.value ||
+            element.getAttribute("placeholder") ||
+            ""
+          );
+        }
+
+        if (element instanceof HTMLSelectElement) {
+          return (
+            element.getAttribute("aria-label") ||
+            Array.from(element.selectedOptions)
+              .map((option) => option.textContent ?? "")
+              .join(" ") ||
+            ""
+          );
+        }
+
+        return (
+          element.getAttribute("aria-label") ||
+          element.textContent?.trim() ||
+          element.getAttribute("placeholder") ||
+          ""
+        );
+      }
+
+      return elements
+        .map((element) => ({
+          element,
+          label: getControlText(element),
+        }))
+        .filter(({ element, label }) => {
+          if (!label.trim()) {
+            return false;
+          }
+
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+
+          if (
+            rect.width === 0 ||
+            rect.height === 0 ||
+            style.display === "none" ||
+            style.visibility === "hidden"
+          ) {
+            return false;
+          }
+
+          if (
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLSelectElement
+          ) {
+            return element.scrollHeight > Math.ceil(rect.height) + 2;
+          }
+
+          return element.scrollWidth > Math.ceil(rect.width) + 2;
+        })
+        .map(({ element, label }) => {
+          return {
+            className: element.getAttribute("class") ?? "",
+            label: label.replace(/\s+/g, " ").slice(0, 80),
+            tagName: element.tagName.toLowerCase(),
+          };
+        });
+    });
+
+  expect(clippedControls).toEqual([]);
+}
+
 test("app shell exposes primary Commander workflows", async ({ page }) => {
   await page.goto("/");
 
@@ -458,12 +678,7 @@ test("app shell exposes primary Commander workflows", async ({ page }) => {
   ).toBeVisible();
 });
 
-for (const viewport of [
-  { name: "phone", width: 390, height: 844 },
-  { name: "tablet", width: 820, height: 1180 },
-  { name: "laptop", width: 1366, height: 768 },
-  { name: "wide", width: 1920, height: 1080 },
-]) {
+for (const viewport of responsiveViewports) {
   test(`life counter layout is usable on ${viewport.name}`, async ({
     page,
   }) => {
@@ -505,6 +720,185 @@ for (const viewport of [
     });
   });
 }
+
+test("release-critical surfaces are responsive across RC viewport sizes", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `responsive-owner-${suffix}@example.test`;
+  const groupName = `Responsive Pods ${suffix}`;
+  const deckName = `Responsive Atraxa ${suffix}`;
+  const eventTitle = `Responsive Event ${suffix}`;
+  const publicEventTitle = `Responsive Public Event ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  await createOwnedPlaygroupFixture({
+    email,
+    groupName,
+    description: "Responsive release-candidate smoke.",
+  });
+  await createOwnedDeckFixture({
+    email,
+    groupName,
+    deckName,
+  });
+  const linkedFixture = await createLoggedHistoryFixture({
+    email,
+    eventTitle,
+    groupName,
+    notes: `Responsive history note ${suffix}`,
+    completedAt: "2030-06-14 19:00:00+00",
+  });
+  const publicFixture = await createPublicEventFixture({
+    eventTitle: publicEventTitle,
+    groupName: `Responsive Public Pods ${suffix}`,
+    locationName: `Responsive Public Location ${suffix}`,
+  });
+
+  const routeChecks: ResponsiveRouteCheck[] = [
+    {
+      name: "standalone life counter",
+      path: "/life",
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { name: "Life Counter" }),
+        ).toBeVisible();
+        await expect(page.getByTestId("life-player-card")).toHaveCount(4);
+        await expect(
+          page.getByRole("button", { name: "Add 10 life to Player 1" }),
+        ).toBeVisible();
+      },
+    },
+    {
+      name: "game night",
+      path: "/game-night",
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "Game Night" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Create Event" }),
+        ).toBeVisible();
+        const eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+        await expect(
+          eventCard.getByRole("heading", { name: eventTitle }),
+        ).toBeVisible();
+        await expect(
+          eventCard.getByRole("heading", { name: "Published Pods" }),
+        ).toBeVisible();
+        await expect(
+          eventCard.getByRole("link", { name: "Launch Pod 1 life counter" }),
+        ).toBeVisible();
+      },
+    },
+    {
+      name: "groups",
+      path: "/groups",
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "Groups" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Create Group" }),
+        ).toBeVisible();
+        const groupCard = page.locator("article").filter({ hasText: groupName });
+
+        await expect(
+          groupCard.getByRole("heading", { name: groupName }),
+        ).toBeVisible();
+        await expect(groupCard.getByText("Invite Links")).toBeVisible();
+      },
+    },
+    {
+      name: "decks",
+      path: "/decks",
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "Decks" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Create Deck" }),
+        ).toBeVisible();
+        const deckCard = page.locator("article").filter({ hasText: deckName });
+
+        await expect(
+          deckCard.getByRole("heading", { name: deckName }),
+        ).toBeVisible();
+        await expect(deckCard.getByText("Edit Deck", { exact: true })).toBeVisible();
+      },
+    },
+    {
+      name: "history",
+      path: "/history",
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "History" }),
+        ).toBeVisible();
+        await expect(page.getByText("1 logged")).toBeVisible();
+        await expect(
+          page.locator("article").filter({ hasText: eventTitle }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Apply" }),
+        ).toBeVisible();
+      },
+    },
+    {
+      name: "public event invite",
+      path: `/invites/events/${publicFixture.inviteToken}`,
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "Commander Night" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: publicEventTitle }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "RSVP", exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText("fixture-address-not-public")).toHaveCount(0);
+      },
+    },
+    {
+      name: "event-linked life counter",
+      path: `/events/${linkedFixture.eventId}/life`,
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", {
+            level: 1,
+            name: `${eventTitle} Life Counter`,
+          }),
+        ).toBeVisible();
+        await expect(page.getByTestId("linked-life-status")).toBeVisible();
+        await expect(page.getByTestId("life-player-card")).toHaveCount(2);
+      },
+    },
+    {
+      name: "pod-linked life counter",
+      path: `/events/${linkedFixture.eventId}/pods/${linkedFixture.podId}/life`,
+      assertReady: async () => {
+        await expect(
+          page.getByRole("heading", { level: 1, name: "Pod 1 Life Counter" }),
+        ).toBeVisible();
+        await expect(page.getByTestId("linked-life-status")).toBeVisible();
+        await expect(page.getByTestId("life-player-card")).toHaveCount(2);
+      },
+    },
+  ];
+
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize(viewport);
+
+    for (const routeCheck of routeChecks) {
+      await test.step(`${routeCheck.name} on ${viewport.name}`, async () => {
+        await page.goto(routeCheck.path);
+        await routeCheck.assertReady();
+        await expectResponsiveViewport(page);
+      });
+    }
+  }
+});
 
 test("standalone life counter updates local table state", async ({ page }) => {
   await page.goto("/life");

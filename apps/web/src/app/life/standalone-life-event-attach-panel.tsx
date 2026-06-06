@@ -27,9 +27,9 @@ export function StandaloneLifeEventAttachPanel({
   selectedEventBlocked = null,
 }: StandaloneLifeEventAttachPanelProps) {
   return (
-    <section className="mt-4 grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="grid gap-1">
+    <section className="mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="grid min-w-0 gap-1">
           <h2 className="flex items-center gap-2 text-base font-bold">
             <CalendarPlus className="size-4 text-accent" aria-hidden="true" />
             Attach Event
@@ -43,11 +43,11 @@ export function StandaloneLifeEventAttachPanel({
         {isAuthenticated ? (
           <form
             action="/life"
-            className="grid gap-2 sm:grid-cols-[minmax(14rem,1fr)_auto]"
+            className="grid min-w-0 gap-2 sm:grid-cols-[minmax(14rem,1fr)_auto]"
           >
             <select
               aria-label="Event to attach to this life counter"
-              className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+              className="h-10 min-w-0 w-full rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
               defaultValue={selectedEventId ?? ""}
               disabled={events.length === 0}
               name="eventId"

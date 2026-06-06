@@ -353,7 +353,7 @@ agent session.
   deck declaration, pod generation/manual adjustment/lock/publish,
   standalone life counter, event-linked counter, pod-linked counter, game
   save, history, and meta health.
-- [ ] Run responsive checks for small phone, tablet, laptop, and wide
+- [x] Run responsive checks for small phone, tablet, laptop, and wide
   desktop.
 - [ ] Run load/interaction checks for repeated live-counter tapping.
 - [ ] Run production-like Docker Compose startup, health/readiness,

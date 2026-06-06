@@ -23,15 +23,15 @@ export function HistoryFilterBar({
   return (
     <form
       action="/history"
-      className="rounded-panel border border-border bg-surface p-4 shadow-sm"
+      className="min-w-0 rounded-panel border border-border bg-surface p-4 shadow-sm"
     >
-      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-        <label className="grid gap-1 text-sm font-bold text-foreground">
+      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+        <label className="grid min-w-0 gap-1 text-sm font-bold text-foreground">
           <span className="text-xs font-black uppercase text-muted">
             Playgroup
           </span>
           <select
-            className="h-10 rounded-control border border-border bg-background px-3 text-sm font-semibold"
+            className="h-10 min-w-0 w-full rounded-control border border-border bg-background px-3 text-sm font-semibold"
             defaultValue={selectedPlaygroupId ?? ""}
             name="playgroupId"
           >
@@ -44,10 +44,10 @@ export function HistoryFilterBar({
           </select>
         </label>
 
-        <label className="grid gap-1 text-sm font-bold text-foreground">
+        <label className="grid min-w-0 gap-1 text-sm font-bold text-foreground">
           <span className="text-xs font-black uppercase text-muted">Event</span>
           <select
-            className="h-10 rounded-control border border-border bg-background px-3 text-sm font-semibold"
+            className="h-10 min-w-0 w-full rounded-control border border-border bg-background px-3 text-sm font-semibold"
             defaultValue={selectedEventId ?? ""}
             name="eventId"
           >

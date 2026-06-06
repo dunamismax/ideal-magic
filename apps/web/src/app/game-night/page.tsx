@@ -146,8 +146,8 @@ export default async function GameNightPage() {
 
   return (
     <PageFrame eyebrow="Host planning" title="Game Night">
-      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-        <section className="grid gap-3">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <section className="grid min-w-0 gap-3">
           <CreateEventForm
             locations={eventFormLocations}
             playgroups={eventCreatableGroups}
@@ -187,7 +187,7 @@ export default async function GameNightPage() {
           </div>
         </section>
 
-        <section className="grid gap-4">
+        <section className="grid min-w-0 gap-4">
           {eventSummaries.length > 0 ? (
             <div className="grid gap-3">
               {eventSummaries.map((event) => (
@@ -233,10 +233,10 @@ export function EventCard({
   pods?: EventPodSummary[];
 }) {
   return (
-    <article className="rounded-panel border border-border bg-surface p-4 shadow-sm">
-      <div className="grid gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+    <article className="min-w-0 rounded-panel border border-border bg-surface p-4 shadow-sm">
+      <div className="grid min-w-0 gap-4">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h2 className="text-base font-bold">{event.title}</h2>
             <p className="mt-1 text-sm font-semibold text-muted">
               {event.playgroup.name} - {formatEventDate(event.startsAt)}

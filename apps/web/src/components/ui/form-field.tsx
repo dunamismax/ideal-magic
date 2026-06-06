@@ -17,7 +17,7 @@ export function FormField({
   className?: string;
 }) {
   return (
-    <label className={cn("grid gap-1.5", className)}>
+    <label className={cn("grid min-w-0 gap-1.5", className)}>
       <span className="text-xs font-bold uppercase text-muted">{label}</span>
       {children}
       {error ? (
@@ -42,4 +42,4 @@ export function FieldLabel({
 }
 
 export const fieldControlClassName =
-  "min-h-10 w-full rounded-control border border-border bg-surface px-3 text-sm font-semibold text-foreground outline-none transition-colors placeholder:text-muted focus-visible:border-focus";
+  "min-h-10 min-w-0 w-full rounded-control border border-border bg-surface px-3 text-sm font-semibold text-foreground outline-none transition-colors placeholder:text-muted focus-visible:border-focus";

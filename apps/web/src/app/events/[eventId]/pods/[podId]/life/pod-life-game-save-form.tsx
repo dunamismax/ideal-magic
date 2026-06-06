@@ -69,26 +69,28 @@ export function PodLifeGameSaveForm({
   }, [eventId, localSessionId, pod.id, state.saved, state.savedGameId]);
 
   return (
-    <section className="mt-4 grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <section className="mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-base font-bold">
             <Trophy className="size-4 text-accent" aria-hidden="true" />
             Save Game
           </h2>
-          <p className="text-sm font-semibold text-muted">{pod.name}</p>
+          <p className="text-sm font-semibold text-muted [overflow-wrap:anywhere]">
+            {pod.name}
+          </p>
         </div>
       </div>
 
       <form
         action={formAction}
-        className="grid gap-3 lg:grid-cols-[12rem_1fr_1fr_auto] lg:items-start"
+        className="grid min-w-0 gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start"
       >
         <input name="eventId" type="hidden" value={state.fields.eventId} />
         <input name="podId" type="hidden" value={state.fields.podId} />
         <select
           aria-label={`Result for ${pod.name}`}
-          className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          className="h-10 min-w-0 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
           defaultValue={state.fields.resultType}
           name="resultType"
         >
@@ -103,7 +105,7 @@ export function PodLifeGameSaveForm({
           <option value="unfinished">Unfinished</option>
         </select>
 
-        <fieldset className="grid gap-1 rounded-control border border-border bg-background px-3 py-2">
+        <fieldset className="grid min-w-0 gap-1 rounded-control border border-border bg-background px-3 py-2">
           <legend className="sr-only">Winners for {pod.name}</legend>
           <span
             className="text-[0.7rem] font-black uppercase text-muted"
@@ -134,14 +136,14 @@ export function PodLifeGameSaveForm({
           </div>
         </fieldset>
 
-        <fieldset className="grid gap-2 rounded-control border border-border bg-background px-3 py-2 lg:col-span-4">
+        <fieldset className="grid min-w-0 gap-2 rounded-control border border-border bg-background px-3 py-2 lg:col-span-4">
           <legend className="sr-only">
             Finish order and losses for {pod.name}
           </legend>
           <span className="text-[0.7rem] font-black uppercase text-muted">
             Finish and Loss Details
           </span>
-          <div className="grid gap-2">
+          <div className="grid min-w-0 gap-2">
             {pod.seats.map((seat) => (
               <OutcomeFields
                 key={seat.id}
@@ -154,7 +156,7 @@ export function PodLifeGameSaveForm({
 
         <input
           aria-label={`Notes for ${pod.name}`}
-          className="h-10 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+          className="h-10 min-w-0 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
           defaultValue={state.fields.notes}
           name="notes"
           placeholder="Notes"
@@ -204,7 +206,7 @@ function OutcomeFields({
   playerId: string;
 }) {
   return (
-    <div className="grid gap-2 rounded-control border border-border/70 bg-surface p-2 md:grid-cols-[minmax(9rem,1fr)_5rem_5rem_5rem_8rem_minmax(8rem,1fr)_5rem_minmax(7rem,1fr)_5rem] md:items-center">
+    <div className="grid min-w-0 gap-2 rounded-control border border-border/70 bg-surface p-2 2xl:grid-cols-[minmax(9rem,1fr)_5rem_5rem_5rem_8rem_minmax(8rem,1fr)_5rem_minmax(7rem,1fr)_5rem] 2xl:items-center">
       <input name="playerOutcomeIds" type="hidden" value={playerId} />
       <p className="text-xs font-black text-foreground">{label}</p>
       <input

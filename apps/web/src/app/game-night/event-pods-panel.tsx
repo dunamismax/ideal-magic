@@ -87,9 +87,9 @@ export function EventPodsPanel({
   }
 
   return (
-    <section className="grid gap-3 border-t border-border pt-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <section className="grid min-w-0 gap-3 border-t border-border pt-4">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-black uppercase text-foreground">
             <UsersRound className="size-4 text-accent" aria-hidden="true" />
             {hasPublishedPods ? "Published Pods" : "Draft Pods"}
@@ -102,7 +102,7 @@ export function EventPodsPanel({
         </div>
 
         {canManageEvent ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
             <form action={formAction}>
               <input
                 name="eventId"
@@ -171,7 +171,7 @@ export function EventPodsPanel({
       ) : null}
 
       {pods.length > 0 ? (
-        <div className="grid gap-3">
+        <div className="grid min-w-0 gap-3">
           {pods.map((pod) => (
             <PodBlock
               canManageEvent={canManageEvent}
@@ -246,10 +246,10 @@ function PodBlock({
   return (
     <div
       aria-label={`${pod.name} pod assignment`}
-      className="rounded-control border border-border bg-background p-3"
+      className="min-w-0 rounded-control border border-border bg-background p-3"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h4 className="text-sm font-black">{pod.name}</h4>
           <p className="text-xs font-bold uppercase text-muted">
             {formatPodState(pod.state)} - {pod.seats.length} seats - Score{" "}
@@ -278,16 +278,16 @@ function PodBlock({
         <LogPodGameForm eventId={eventId} pod={pod} />
       ) : null}
 
-      <ol className="mt-3 grid gap-2">
+      <ol className="mt-3 grid min-w-0 gap-2">
         {pod.seats.map((seat) => (
           <li
-            className="grid gap-2 rounded-control border border-border/70 bg-surface px-3 py-2 lg:grid-cols-[auto_1fr_auto] lg:items-center"
+            className="grid min-w-0 gap-2 rounded-control border border-border/70 bg-surface px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center"
             key={seat.id}
           >
             <span className="inline-flex size-7 items-center justify-center rounded-full bg-accent text-xs font-black text-accent-foreground">
               {seat.seatPosition}
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-black">{seat.participantName}</p>
               <p className="text-xs font-bold text-muted">
                 {seat.deck
@@ -365,13 +365,13 @@ function LogPodGameForm({
   return (
     <form
       action={formAction}
-      className="mt-3 grid gap-2 rounded-control border border-border bg-surface px-3 py-2 lg:grid-cols-[10rem_1fr_1fr_auto] lg:items-start"
+      className="mt-3 grid min-w-0 gap-2 rounded-control border border-border bg-surface px-3 py-2 lg:grid-cols-[10rem_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start"
     >
       <input name="eventId" type="hidden" value={state.fields.eventId} />
       <input name="podId" type="hidden" value={state.fields.podId} />
       <select
         aria-label={`Result for ${pod.name}`}
-        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+        className="h-9 min-w-0 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
         defaultValue={state.fields.resultType}
         name="resultType"
       >
@@ -385,7 +385,7 @@ function LogPodGameForm({
         <option value="time_called">Time called</option>
         <option value="unfinished">Unfinished</option>
       </select>
-      <fieldset className="grid gap-1 rounded-control border border-border bg-background px-2 py-1.5">
+      <fieldset className="grid min-w-0 gap-1 rounded-control border border-border bg-background px-2 py-1.5">
         <legend className="sr-only">Winners for {pod.name}</legend>
         <span
           className="text-[0.7rem] font-black uppercase text-muted"
@@ -415,14 +415,14 @@ function LogPodGameForm({
           ))}
         </div>
       </fieldset>
-      <fieldset className="grid gap-2 rounded-control border border-border bg-background px-2 py-1.5 lg:col-span-4">
+      <fieldset className="grid min-w-0 gap-2 rounded-control border border-border bg-background px-2 py-1.5 lg:col-span-4">
         <legend className="sr-only">
           Finish order and losses for {pod.name}
         </legend>
         <span className="text-[0.7rem] font-black uppercase text-muted">
           Finish and Loss Details
         </span>
-        <div className="grid gap-2">
+        <div className="grid min-w-0 gap-2">
           {pod.seats.map((seat) => (
             <OutcomeFields
               key={seat.id}
@@ -434,7 +434,7 @@ function LogPodGameForm({
       </fieldset>
       <input
         aria-label={`Notes for ${pod.name}`}
-        className="h-9 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
+        className="h-9 min-w-0 rounded-control border border-border bg-background px-2 text-sm font-semibold text-foreground"
         defaultValue={state.fields.notes}
         name="notes"
         placeholder="Notes"
@@ -477,7 +477,7 @@ function OutcomeFields({
   playerId: string;
 }) {
   return (
-    <div className="grid gap-2 rounded-control border border-border/70 bg-surface p-2 md:grid-cols-[minmax(9rem,1fr)_5rem_5rem_5rem_8rem_minmax(8rem,1fr)_5rem_minmax(7rem,1fr)_5rem] md:items-center">
+    <div className="grid min-w-0 gap-2 rounded-control border border-border/70 bg-surface p-2 2xl:grid-cols-[minmax(9rem,1fr)_5rem_5rem_5rem_8rem_minmax(8rem,1fr)_5rem_minmax(7rem,1fr)_5rem] 2xl:items-center">
       <input name="playerOutcomeIds" type="hidden" value={playerId} />
       <p className="text-xs font-black text-foreground">{label}</p>
       <input

@@ -32,7 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto grid max-w-screen-2xl gap-3 px-shell py-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+        <div className="mx-auto grid min-w-0 max-w-screen-2xl gap-3 px-shell py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
           <Link className="flex min-w-0 items-center gap-3" href="/">
             <span className="flex size-10 items-center justify-center rounded-control bg-foreground text-background">
               <Crown className="size-5" aria-hidden="true" />
@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <nav
             aria-label="Primary"
-            className="grid grid-flow-col auto-cols-max gap-2 overflow-x-auto pb-1 lg:justify-center lg:pb-0"
+            className="grid min-w-0 grid-flow-col auto-cols-max gap-2 overflow-x-auto pb-1 lg:justify-center lg:pb-0"
           >
             {primaryNav.map((item) => {
               const Icon = item.icon;

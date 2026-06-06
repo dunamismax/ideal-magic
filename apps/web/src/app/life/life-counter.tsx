@@ -1773,7 +1773,7 @@ export function LifeCounter({
 
       <div
         className={cn(
-          "grid gap-3 md:grid-cols-2 xl:grid-cols-4",
+          "grid gap-3 lg:grid-cols-2 xl:grid-cols-4",
           tableMode && "min-h-0 overflow-auto pb-2 xl:auto-rows-fr",
         )}
       >

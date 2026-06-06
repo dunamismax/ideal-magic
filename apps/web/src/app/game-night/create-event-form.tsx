@@ -63,7 +63,7 @@ export function CreateEventForm({
   return (
     <form
       action={formAction}
-      className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-sm sm:p-5"
+      className="grid min-w-0 gap-4 rounded-panel border border-border bg-surface p-4 shadow-sm sm:p-5"
     >
       <div>
         <h2 className="text-base font-bold">Create Event</h2>

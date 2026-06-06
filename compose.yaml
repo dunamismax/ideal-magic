@@ -1,25 +1,59 @@
 services:
+  app:
+    image: pod-tracker-web:production
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file:
+      - ${POD_TRACKER_COMPOSE_ENV_FILE:-.env}
+    environment:
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      PORT: 3000
+      POD_TRACKER_DATABASE_URL: ${POD_TRACKER_DATABASE_URL:-postgres://pod_tracker:pod_tracker@postgres:5432/pod_tracker?sslmode=disable}
+      VALKEY_URL: ${VALKEY_URL:-redis://valkey:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/readyz | grep -q '\"ok\":true'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8083}:3000"
+    restart: unless-stopped
+
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_DB: pod_tracker
-      POSTGRES_USER: pod_tracker
-      POSTGRES_PASSWORD: pod_tracker
+      POSTGRES_DB: ${POSTGRES_DB:-pod_tracker}
+      POSTGRES_USER: ${POSTGRES_USER:-pod_tracker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pod_tracker}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pod_tracker -d pod_tracker"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "55432:5432"
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-55432}:5432"
+    restart: unless-stopped
     volumes:
       - pod_tracker_postgres:/var/lib/postgresql
 
   valkey:
     image: valkey/valkey:9-alpine
-    profiles: ["optional", "errors"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
-      - "6379:6379"
+      - "${VALKEY_BIND:-127.0.0.1}:${VALKEY_PORT:-6379}:6379"
+    restart: unless-stopped
     volumes:
       - pod_tracker_valkey:/data
 

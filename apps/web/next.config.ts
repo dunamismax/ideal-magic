@@ -3,14 +3,18 @@ import { fileURLToPath } from "node:url";
 
 import { getServerActionAllowedOrigins } from "./src/features/security/origin";
 
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingRoot: repoRoot,
   experimental: {
     serverActions: {
       allowedOrigins: getServerActionAllowedOrigins(),
     },
   },
   turbopack: {
-    root: fileURLToPath(new URL("../..", import.meta.url)),
+    root: repoRoot,
   },
   typescript: {
     ignoreBuildErrors: false,

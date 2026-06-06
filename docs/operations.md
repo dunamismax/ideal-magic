@@ -30,12 +30,14 @@ reporting DSNs, database dumps, backups, or production logs.
 ## Docker Compose
 
 Docker Compose is the local and self-hosted service orchestration path.
-The current root `compose.yaml` provides PostgreSQL and optional Valkey,
-MinIO, Umami, and GlitchTip services.
+The current root `compose.yaml` provides the production Next.js app,
+PostgreSQL, Valkey for production rate limiting, and optional MinIO,
+Umami, and GlitchTip services.
 
 ```sh
 docker compose up -d postgres
-docker compose --profile optional up -d valkey minio
+docker compose up -d app
+docker compose --profile optional up -d minio
 docker compose --profile analytics up -d umami
 docker compose --profile errors up -d glitchtip
 ```
@@ -43,15 +45,15 @@ docker compose --profile errors up -d glitchtip
 Optional services should stay behind profiles or clear documentation so a
 minimal local app can run without every service.
 
-For production-shaped self-hosting, run the Next.js app as the web
-service with `NODE_ENV=production`, `HOSTNAME=127.0.0.1`, `PORT=3000`,
-and the placeholder-only environment shape in
-`deploy/env/production.env.example`. Build and start from `apps/web`:
+For production-shaped self-hosting, run the Next.js app as the Compose
+`app` service with `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, internal
+`PORT=3000`, and host `APP_PORT=8083` to avoid colliding with other
+local Next.js services. Use the placeholder-only environment shape in
+`deploy/env/production.env.example`:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm --dir apps/web build
-pnpm --dir apps/web start
+POD_TRACKER_COMPOSE_ENV_FILE=/etc/pod-tracker/env \
+  docker compose --env-file /etc/pod-tracker/env up -d --build app
 ```
 
 PostgreSQL is required for cutover traffic. Valkey is required when
@@ -64,9 +66,9 @@ service.
 
 ## Caddy And Cloudflare
 
-The checked-in Caddyfile is a production-shape example that proxies to a
-local Next.js service on `127.0.0.1:3000`. Validate it locally before
-production use:
+The checked-in Caddyfile is a production-shape example that proxies to
+the Compose-published Next.js service on `127.0.0.1:8083`. Validate it
+locally before production use:
 
 ```sh
 caddy validate --adapter caddyfile --config deploy/caddy/Caddyfile

@@ -19,7 +19,8 @@ pnpm db:test
 Local infrastructure lives in the root `compose.yaml`.
 
 ```sh
-docker compose up -d postgres valkey minio
+docker compose up -d postgres valkey
+docker compose --profile optional up -d minio
 docker compose --profile analytics up -d umami
 docker compose --profile errors up -d glitchtip
 ```

@@ -117,6 +117,42 @@ export function createPodLifeCounterContextFromPublishedPod({
   };
 }
 
+export function createScopedLinkedLifeTableSession(
+  session: LifeCounterSession,
+  scopedSession: LifeCounterSession,
+): LifeCounterSession {
+  const scopedPlayers = scopedSession.players.slice(
+    0,
+    scopedSession.playerCount,
+  );
+
+  return {
+    ...session,
+    playerCount: Math.min(session.playerCount, scopedSession.playerCount),
+    players: session.players.map((player, index) => {
+      const scopedPlayer = scopedPlayers[index];
+
+      if (!scopedPlayer) {
+        return player;
+      }
+
+      return {
+        ...player,
+        name: scopedPlayer.name,
+        deck: scopedPlayer.deck,
+        commanders: scopedPlayer.commanders.map((commander, commanderIndex) => {
+          const liveCommander = player.commanders[commanderIndex];
+
+          return {
+            ...(liveCommander ?? commander),
+            name: commander.name,
+          };
+        }),
+      };
+    }),
+  };
+}
+
 function createLinkedSessionId(
   kind: LinkedLifeCounterContext["kind"],
   eventId: string,

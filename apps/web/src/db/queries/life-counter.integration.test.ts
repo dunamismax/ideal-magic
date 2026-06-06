@@ -86,6 +86,15 @@ describe("linked life counter persistence", () => {
 
     await expect(
       getLinkedLifeCounterSessionForViewer(db, {
+        viewerUserId: fixture.outsiderId,
+        kind: "event",
+        eventId: fixture.eventId,
+        localSessionKey,
+      }),
+    ).rejects.toThrow(LinkedLifeCounterAuthorizationError);
+
+    await expect(
+      getLinkedLifeCounterSessionForViewer(db, {
         viewerUserId: fixture.ownerId,
         kind: "event",
         eventId: fixture.eventId,
@@ -170,7 +179,9 @@ describe("linked life counter persistence", () => {
       serverActionSequence: secondPersist.serverActionSequence,
       serverUpdatedAt: secondPersist.serverUpdatedAt,
     });
-    expect(stalePersist.ok ? null : stalePersist.serverSession?.players[0]?.poison).toBe(1);
+    expect(
+      stalePersist.ok ? null : stalePersist.serverSession?.players[0]?.poison,
+    ).toBe(1);
 
     const reloaded = await getLinkedLifeCounterSessionForViewer(db, {
       viewerUserId: fixture.ownerId,
@@ -224,10 +235,7 @@ describe("linked life counter persistence", () => {
       }),
     ).rejects.toThrow(LinkedLifeCounterAuthorizationError);
 
-    await db
-      .update(pods)
-      .set({ publishedAt: null })
-      .where(eq(pods.id, podId));
+    await db.update(pods).set({ publishedAt: null }).where(eq(pods.id, podId));
 
     await expect(
       getLinkedLifeCounterSessionForViewer(db, {
@@ -298,12 +306,9 @@ async function createLinkedLifeCounterFixture(db: AppDatabase) {
 }
 
 function createSessionWithLifeLoss(sessionId: string, amount: number) {
-  const session = createInitialLifeCounterSession(
-    "2030-06-15T00:00:00.000Z",
-    {
-      id: sessionId,
-    },
-  );
+  const session = createInitialLifeCounterSession("2030-06-15T00:00:00.000Z", {
+    id: sessionId,
+  });
 
   return recordLifeCounterAction(
     session,

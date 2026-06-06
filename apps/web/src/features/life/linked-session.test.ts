@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   createEventLifeCounterContextFromParticipants,
   createPodLifeCounterContextFromPublishedPod,
+  createScopedLinkedLifeTableSession,
 } from "./linked-session";
 
 describe("linked life counter setup", () => {
@@ -120,5 +121,77 @@ describe("linked life counter setup", () => {
       deck: "",
     });
     expect(JSON.stringify(context)).not.toContain("Private Guest");
+  });
+
+  test("overlays scoped labels on raw synced table sessions", () => {
+    const context = createEventLifeCounterContextFromParticipants({
+      event: {
+        id: "50000000-0000-4000-8000-000000000001",
+        title: "Friday Commander",
+        startsAt: new Date("2030-06-14T23:00:00.000Z"),
+      },
+      participants: [
+        {
+          id: "50000000-0000-4000-8000-000000000002",
+          participantName: "Riley Chen",
+          rsvpStatus: "yes",
+          deck: {
+            declarationId: "50000000-0000-4000-8000-000000000003",
+            deckId: "50000000-0000-4000-8000-000000000004",
+            deckNameSnapshot: "Atraxa Counters",
+            commanderSnapshot: ["Atraxa, Grand Unifier"],
+            colorIdentitySnapshot: "WUBG",
+            bracketSnapshot: "3",
+            powerEstimateSnapshot: 7,
+            archetypeSnapshot: "Counters",
+          },
+        },
+        {
+          id: "50000000-0000-4000-8000-000000000005",
+          participantName: "Guest RSVP",
+          rsvpStatus: "maybe",
+          deck: null,
+        },
+      ],
+      now: "2030-06-14T23:30:00.000Z",
+    });
+    const rawSyncedSession = {
+      ...context.session,
+      players: context.session.players.map((player, index) =>
+        index === 1
+          ? {
+              ...player,
+              name: "Private Guest",
+              deck: "Private deck",
+              commanders: [
+                {
+                  ...player.commanders[0]!,
+                  name: "Private commander",
+                  castCount: 2,
+                },
+              ],
+              life: 31,
+            }
+          : player,
+      ),
+    };
+
+    const tableSession = createScopedLinkedLifeTableSession(
+      rawSyncedSession,
+      context.session,
+    );
+
+    expect(tableSession.players[1]).toMatchObject({
+      name: "Guest RSVP",
+      deck: "",
+      life: 31,
+    });
+    expect(tableSession.players[1]?.commanders[0]).toMatchObject({
+      name: "Guest RSVP's Commander",
+      castCount: 2,
+    });
+    expect(JSON.stringify(tableSession)).not.toContain("Private Guest");
+    expect(JSON.stringify(tableSession)).not.toContain("Private deck");
+    expect(JSON.stringify(tableSession)).not.toContain("Private commander");
   });
 });

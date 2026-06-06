@@ -298,7 +298,7 @@ agent session.
 - [x] Decide `/life` ships as an installable PWA for cutover; add narrow
   manifest/service-worker behavior for the standalone counter and verify
   offline launch for previously loaded assets.
-- [ ] Add a read-only table/spectator view only if it can be scoped and
+- [x] Add a read-only table/spectator view only if it can be scoped and
   kept fast.
 
 ## Pass 6 - Commander Lookup And Lightweight Data

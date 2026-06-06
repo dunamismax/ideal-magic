@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Monitor } from "lucide-react";
+import { Gauge } from "lucide-react";
 
-import { LifeCounter } from "@/app/life/life-counter";
+import { LifeTableEmptyState, LifeTableView } from "@/app/life/life-table-view";
 import { Button } from "@/components/ui/button";
 import { PageFrame } from "@/components/page-frame";
 import { createDatabase } from "@/db/client";
@@ -12,18 +12,20 @@ import {
 } from "@/db/queries/event-planning";
 import { getLinkedLifeCounterSessionForViewer } from "@/db/queries/life-counter";
 import { requireServerSession } from "@/features/auth/server";
-import { createEventLifeCounterContextFromParticipants } from "@/features/life/linked-session";
-import { EventLifeGameSaveForm } from "./event-life-game-save-form";
+import {
+  createEventLifeCounterContextFromParticipants,
+  createScopedLinkedLifeTableSession,
+} from "@/features/life/linked-session";
 
 export const dynamic = "force-dynamic";
 
-export default async function EventLifePage({
+export default async function EventLifeTablePage({
   params,
 }: {
   params: Promise<{ eventId: string }>;
 }) {
   const { eventId } = await params;
-  const session = await requireServerSession(`/events/${eventId}/life`);
+  const session = await requireServerSession(`/events/${eventId}/life/table`);
   const db = createDatabase();
   const [event, participants] = await Promise.all([
     getScopedEventPlanningSummary(db, {
@@ -54,43 +56,31 @@ export default async function EventLifePage({
     eventId,
     localSessionKey: context.session.id,
   });
-  const lifeCounterSession = serverSnapshot?.session ?? context.session;
-  const canSaveGame = event.status === "scheduled" && participants.length >= 2;
 
   return (
     <PageFrame
       actions={
         <Button asChild variant="secondary">
-          <Link href={`/events/${eventId}/life/table`}>
-            <Monitor className="size-4" aria-hidden="true" />
-            Table view
+          <Link href={`/events/${eventId}/life`}>
+            <Gauge className="size-4" aria-hidden="true" />
+            Counter
           </Link>
         </Button>
       }
       eyebrow={context.eyebrow}
-      title={context.title}
+      title={`${event.title} Table View`}
     >
-      <LifeCounter
-        initialSession={lifeCounterSession}
-        linkedSaveEnabled={canSaveGame}
-        linkedSessionSync={{
-          kind: "event",
-          eventId,
-          localSessionKey: context.session.id,
-          expectedServerActionSequence:
-            serverSnapshot?.serverActionSequence ?? null,
-          expectedServerUpdatedAt: serverSnapshot?.serverUpdatedAt ?? null,
-        }}
-        linkedStatusLabel={context.statusLabel}
-      />
-      {canSaveGame ? (
-        <EventLifeGameSaveForm
-          eventId={eventId}
-          eventTitle={event.title}
-          localSessionId={context.session.id}
-          participants={participants}
+      {serverSnapshot ? (
+        <LifeTableView
+          session={createScopedLinkedLifeTableSession(
+            serverSnapshot.session,
+            context.session,
+          )}
+          syncedAt={serverSnapshot.serverUpdatedAt}
         />
-      ) : null}
+      ) : (
+        <LifeTableEmptyState label={event.title} />
+      )}
     </PageFrame>
   );
 }

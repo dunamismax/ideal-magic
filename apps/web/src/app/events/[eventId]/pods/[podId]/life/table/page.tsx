@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Monitor } from "lucide-react";
+import { Gauge } from "lucide-react";
 
-import { LifeCounter } from "@/app/life/life-counter";
+import { LifeTableEmptyState, LifeTableView } from "@/app/life/life-table-view";
 import { Button } from "@/components/ui/button";
 import { PageFrame } from "@/components/page-frame";
 import { createDatabase } from "@/db/client";
@@ -10,19 +10,21 @@ import { getScopedEventPlanningSummary } from "@/db/queries/event-planning";
 import { getLinkedLifeCounterSessionForViewer } from "@/db/queries/life-counter";
 import { listPodsForEventViewer } from "@/db/queries/pods";
 import { requireServerSession } from "@/features/auth/server";
-import { createPodLifeCounterContextFromPublishedPod } from "@/features/life/linked-session";
-import { PodLifeGameSaveForm } from "./pod-life-game-save-form";
+import {
+  createPodLifeCounterContextFromPublishedPod,
+  createScopedLinkedLifeTableSession,
+} from "@/features/life/linked-session";
 
 export const dynamic = "force-dynamic";
 
-export default async function PodLifePage({
+export default async function PodLifeTablePage({
   params,
 }: {
   params: Promise<{ eventId: string; podId: string }>;
 }) {
   const { eventId, podId } = await params;
   const session = await requireServerSession(
-    `/events/${eventId}/pods/${podId}/life`,
+    `/events/${eventId}/pods/${podId}/life/table`,
   );
   const db = createDatabase();
   const [event, eventPods] = await Promise.all([
@@ -59,43 +61,31 @@ export default async function PodLifePage({
     podId,
     localSessionKey: context.session.id,
   });
-  const lifeCounterSession = serverSnapshot?.session ?? context.session;
-  const canSaveGame = pod.state === "locked";
 
   return (
     <PageFrame
       actions={
         <Button asChild variant="secondary">
-          <Link href={`/events/${eventId}/pods/${podId}/life/table`}>
-            <Monitor className="size-4" aria-hidden="true" />
-            Table view
+          <Link href={`/events/${eventId}/pods/${podId}/life`}>
+            <Gauge className="size-4" aria-hidden="true" />
+            Counter
           </Link>
         </Button>
       }
       eyebrow={context.eyebrow}
-      title={context.title}
+      title={`${pod.name} Table View`}
     >
-      <LifeCounter
-        initialSession={lifeCounterSession}
-        linkedSaveEnabled={canSaveGame}
-        linkedSessionSync={{
-          kind: "pod",
-          eventId,
-          podId,
-          localSessionKey: context.session.id,
-          expectedServerActionSequence:
-            serverSnapshot?.serverActionSequence ?? null,
-          expectedServerUpdatedAt: serverSnapshot?.serverUpdatedAt ?? null,
-        }}
-        linkedStatusLabel={context.statusLabel}
-      />
-      {canSaveGame ? (
-        <PodLifeGameSaveForm
-          eventId={eventId}
-          localSessionId={context.session.id}
-          pod={pod}
+      {serverSnapshot ? (
+        <LifeTableView
+          session={createScopedLinkedLifeTableSession(
+            serverSnapshot.session,
+            context.session,
+          )}
+          syncedAt={serverSnapshot.serverUpdatedAt}
         />
-      ) : null}
+      ) : (
+        <LifeTableEmptyState label={pod.name} />
+      )}
     </PageFrame>
   );
 }

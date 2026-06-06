@@ -57,6 +57,7 @@ export default async function EventLifePage({
         <EventLifeGameSaveForm
           eventId={eventId}
           eventTitle={event.title}
+          localSessionId={context.session.id}
           participants={participants}
         />
       ) : null}

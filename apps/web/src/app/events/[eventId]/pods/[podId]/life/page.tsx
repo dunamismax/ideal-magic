@@ -57,7 +57,13 @@ export default async function PodLifePage({
         linkedSaveEnabled={canSaveGame}
         linkedStatusLabel={context.statusLabel}
       />
-      {canSaveGame ? <PodLifeGameSaveForm eventId={eventId} pod={pod} /> : null}
+      {canSaveGame ? (
+        <PodLifeGameSaveForm
+          eventId={eventId}
+          localSessionId={context.session.id}
+          pod={pod}
+        />
+      ) : null}
     </PageFrame>
   );
 }

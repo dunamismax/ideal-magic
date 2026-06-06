@@ -48,6 +48,7 @@ export async function saveEventLifeGameAction(
     return {
       message: "Choose a valid game result.",
       saved: false,
+      savedGameId: null,
       fieldErrors: validation.fieldErrors,
       fields: validation.fields,
     };
@@ -66,6 +67,7 @@ export async function saveEventLifeGameAction(
     return {
       message: `Saved ${logged.players.length}-player game to history.`,
       saved: true,
+      savedGameId: logged.id,
       fieldErrors: {},
       fields: validation.input,
     };
@@ -74,6 +76,7 @@ export async function saveEventLifeGameAction(
       return {
         message: "You cannot save a game from that event.",
         saved: false,
+        savedGameId: null,
         fieldErrors: {
           eventId: "Choose one of your event counters.",
         },
@@ -85,6 +88,7 @@ export async function saveEventLifeGameAction(
       return {
         message: error.message,
         saved: false,
+        savedGameId: null,
         fieldErrors: {},
         fields,
       };
@@ -95,6 +99,7 @@ export async function saveEventLifeGameAction(
     return {
       message: "Could not save the game. Try again.",
       saved: false,
+      savedGameId: null,
       fieldErrors: {},
       fields,
     };

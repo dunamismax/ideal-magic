@@ -1,17 +1,19 @@
 "use client";
 
 import { CheckCircle2, Trophy } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import type { EventLifeCounterParticipantSummary } from "@/db/queries/event-planning";
 import type { SaveEventLifeGameActionState } from "@/features/life/event-game-save";
+import { markLifeCounterSessionGameSaved } from "@/features/life/local-session-store";
 import { saveEventLifeGameAction } from "./actions";
 
 type EventLifeGameSaveFormProps = {
   eventId: string;
   eventTitle: string;
+  localSessionId?: string | null;
   participants: readonly EventLifeCounterParticipantSummary[];
   action?: (
     previousState: SaveEventLifeGameActionState,
@@ -25,6 +27,7 @@ function createInitialState(input: {
   return {
     message: null,
     saved: false,
+    savedGameId: null,
     fieldErrors: {},
     fields: {
       eventId: input.eventId,
@@ -39,6 +42,7 @@ function createInitialState(input: {
 export function EventLifeGameSaveForm({
   eventId,
   eventTitle,
+  localSessionId,
   participants,
   action = saveEventLifeGameAction,
 }: EventLifeGameSaveFormProps) {
@@ -48,6 +52,17 @@ export function EventLifeGameSaveForm({
       eventId,
     }),
   );
+
+  useEffect(() => {
+    if (!state.saved || !state.savedGameId || !localSessionId) {
+      return;
+    }
+
+    void markLifeCounterSessionGameSaved(localSessionId, {
+      gameId: state.savedGameId,
+      eventId,
+    });
+  }, [eventId, localSessionId, state.saved, state.savedGameId]);
 
   return (
     <section className="mt-4 grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">

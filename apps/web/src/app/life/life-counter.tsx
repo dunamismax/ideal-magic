@@ -25,18 +25,21 @@ import {
   Swords,
   SunMoon,
   Trophy,
+  Trash2,
   Undo2,
   UserPlus,
   Zap,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fieldControlClassName, FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
+  cleanupSavedLifeCounterSessions,
+  countCleanupEligibleLifeCounterSessions,
   loadLifeCounterSession,
   saveLifeCounterSession,
 } from "@/features/life/local-session-store";
@@ -73,6 +76,7 @@ type LifeCounterProps = {
 };
 
 type LocalSaveState = "checking" | "saved" | "unavailable" | "error";
+type LocalCleanupState = "idle" | "running" | "done" | "error";
 
 type CommanderSource = {
   commander: Commander;
@@ -191,6 +195,9 @@ export function LifeCounter({
   const [localStoreReady, setLocalStoreReady] = useState(false);
   const [localSaveState, setLocalSaveState] =
     useState<LocalSaveState>("checking");
+  const [cleanupEligibleCount, setCleanupEligibleCount] = useState(0);
+  const [localCleanupState, setLocalCleanupState] =
+    useState<LocalCleanupState>("idle");
   const {
     activePlayerId,
     dayNight,
@@ -261,6 +268,10 @@ export function LifeCounter({
       ? "Local until saved to group"
       : "Local only - not saved to group"
     : "Local only";
+  const cleanupLabel =
+    cleanupEligibleCount === 1
+      ? "1 saved inactive"
+      : `${cleanupEligibleCount} saved inactive`;
 
   useEffect(() => {
     if (tableMode) {
@@ -341,6 +352,47 @@ export function LifeCounter({
   function recordAction(action: LifeCounterAction, message: string) {
     dispatch({ type: "record", action });
     setAnnouncement(message);
+  }
+
+  const refreshCleanupEligibleCount = useCallback(() => {
+    countCleanupEligibleLifeCounterSessions({
+      activeSessionId: session.id,
+    })
+      .then((count) => setCleanupEligibleCount(count))
+      .catch(() => setCleanupEligibleCount(0));
+  }, [session.id]);
+
+  useEffect(() => {
+    if (!localStoreReady) {
+      return;
+    }
+
+    refreshCleanupEligibleCount();
+  }, [localStoreReady, refreshCleanupEligibleCount]);
+
+  function cleanupSavedSessions() {
+    if (cleanupEligibleCount <= 0 || localCleanupState === "running") {
+      return;
+    }
+
+    setLocalCleanupState("running");
+
+    cleanupSavedLifeCounterSessions({
+      activeSessionId: session.id,
+    })
+      .then((result) => {
+        setCleanupEligibleCount(0);
+        setLocalCleanupState("done");
+        setAnnouncement(
+          result.deletedCount === 1
+            ? "Cleaned up 1 saved inactive local session."
+            : `Cleaned up ${result.deletedCount} saved inactive local sessions.`,
+        );
+      })
+      .catch(() => {
+        setLocalCleanupState("error");
+        setAnnouncement("Saved local sessions could not be cleaned up.");
+      });
   }
 
   function updateSetup(
@@ -1278,6 +1330,26 @@ export function LifeCounter({
             >
               {syncScopeLabel}
             </span>
+            <Button
+              aria-label="Clean up saved inactive life counter sessions"
+              disabled={
+                cleanupEligibleCount <= 0 ||
+                localCleanupState === "running" ||
+                localSaveState === "checking" ||
+                localSaveState === "unavailable"
+              }
+              onClick={cleanupSavedSessions}
+              size="sm"
+              title={cleanupLabel}
+              type="button"
+              variant="secondary"
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              {localCleanupState === "running" ? "Cleaning" : "Clean saved"}
+              <span className="tabular-nums" data-testid="life-cleanup-count">
+                {cleanupEligibleCount}
+              </span>
+            </Button>
           </div>
         </div>
         <SegmentedControl

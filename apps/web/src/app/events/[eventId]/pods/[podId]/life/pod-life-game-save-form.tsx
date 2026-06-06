@@ -1,11 +1,12 @@
 "use client";
 
 import { CheckCircle2, Trophy } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import type { EventPodSummary } from "@/db/queries/pods";
+import { markLifeCounterSessionGameSaved } from "@/features/life/local-session-store";
 import {
   savePodLifeGameAction,
   type SavePodLifeGameActionState,
@@ -13,6 +14,7 @@ import {
 
 type PodLifeGameSaveFormProps = {
   eventId: string;
+  localSessionId?: string | null;
   pod: Pick<EventPodSummary, "id" | "name" | "seats">;
   action?: (
     previousState: SavePodLifeGameActionState,
@@ -27,6 +29,7 @@ function createInitialState(input: {
   return {
     message: null,
     saved: false,
+    savedGameId: null,
     fieldErrors: {},
     fields: {
       eventId: input.eventId,
@@ -41,6 +44,7 @@ function createInitialState(input: {
 
 export function PodLifeGameSaveForm({
   eventId,
+  localSessionId,
   pod,
   action = savePodLifeGameAction,
 }: PodLifeGameSaveFormProps) {
@@ -51,6 +55,18 @@ export function PodLifeGameSaveForm({
       podId: pod.id,
     }),
   );
+
+  useEffect(() => {
+    if (!state.saved || !state.savedGameId || !localSessionId) {
+      return;
+    }
+
+    void markLifeCounterSessionGameSaved(localSessionId, {
+      gameId: state.savedGameId,
+      eventId,
+      podId: pod.id,
+    });
+  }, [eventId, localSessionId, pod.id, state.saved, state.savedGameId]);
 
   return (
     <section className="mt-4 grid gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">

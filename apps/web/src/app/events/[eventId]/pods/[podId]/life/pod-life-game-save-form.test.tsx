@@ -1,8 +1,14 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { EventPodSummary } from "@/db/queries/pods";
+import { markLifeCounterSessionGameSaved } from "@/features/life/local-session-store";
 import { PodLifeGameSaveForm } from "./pod-life-game-save-form";
+
+vi.mock("@/features/life/local-session-store", () => ({
+  markLifeCounterSessionGameSaved: vi.fn(async () => true),
+}));
 
 const pod = {
   id: "50000000-0000-4000-8000-000000000002",
@@ -39,6 +45,7 @@ const pod = {
 describe("pod life game save form", () => {
   afterEach(() => {
     cleanup();
+    vi.clearAllMocks();
   });
 
   test("renders explicit result controls with safe pod seat labels", () => {
@@ -87,5 +94,38 @@ describe("pod life game save form", () => {
     expect(screen.queryByText(/Private Guest/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/@example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
+  });
+
+  test("marks the pod local action history as preserved after a successful save", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <PodLifeGameSaveForm
+        action={async (state) => ({
+          ...state,
+          message: "Saved 2-player game to history.",
+          saved: true,
+          savedGameId: "50000000-0000-4000-8000-000000000090",
+        })}
+        eventId="50000000-0000-4000-8000-000000000001"
+        localSessionId="linked-life:pod:50000000-0000-4000-8000-000000000001:50000000-0000-4000-8000-000000000002"
+        pod={pod}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Save game for Pod 1" }),
+    );
+
+    await waitFor(() => {
+      expect(markLifeCounterSessionGameSaved).toHaveBeenCalledWith(
+        "linked-life:pod:50000000-0000-4000-8000-000000000001:50000000-0000-4000-8000-000000000002",
+        {
+          eventId: "50000000-0000-4000-8000-000000000001",
+          gameId: "50000000-0000-4000-8000-000000000090",
+          podId: "50000000-0000-4000-8000-000000000002",
+        },
+      );
+    });
   });
 });

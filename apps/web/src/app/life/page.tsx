@@ -32,7 +32,9 @@ export default async function LifePage({ searchParams }: LifePageProps) {
 
   if (selectedEventId && !session) {
     redirect(
-      getLoginRedirectPath(`/life?eventId=${encodeURIComponent(selectedEventId)}`),
+      getLoginRedirectPath(
+        `/life?eventId=${encodeURIComponent(selectedEventId)}`,
+      ),
     );
   }
 
@@ -51,8 +53,8 @@ export default async function LifePage({ searchParams }: LifePageProps) {
         };
   const canSaveGame = Boolean(
     attachData.selectedEvent &&
-      attachData.selectedEvent.status === "scheduled" &&
-      attachData.selectedParticipants.length >= 2,
+    attachData.selectedEvent.status === "scheduled" &&
+    attachData.selectedParticipants.length >= 2,
   );
   const linkedContext =
     attachData.selectedEvent && canSaveGame
@@ -92,6 +94,7 @@ export default async function LifePage({ searchParams }: LifePageProps) {
           action={saveStandaloneLifeGameAction}
           eventId={attachData.selectedEvent.id}
           eventTitle={attachData.selectedEvent.title}
+          localSessionId={linkedContext?.session.id}
           participants={attachData.selectedParticipants}
         />
       ) : null}

@@ -290,10 +290,10 @@ agent session.
 
 - [ ] Persist explicitly linked counter snapshots to Postgres when useful
   for recovery or cross-device continuation.
-- [ ] Preserve local Dexie action history after successful game save.
+- [x] Preserve local Dexie action history after successful game save.
 - [ ] Add conflict handling for linked sessions so reconnects never
   silently overwrite newer server state.
-- [ ] Add storage cleanup controls that do not surprise-delete active
+- [x] Add storage cleanup controls that do not surprise-delete active
   games.
 - [ ] Decide whether `/life` ships as an installable PWA for cutover; if
   yes, add manifest/service-worker behavior and verify offline launch for

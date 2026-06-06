@@ -17,6 +17,7 @@ export type SaveEventLifeGameInput = {
 export type SaveEventLifeGameActionState = {
   message: string | null;
   saved: boolean;
+  savedGameId: string | null;
   fieldErrors: Partial<Record<keyof SaveEventLifeGameInput, string>>;
   fields: SaveEventLifeGameInput;
 };

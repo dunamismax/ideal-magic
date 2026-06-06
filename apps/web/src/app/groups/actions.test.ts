@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  archivePlaygroupForViewer: vi.fn(),
   createDatabase: vi.fn(),
   createPlaygroupForUser: vi.fn(),
   headers: vi.fn(),
   redirect: vi.fn(),
   requireServerSession: vi.fn(),
+  updatePlaygroupForViewer: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -25,21 +27,29 @@ vi.mock("@/db/client", () => ({
 }));
 
 vi.mock("@/db/queries/playgroups", () => ({
+  archivePlaygroupForViewer: mocks.archivePlaygroupForViewer,
   changePlaygroupMemberRoleForViewer: vi.fn(),
   createPlaygroupForUser: mocks.createPlaygroupForUser,
   createPlaygroupInviteForViewer: vi.fn(),
+  PlaygroupArchiveAuthorizationError: class PlaygroupArchiveAuthorizationError extends Error {},
   PlaygroupLastOwnerError: class PlaygroupLastOwnerError extends Error {},
+  PlaygroupManagementAuthorizationError: class PlaygroupManagementAuthorizationError extends Error {},
   PlaygroupMemberManagementAuthorizationError: class PlaygroupMemberManagementAuthorizationError extends Error {},
   PlaygroupInviteAuthorizationError: class PlaygroupInviteAuthorizationError extends Error {},
   removePlaygroupMemberForViewer: vi.fn(),
   revokePlaygroupInviteForViewer: vi.fn(),
+  updatePlaygroupForViewer: mocks.updatePlaygroupForViewer,
 }));
 
 vi.mock("@/features/auth/server", () => ({
   requireServerSession: mocks.requireServerSession,
 }));
 
-import { createGroupAction } from "./actions";
+import {
+  archiveGroupAction,
+  createGroupAction,
+  updateGroupAction,
+} from "./actions";
 import {
   rateLimitPolicies,
   resetMemoryRateLimitStoreForTests,
@@ -49,7 +59,9 @@ import {
 describe("group server actions CSRF coverage", () => {
   beforeEach(() => {
     mocks.createDatabase.mockReturnValue({ test: "db" });
+    mocks.archivePlaygroupForViewer.mockResolvedValue(undefined);
     mocks.createPlaygroupForUser.mockResolvedValue(undefined);
+    mocks.updatePlaygroupForViewer.mockResolvedValue(undefined);
     mocks.headers.mockResolvedValue(
       new Headers({ origin: "https://pod-tracker.example.test" }),
     );
@@ -145,5 +157,73 @@ describe("group server actions CSRF coverage", () => {
     expect(mocks.requireServerSession).not.toHaveBeenCalled();
     expect(mocks.createDatabase).not.toHaveBeenCalled();
     expect(mocks.createPlaygroupForUser).not.toHaveBeenCalled();
+  });
+
+  test("allows a trusted same-origin group update write", async () => {
+    const formData = new FormData();
+    formData.set("playgroupId", "20000000-0000-4000-8000-000000000001");
+    formData.set("name", "Renamed Commander");
+    formData.set("description", "Updated note");
+
+    await expect(
+      updateGroupAction(
+        {
+          message: null,
+          saved: false,
+          fieldErrors: {},
+          fields: {
+            playgroupId: "20000000-0000-4000-8000-000000000001",
+            name: "Old",
+            description: "",
+          },
+        },
+        formData,
+      ),
+    ).resolves.toMatchObject({
+      message: "Group updated.",
+      saved: true,
+      fieldErrors: {},
+    });
+
+    expect(mocks.updatePlaygroupForViewer).toHaveBeenCalledWith(
+      { test: "db" },
+      {
+        viewerUserId: "user-1",
+        playgroupId: "20000000-0000-4000-8000-000000000001",
+        name: "Renamed Commander",
+        description: "Updated note",
+      },
+    );
+  });
+
+  test("allows a trusted same-origin group archive write", async () => {
+    const formData = new FormData();
+    formData.set("playgroupId", "20000000-0000-4000-8000-000000000001");
+
+    await expect(
+      archiveGroupAction(
+        {
+          message: null,
+          saved: false,
+          fieldErrors: {},
+          fields: {
+            playgroupId: "20000000-0000-4000-8000-000000000001",
+          },
+        },
+        formData,
+      ),
+    ).resolves.toMatchObject({
+      message: "Group archived.",
+      saved: true,
+      fieldErrors: {},
+    });
+
+    expect(mocks.archivePlaygroupForViewer).toHaveBeenCalledWith(
+      { test: "db" },
+      {
+        viewerUserId: "user-1",
+        playgroupId: "20000000-0000-4000-8000-000000000001",
+      },
+    );
   });
 });

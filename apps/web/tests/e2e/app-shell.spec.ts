@@ -980,6 +980,47 @@ test("authenticated users can create and list a playgroup", async ({
   ).toBeVisible();
 });
 
+test("group owners can edit and archive active playgroups", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `group-edit-smoke-${suffix}@example.test`;
+  const groupName = `Editable Pods ${suffix}`;
+  const updatedGroupName = `Archived Pods ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+
+  await page.getByLabel("Group Name").fill(groupName);
+  await page.getByLabel("Description").fill("Original group note.");
+  await page.getByRole("button", { name: "Create Group" }).click();
+
+  let groupCard = page.locator("article").filter({ hasText: groupName });
+  await expect(
+    groupCard.getByRole("heading", { name: groupName }),
+  ).toBeVisible();
+
+  await groupCard.getByLabel("Group Name").fill(updatedGroupName);
+  await groupCard.getByLabel("Description").fill("Updated group note.");
+  await groupCard.getByRole("button", { name: "Save Group" }).click();
+  await expect(page.getByText("Group updated.")).toBeVisible();
+
+  await page.reload();
+  groupCard = page.locator("article").filter({ hasText: updatedGroupName });
+  await expect(
+    groupCard.getByRole("heading", { name: updatedGroupName }),
+  ).toBeVisible();
+  await expect(
+    groupCard.getByText("Updated group note.").first(),
+  ).toBeVisible();
+
+  await groupCard
+    .getByRole("button", { name: `Archive ${updatedGroupName}` })
+    .click();
+  await expect(
+    page.locator("article").filter({ hasText: updatedGroupName }),
+  ).toHaveCount(0);
+});
+
 test("event managers can manage host locations and attach them to events", async ({
   page,
 }, testInfo) => {

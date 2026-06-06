@@ -6,12 +6,14 @@ import {
   auditEvents,
   playgroupInvites,
   playgroupMemberships,
+  playgroups,
   users,
 } from "@/db/schema";
 import { hashInviteToken } from "@/db/tokens";
 import { createMigratedPgliteDatabase } from "@/test/migrated-pglite";
 import {
   acceptPlaygroupInviteForViewer,
+  archivePlaygroupForViewer,
   changePlaygroupMemberRoleForViewer,
   createPlaygroupForUser,
   createPlaygroupInviteForViewer,
@@ -19,12 +21,15 @@ import {
   listPlaygroupsForViewer,
   listPlaygroupInvitesForViewer,
   listVisiblePlaygroupMembersForViewer,
+  PlaygroupArchiveAuthorizationError,
   PlaygroupInviteAcceptanceError,
   PlaygroupInviteAuthorizationError,
   PlaygroupLastOwnerError,
+  PlaygroupManagementAuthorizationError,
   PlaygroupMemberManagementAuthorizationError,
   removePlaygroupMemberForViewer,
   revokePlaygroupInviteForViewer,
+  updatePlaygroupForViewer,
 } from "./playgroups";
 
 describe("playgroup data access", () => {
@@ -133,6 +138,226 @@ describe("playgroup data access", () => {
         role: "owner",
       },
     ]);
+  });
+
+  test("lets owners and admins edit active playgroups with safe audit metadata", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000041",
+      email: "edit-owner@example.test",
+      name: "Edit Owner",
+    });
+    await insertUser(db, {
+      id: "20000000-0000-4000-8000-000000000042",
+      email: "edit-admin@example.test",
+      name: "Edit Admin",
+    });
+
+    const created = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000041",
+      ownerDisplayName: "Edit Owner",
+      name: "Original Group",
+      slugBase: "original-group",
+      description: "Original planning note.",
+    });
+    await db.insert(playgroupMemberships).values({
+      playgroupId: created.id,
+      userId: "20000000-0000-4000-8000-000000000042",
+      role: "admin",
+    });
+
+    await expect(
+      updatePlaygroupForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000042",
+        playgroupId: created.id,
+        name: "Renamed Group",
+        description: "Updated planning note.",
+      }),
+    ).resolves.toMatchObject({
+      id: created.id,
+      name: "Renamed Group",
+      slug: "original-group",
+      description: "Updated planning note.",
+    });
+
+    const [listed] = await listPlaygroupsForViewer(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000041",
+    });
+    expect(listed).toMatchObject({
+      id: created.id,
+      name: "Renamed Group",
+      slug: "original-group",
+      description: "Updated planning note.",
+    });
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.playgroupId, created.id));
+
+    expect(auditRows).toEqual([
+      {
+        action: "playgroup.updated",
+        actorUserId: "20000000-0000-4000-8000-000000000042",
+        playgroupId: created.id,
+        targetType: "playgroup",
+        targetId: created.id,
+        metadata: {
+          nameChanged: true,
+          descriptionChanged: true,
+        },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain("Renamed Group");
+    expect(JSON.stringify(auditRows)).not.toContain("Updated planning note");
+  });
+
+  test("archives groups for owners only and makes archived groups inert", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await Promise.all([
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000043",
+        email: "archive-owner@example.test",
+        name: "Archive Owner",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000044",
+        email: "archive-admin@example.test",
+        name: "Archive Admin",
+      }),
+      insertUser(db, {
+        id: "20000000-0000-4000-8000-000000000045",
+        email: "archive-member@example.test",
+        name: "Archive Member",
+      }),
+    ]);
+
+    const created = await createPlaygroupForUser(db, {
+      userId: "20000000-0000-4000-8000-000000000043",
+      ownerDisplayName: "Archive Owner",
+      name: "Archive Group",
+      slugBase: "archive-group",
+      description: "",
+    });
+    await db.insert(playgroupMemberships).values([
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000044",
+        role: "admin",
+      },
+      {
+        playgroupId: created.id,
+        userId: "20000000-0000-4000-8000-000000000045",
+        role: "member",
+      },
+    ]);
+    const invite = await createPlaygroupInviteForViewer(db, {
+      viewerUserId: "20000000-0000-4000-8000-000000000043",
+      playgroupId: created.id,
+    });
+
+    await expect(
+      archivePlaygroupForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000044",
+        playgroupId: created.id,
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupArchiveAuthorizationError);
+
+    const archivedAt = new Date("2030-06-01T12:00:00.000Z");
+    await expect(
+      archivePlaygroupForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+        playgroupId: created.id,
+        archivedAt,
+      }),
+    ).resolves.toEqual({
+      playgroupId: created.id,
+      archivedAt,
+    });
+
+    const [storedGroup] = await db
+      .select({
+        archivedAt: playgroups.archivedAt,
+      })
+      .from(playgroups)
+      .where(eq(playgroups.id, created.id));
+    expect(storedGroup?.archivedAt).toEqual(archivedAt);
+
+    const [storedInvite] = await db
+      .select({
+        revokedAt: playgroupInvites.revokedAt,
+      })
+      .from(playgroupInvites)
+      .where(eq(playgroupInvites.id, invite.id));
+    expect(storedInvite?.revokedAt).toEqual(archivedAt);
+
+    await expect(
+      listPlaygroupsForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      listPlaygroupInvitesForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+        playgroupId: created.id,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      getPlaygroupInviteSummaryByToken(db, {
+        inviteToken: invite.inviteToken,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      acceptPlaygroupInviteForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000045",
+        inviteToken: invite.inviteToken,
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupInviteAcceptanceError);
+    await expect(
+      updatePlaygroupForViewer(db, {
+        viewerUserId: "20000000-0000-4000-8000-000000000043",
+        playgroupId: created.id,
+        name: "Archived Rename",
+        description: "",
+      }),
+    ).rejects.toBeInstanceOf(PlaygroupManagementAuthorizationError);
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.playgroupId, created.id))
+      .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
+
+    expect(auditRows.at(-1)).toEqual({
+      action: "playgroup.archived",
+      actorUserId: "20000000-0000-4000-8000-000000000043",
+      playgroupId: created.id,
+      targetType: "playgroup",
+      targetId: created.id,
+      metadata: {
+        activeInviteCount: 1,
+        memberCount: 3,
+      },
+    });
+    expect(JSON.stringify(auditRows)).not.toContain("Archive Group");
+    expect(JSON.stringify(auditRows)).not.toContain(invite.inviteToken);
+    expect(JSON.stringify(auditRows)).not.toContain(
+      hashInviteToken(invite.inviteToken),
+    );
   });
 
   test("lists safe member details only for authorized group members", async () => {

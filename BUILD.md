@@ -250,7 +250,7 @@ agent session.
 - [x] Wire event host/location selection into event create/edit.
 - [x] Prove host-address disclosure rules for owner/admin/host/member,
   RSVP, guest, public-safe, and non-member viewers.
-- [ ] Add group edit and group archive/delete flows with safe ownership
+- [x] Add group edit and group archive/delete flows with safe ownership
   and last-owner behavior.
 - [ ] Add guest RSVP edit/cancel behavior if needed for real event use.
 - [ ] Add calendar export only after address visibility is tested.

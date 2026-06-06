@@ -10,6 +10,7 @@ import {
 import { requireServerSession } from "@/features/auth/server";
 import { CreateGroupForm } from "./create-group-form";
 import { GroupInvitePanel } from "./group-invite-panel";
+import { GroupManagementPanel } from "./group-management-panel";
 import { GroupMemberManagementPanel } from "./group-member-management-panel";
 
 export const dynamic = "force-dynamic";
@@ -115,11 +116,14 @@ export function GroupCard({ group }: { group: ViewerPlaygroupListItem }) {
       ) : null}
 
       {group.canManagePlaygroup ? (
-        <GroupInvitePanel
-          groupId={group.id}
-          groupName={group.name}
-          invites={group.invites}
-        />
+        <>
+          <GroupManagementPanel group={group} />
+          <GroupInvitePanel
+            groupId={group.id}
+            groupName={group.name}
+            invites={group.invites}
+          />
+        </>
       ) : null}
     </article>
   );

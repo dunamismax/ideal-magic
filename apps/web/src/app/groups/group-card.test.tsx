@@ -1,9 +1,13 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { GroupCard } from "./page";
 
 describe("group card", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders safe member names and roles without private fields", () => {
     render(
       <GroupCard
@@ -53,6 +57,70 @@ describe("group card", () => {
     expect(screen.getByText("admin")).toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/invite/i)).not.toBeInTheDocument();
+  });
+
+  it("renders group edit and owner archive controls for managers", () => {
+    render(
+      <GroupCard
+        group={{
+          id: "group-archive",
+          name: "Archive Crew",
+          slug: "archive-crew",
+          description: "Short planning note.",
+          role: "owner",
+          canManagePlaygroup: true,
+          memberCount: 1,
+          upcomingEventCount: 0,
+          invites: [],
+          members: [],
+          createdAt: new Date("2026-06-04T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-04T00:00:00.000Z"),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Group Settings")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Archive Crew")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("Short planning note."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save Group" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Archive Archive Crew" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tokenHash/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render archive controls for group admins", () => {
+    render(
+      <GroupCard
+        group={{
+          id: "group-admin",
+          name: "Admin Crew",
+          slug: "admin-crew",
+          description: "",
+          role: "admin",
+          canManagePlaygroup: true,
+          memberCount: 1,
+          upcomingEventCount: 0,
+          invites: [],
+          members: [],
+          createdAt: new Date("2026-06-04T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-04T00:00:00.000Z"),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Group Settings")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save Group" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Archive Admin Crew" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders invite metadata for group managers without token values", () => {

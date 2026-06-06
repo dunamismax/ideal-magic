@@ -5,19 +5,27 @@ import { redirect } from "next/navigation";
 
 import { createDatabase } from "@/db/client";
 import {
+  archivePlaygroupForViewer,
   changePlaygroupMemberRoleForViewer,
   createPlaygroupForUser,
   createPlaygroupInviteForViewer,
+  PlaygroupArchiveAuthorizationError,
   PlaygroupLastOwnerError,
+  PlaygroupManagementAuthorizationError,
   PlaygroupMemberManagementAuthorizationError,
   PlaygroupInviteAuthorizationError,
   removePlaygroupMemberForViewer,
   revokePlaygroupInviteForViewer,
+  updatePlaygroupForViewer,
 } from "@/db/queries/playgroups";
 import { requireServerSession } from "@/features/auth/server";
 import {
+  type ArchiveGroupInput,
   type CreateGroupInput,
+  type UpdateGroupInput,
+  validateArchiveGroupInput,
   validateCreateGroupInput,
+  validateUpdateGroupInput,
 } from "@/features/groups/group-form";
 import {
   type CreateGroupInviteInput,
@@ -38,6 +46,20 @@ export type CreateGroupActionState = {
   message: string | null;
   fieldErrors: Partial<Record<keyof CreateGroupInput, string>>;
   fields: CreateGroupInput;
+};
+
+export type UpdateGroupActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof UpdateGroupInput, string>>;
+  fields: UpdateGroupInput;
+};
+
+export type ArchiveGroupActionState = {
+  message: string | null;
+  saved: boolean;
+  fieldErrors: Partial<Record<keyof ArchiveGroupInput, string>>;
+  fields: ArchiveGroupInput;
 };
 
 export type CreateGroupInviteActionState = {
@@ -116,6 +138,130 @@ export async function createGroupAction(
 
   revalidatePath("/groups");
   redirect("/groups");
+}
+
+export async function updateGroupAction(
+  _previousState: UpdateGroupActionState,
+  formData: FormData,
+): Promise<UpdateGroupActionState> {
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["groups", "update"],
+  });
+
+  const session = await requireServerSession("/groups");
+  const validation = validateUpdateGroupInput({
+    playgroupId: formData.get("playgroupId") ?? "",
+    name: formData.get("name") ?? "",
+    description: formData.get("description") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Fix the highlighted fields.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await updatePlaygroupForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      ...validation.input,
+    });
+  } catch (error) {
+    if (error instanceof PlaygroupManagementAuthorizationError) {
+      return {
+        message: "You cannot edit that group.",
+        saved: false,
+        fieldErrors: {
+          playgroupId: "Choose one of your manageable active groups.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Playgroup update failed", error);
+
+    return {
+      message: "Could not update the group. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/groups");
+
+  return {
+    message: "Group updated.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
+  };
+}
+
+export async function archiveGroupAction(
+  _previousState: ArchiveGroupActionState,
+  formData: FormData,
+): Promise<ArchiveGroupActionState> {
+  await assertSameOriginServerAction({
+    rateLimit: rateLimitPolicies.write,
+    scope: ["groups", "archive"],
+  });
+
+  const session = await requireServerSession("/groups");
+  const validation = validateArchiveGroupInput({
+    playgroupId: formData.get("playgroupId") ?? "",
+  });
+
+  if (!validation.ok) {
+    return {
+      message: "Choose a group to archive.",
+      saved: false,
+      fieldErrors: validation.fieldErrors,
+      fields: validation.fields,
+    };
+  }
+
+  try {
+    await archivePlaygroupForViewer(createDatabase(), {
+      viewerUserId: session.user.id,
+      playgroupId: validation.input.playgroupId,
+    });
+  } catch (error) {
+    if (error instanceof PlaygroupArchiveAuthorizationError) {
+      return {
+        message: "Only a group owner can archive that active group.",
+        saved: false,
+        fieldErrors: {
+          playgroupId: "Choose one of your active owner-managed groups.",
+        },
+        fields: validation.input,
+      };
+    }
+
+    console.error("Playgroup archive failed", error);
+
+    return {
+      message: "Could not archive the group. Try again.",
+      saved: false,
+      fieldErrors: {},
+      fields: validation.input,
+    };
+  }
+
+  revalidatePath("/groups");
+  revalidatePath("/game-night");
+  revalidatePath("/decks");
+
+  return {
+    message: "Group archived.",
+    saved: true,
+    fieldErrors: {},
+    fields: validation.input,
+  };
 }
 
 export async function createGroupInviteAction(

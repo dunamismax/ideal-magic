@@ -27,6 +27,7 @@ export const playgroups = core.table(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     description: text("description").notNull().default(""),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -35,6 +36,7 @@ export const playgroups = core.table(
   },
   (table) => [
     uniqueIndex("playgroups_slug_key").on(table.slug),
+    index("playgroups_archived_at_idx").on(table.archivedAt),
     nonblankTextCheck("playgroups_name_not_blank", table.name),
     check(
       "playgroups_slug_shape",

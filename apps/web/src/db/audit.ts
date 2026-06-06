@@ -6,6 +6,8 @@ type AuditDatabase = Pick<AppDatabase, "insert">;
 export type AuditEventAction =
   | "playgroup.invite.created"
   | "playgroup.invite.revoked"
+  | "playgroup.updated"
+  | "playgroup.archived"
   | "playgroup.member.role_changed"
   | "playgroup.member.removed"
   | "event.visibility.changed"

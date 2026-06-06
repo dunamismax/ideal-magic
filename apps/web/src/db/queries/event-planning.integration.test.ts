@@ -23,6 +23,7 @@ import {
   getPublicSafeEventSummaryByInviteToken,
   getPublicSafeGuestRsvpSummaryByInviteToken,
   getScopedEventPlanningSummary,
+  listCalendarEventsForViewer,
   listHostLocationsForViewer,
   listUpcomingEventsForViewer,
   setEventStatusForViewer,
@@ -1004,6 +1005,72 @@ describe("event planning data access", () => {
       address: null,
       notes: null,
     });
+  });
+
+  test("lists calendar events with scoped host address visibility", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    await seedDevelopmentData(db);
+
+    await setEventStatusForViewer(db, {
+      viewerUserId: developmentSeedIds.users.nora,
+      eventId: developmentSeedIds.events.sundayPods,
+      status: "cancelled",
+    });
+
+    const ownerEvents = await listCalendarEventsForViewer(db, {
+      viewerUserId: developmentSeedIds.users.nora,
+    });
+    const noRsvpMemberEvents = await listCalendarEventsForViewer(db, {
+      viewerUserId: developmentSeedIds.users.sol,
+    });
+    const viewerEvents = await listCalendarEventsForViewer(db, {
+      viewerUserId: developmentSeedIds.users.priya,
+    });
+    const outsiderEvents = await listCalendarEventsForViewer(db, {
+      viewerUserId: "10000000-0000-4000-8000-000000009999",
+    });
+
+    expect(ownerEvents).toMatchObject([
+      {
+        id: developmentSeedIds.events.wednesdayCommander,
+        title: "Wednesday Commander Night",
+        status: "scheduled",
+        location: {
+          name: "Example Tabletop Room",
+          address: {
+            addressLine1: "101 Example Tabletop Way",
+          },
+        },
+      },
+      {
+        id: developmentSeedIds.events.sundayPods,
+        status: "cancelled",
+        location: null,
+      },
+    ]);
+    expect(noRsvpMemberEvents[0]).toMatchObject({
+      id: developmentSeedIds.events.wednesdayCommander,
+      location: null,
+    });
+    expect(viewerEvents[0]).toMatchObject({
+      id: developmentSeedIds.events.wednesdayCommander,
+      location: null,
+    });
+    expect(outsiderEvents).toEqual([]);
+
+    const noRsvpMemberPayload = JSON.stringify(noRsvpMemberEvents);
+
+    expect(noRsvpMemberPayload).not.toContain("101 Example Tabletop Way");
+    expect(noRsvpMemberPayload).not.toContain(
+      "Synthetic local fixture address",
+    );
+    expect(noRsvpMemberPayload).not.toContain("Example Guest");
+    expect(noRsvpMemberPayload).not.toContain("Private fixture RSVP note");
+    expect(noRsvpMemberPayload).not.toContain("nora@example.test");
+    expect(noRsvpMemberPayload).not.toContain("fixture-wednesday-event-access");
+    expect(noRsvpMemberPayload).not.toContain(
+      hashInviteToken("fixture-wednesday-event-access"),
+    );
   });
 
   test("does not expose member-only events to anonymous viewers", async () => {

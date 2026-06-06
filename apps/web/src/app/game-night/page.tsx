@@ -2,11 +2,13 @@ import {
   CalendarDays,
   CircleAlert,
   Clock3,
+  Download,
   type LucideIcon,
   UsersRound,
 } from "lucide-react";
 
 import { PageFrame } from "@/components/page-frame";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { createDatabase } from "@/db/client";
 import {
@@ -154,6 +156,12 @@ export default async function GameNightPage() {
             locations={hostLocations}
             playgroups={eventCreatableGroups}
           />
+          <Button asChild className="w-fit" variant="secondary">
+            <a href="/calendar.ics">
+              <Download className="size-4" aria-hidden="true" />
+              Calendar Feed
+            </a>
+          </Button>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <Panel

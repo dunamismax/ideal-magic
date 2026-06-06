@@ -100,6 +100,26 @@ export type UpcomingEventListItem = {
   viewerRole: PlaygroupRole | null;
 };
 
+export type CalendarEventListItem = {
+  id: string;
+  title: string;
+  description: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  status: Extract<EventStatus, "scheduled" | "cancelled">;
+  location: {
+    name: string;
+    address: {
+      addressLine1: string | null;
+      addressLine2: string | null;
+      city: string | null;
+      stateProvince: string | null;
+      postalCode: string | null;
+      country: string | null;
+    };
+  } | null;
+};
+
 export type PublicSafeEventSummary = {
   id: string;
   title: string;
@@ -1120,6 +1140,93 @@ export async function listUpcomingEventsForViewer(
   }));
 }
 
+export async function listCalendarEventsForViewer(
+  db: PlanningDatabase,
+  input: {
+    viewerUserId: string;
+  },
+): Promise<CalendarEventListItem[]> {
+  const rows = await db
+    .select({
+      id: events.id,
+      title: events.title,
+      description: events.description,
+      startsAt: events.startsAt,
+      endsAt: events.endsAt,
+      status: events.status,
+      playgroupId: events.playgroupId,
+      locationId: eventLocations.id,
+      locationName: eventLocations.name,
+      addressLine1: eventLocations.addressLine1,
+      addressLine2: eventLocations.addressLine2,
+      city: eventLocations.city,
+      stateProvince: eventLocations.stateProvince,
+      postalCode: eventLocations.postalCode,
+      country: eventLocations.country,
+      viewerRole: playgroupMemberships.role,
+      viewerRsvpStatus: eventRsvps.status,
+    })
+    .from(events)
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, events.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .leftJoin(eventLocations, eq(events.locationId, eventLocations.id))
+    .leftJoin(
+      eventRsvps,
+      and(
+        eq(eventRsvps.eventId, events.id),
+        eq(eventRsvps.userId, input.viewerUserId),
+      ),
+    )
+    .where(sql`${events.status} <> 'archived'`)
+    .orderBy(asc(events.startsAt), asc(events.id));
+
+  const hostVisibilitiesByEventId = await getHostAddressVisibilitiesByEventId(
+    db,
+    rows.map((row) => row.id),
+  );
+
+  return rows.map((row) => {
+    const role = asPlaygroupRole(row.viewerRole);
+    const rsvpStatus = asRsvpStatus(row.viewerRsvpStatus);
+    const hostVisibilities = hostVisibilitiesByEventId.get(row.id) ?? [];
+    const canSeeAddress =
+      row.locationId !== null &&
+      hostVisibilities.length > 0 &&
+      hostVisibilities.every((visibility) =>
+        canSeeHostAddress(role, visibility, rsvpStatus ?? undefined),
+      );
+
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+      status:
+        asEventStatus(row.status) === "cancelled" ? "cancelled" : "scheduled",
+      location:
+        canSeeAddress && row.locationName
+          ? {
+              name: row.locationName,
+              address: {
+                addressLine1: row.addressLine1,
+                addressLine2: row.addressLine2,
+                city: row.city,
+                stateProvince: row.stateProvince,
+                postalCode: row.postalCode,
+                country: row.country,
+              },
+            }
+          : null,
+    };
+  });
+}
+
 export async function getPublicSafeEventSummaryByInviteToken(
   db: PlanningDatabase,
   input: {
@@ -1422,6 +1529,44 @@ async function getHostAddressVisibilities(
   return rows
     .map((row) => asAddressVisibility(row.addressVisibility))
     .filter((visibility) => visibility !== null);
+}
+
+async function getHostAddressVisibilitiesByEventId(
+  db: PlanningDatabase,
+  eventIds: string[],
+) {
+  const visibilitiesByEventId = new Map<string, AddressVisibility[]>();
+
+  if (eventIds.length === 0) {
+    return visibilitiesByEventId;
+  }
+
+  const rows = await db
+    .select({
+      eventId: eventHosts.eventId,
+      addressVisibility: eventHosts.addressVisibility,
+    })
+    .from(eventHosts)
+    .where(inArray(eventHosts.eventId, eventIds))
+    .orderBy(
+      asc(eventHosts.eventId),
+      asc(eventHosts.createdAt),
+      asc(eventHosts.id),
+    );
+
+  for (const row of rows) {
+    const visibility = asAddressVisibility(row.addressVisibility);
+
+    if (!visibility) {
+      continue;
+    }
+
+    const visibilities = visibilitiesByEventId.get(row.eventId) ?? [];
+    visibilities.push(visibility);
+    visibilitiesByEventId.set(row.eventId, visibilities);
+  }
+
+  return visibilitiesByEventId;
 }
 
 async function getEventAddressVisibility(

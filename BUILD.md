@@ -253,7 +253,7 @@ agent session.
 - [x] Add group edit and group archive/delete flows with safe ownership
   and last-owner behavior.
 - [x] Add guest RSVP edit/cancel behavior if needed for real event use.
-- [ ] Add calendar export only after address visibility is tested.
+- [x] Add calendar export only after address visibility is tested.
 - [ ] Defer reminder jobs unless a TypeScript job-runner path is chosen.
 
 ## Pass 3 - Game Logging Completeness

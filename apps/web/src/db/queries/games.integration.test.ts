@@ -36,6 +36,7 @@ import {
   getLoggedGameCorrectionPermissionForViewer,
   getLoggedGameForViewer,
   getMetaHealthSummaryForViewer,
+  listHistoryFilterOptionsForViewer,
   logGameFromPublishedPod,
   PodGameLoggingAuthorizationError,
   PodGameLoggingBlockedError,
@@ -666,6 +667,82 @@ describe("game logging data access", () => {
   test("summarizes scoped meta health from logged game records with repeat pairs", async () => {
     const { db } = await createMigratedPgliteDatabase();
     const fixture = await createPublishedPodGameFixture(db);
+    const secondGroup = await createPlaygroupForUser(db, {
+      userId: fixture.ownerId,
+      ownerDisplayName: "Owner Player",
+      name: "Second Meta Group",
+      slugBase: "second-meta-group",
+      description: "",
+    });
+
+    await db.insert(playgroupMemberships).values({
+      playgroupId: secondGroup.id,
+      userId: fixture.memberIds[0] ?? fixture.ownerId,
+      role: "member",
+      displayName: "Member 1",
+    });
+
+    const secondEvent = await createEventForPlaygroup(db, {
+      viewerUserId: fixture.ownerId,
+      playgroupId: secondGroup.id,
+      title: "Second Meta Night",
+      description: "",
+      startsAt: new Date("2030-06-22T00:00:00.000Z"),
+      visibility: "members",
+    });
+    const secondOwnerDeck = await createDeckForUser(db, {
+      ownerUserId: fixture.ownerId,
+      name: "Second Owner Deck",
+      commanders: ["Second Owner Commander"],
+      colorIdentity: "W",
+      bracket: "2",
+      powerEstimate: 6,
+      archetype: "Tokens",
+      tags: ["fixture"],
+      visibility: "playgroup",
+      playgroupId: secondGroup.id,
+      externalUrl: null,
+    });
+    const secondMemberDeck = await createDeckForUser(db, {
+      ownerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      name: "Second Member Deck",
+      commanders: ["Second Member Commander"],
+      colorIdentity: "UB",
+      bracket: "3",
+      powerEstimate: 7,
+      archetype: "Tempo",
+      tags: ["fixture"],
+      visibility: "playgroup",
+      playgroupId: secondGroup.id,
+      externalUrl: null,
+    });
+
+    await declareDeckForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: secondEvent.id,
+      deckId: secondOwnerDeck.id,
+      preference: 1,
+    });
+    await declareDeckForEvent(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: secondEvent.id,
+      deckId: secondMemberDeck.id,
+      preference: 1,
+    });
+    await upsertMemberRsvpForEvent(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: secondEvent.id,
+      status: "yes",
+      arrivalTime: null,
+      leavingTime: null,
+    });
+    await upsertMemberRsvpForEvent(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: secondEvent.id,
+      status: "yes",
+      arrivalTime: null,
+      leavingTime: null,
+    });
 
     await saveCompletedEventLifeCounterGame(db, {
       viewerUserId: fixture.ownerId,
@@ -683,9 +760,21 @@ describe("game logging data access", () => {
       notes: "Second meta draw.",
       completedAt: new Date("2030-06-15T06:00:00.000Z"),
     });
+    await saveCompletedEventLifeCounterGame(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: secondEvent.id,
+      resultType: "draw",
+      winnerParticipantIds: [],
+      notes: "Second group meta draw.",
+      completedAt: new Date("2030-06-22T04:00:00.000Z"),
+    });
 
     const summary = await getMetaHealthSummaryForViewer(db, {
       viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const playgroupSummary = await getMetaHealthSummaryForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      playgroupId: fixture.playgroupId,
     });
     const eventSummary = await getMetaHealthSummaryForViewer(db, {
       viewerUserId: fixture.ownerId,
@@ -698,40 +787,92 @@ describe("game logging data access", () => {
     const outsiderSummary = await getMetaHealthSummaryForViewer(db, {
       viewerUserId: fixture.outsiderId,
     });
+    const filterOptions = await listHistoryFilterOptionsForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+    });
+    const firstGroupHistory = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      playgroupId: fixture.playgroupId,
+    });
+    const secondEventHistory = await listLoggedGamesForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      eventId: secondEvent.id,
+    });
     const payload = JSON.stringify(summary);
 
     expect(summary).toMatchObject({
-      totalLoggedGames: 2,
-      eventsWithGames: 1,
+      totalLoggedGames: 3,
+      eventsWithGames: 2,
+      totalSeats: 10,
+      averagePlayersPerGame: 3.3,
       distinctKnownPlayers: 3,
       guestSeatCount: 2,
-      distinctDeckSnapshots: 3,
-      distinctCommanderSnapshots: 3,
+      distinctDeckSnapshots: 5,
+      distinctCommanderSnapshots: 5,
+      fourPlayerGameCount: 2,
+      undersizedGameCount: 1,
+      oversizedGameCount: 0,
+      uniquePlayerPairCount: 3,
+      freshPlayerPairCount: 0,
+      repeatPlayerPairRate: 100,
       repeatPlayerPairCount: 3,
+      uniqueDeckPairCount: 4,
+      freshDeckPairCount: 1,
+      repeatDeckPairRate: 75,
       repeatDeckPairCount: 3,
     });
     expect(summary.colorIdentitySpread).toEqual([
       { label: "RG", count: 4 },
       { label: "WUB", count: 2 },
+      { label: "UB", count: 1 },
+      { label: "W", count: 1 },
     ]);
     expect(summary.archetypeSpread).toEqual([
       { label: "Midrange", count: 4 },
       { label: "Control", count: 2 },
+      { label: "Tempo", count: 1 },
+      { label: "Tokens", count: 1 },
+    ]);
+    expect(summary.podSizeSpread).toEqual([
+      { label: "4 players", count: 2 },
+      { label: "2 players", count: 1 },
+    ]);
+    expect(summary.eventParticipationTrend).toEqual([
+      {
+        eventId: secondEvent.id,
+        eventTitle: "Second Meta Night",
+        startsAt: new Date("2030-06-22T00:00:00.000Z"),
+        loggedGames: 1,
+        totalSeats: 2,
+        knownPlayers: 2,
+        guestSeats: 0,
+        deckSnapshots: 2,
+      },
+      {
+        eventId: fixture.eventId,
+        eventTitle: "Published Pod Game Night",
+        startsAt: new Date("2030-06-15T00:00:00.000Z"),
+        loggedGames: 2,
+        totalSeats: 8,
+        knownPlayers: 3,
+        guestSeats: 2,
+        deckSnapshots: 3,
+      },
     ]);
     expect(summary.topRepeatPlayerPairs).toEqual(
       expect.arrayContaining([
         {
           leftLabel: "Owner Player",
           rightLabel: "Member 1",
-          gameCount: 2,
+          gameCount: 3,
         },
         {
-          leftLabel: "Owner Player",
+          leftLabel: "Member 1",
           rightLabel: "Member 2",
           gameCount: 2,
         },
         {
-          leftLabel: "Member 1",
+          leftLabel: "Owner Player",
           rightLabel: "Member 2",
           gameCount: 2,
         },
@@ -758,7 +899,45 @@ describe("game logging data access", () => {
         },
       ]),
     );
-    expect(eventSummary).toEqual(summary);
+    expect(playgroupSummary).toMatchObject({
+      totalLoggedGames: 2,
+      eventsWithGames: 1,
+      totalSeats: 8,
+      averagePlayersPerGame: 4,
+      distinctDeckSnapshots: 3,
+      distinctCommanderSnapshots: 3,
+      fourPlayerGameCount: 2,
+      undersizedGameCount: 0,
+      repeatPlayerPairRate: 100,
+      repeatDeckPairRate: 100,
+    });
+    expect(eventSummary).toEqual(playgroupSummary);
+    expect(filterOptions.playgroups).toEqual([
+      {
+        id: fixture.playgroupId,
+        name: "Game Log Group",
+        slug: "game-log-group",
+        loggedGameCount: 2,
+      },
+      {
+        id: secondGroup.id,
+        name: "Second Meta Group",
+        slug: "second-meta-group",
+        loggedGameCount: 1,
+      },
+    ]);
+    expect(filterOptions.events.map((event) => event.title)).toEqual([
+      "Second Meta Night",
+      "Published Pod Game Night",
+    ]);
+    expect(firstGroupHistory).toHaveLength(2);
+    expect(
+      firstGroupHistory.every(
+        (game) => game.playgroup.id === fixture.playgroupId,
+      ),
+    ).toBe(true);
+    expect(secondEventHistory).toHaveLength(1);
+    expect(secondEventHistory[0]?.event.id).toBe(secondEvent.id);
     expect(emptyEventSummary.totalLoggedGames).toBe(0);
     expect(outsiderSummary.totalLoggedGames).toBe(0);
     expect(payload).not.toContain("Private Guest");

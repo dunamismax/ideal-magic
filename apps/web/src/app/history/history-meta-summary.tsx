@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarDays,
   Layers3,
   type LucideIcon,
   Repeat2,
@@ -52,25 +53,26 @@ export function HistoryMetaSummary({
         />
         <MetricCard
           icon={UsersRound}
-          label="Participation"
-          value={summary.distinctKnownPlayers}
-          detail={`${summary.guestSeatCount} guest seats`}
+          label="Attendance"
+          value={summary.totalSeats}
+          detail={`${summary.averagePlayersPerGame} avg seats/game`}
         />
         <MetricCard
           icon={Layers3}
-          label="Deck snapshots"
+          label="Variety"
           value={summary.distinctDeckSnapshots}
-          detail={`${summary.distinctCommanderSnapshots} commanders`}
+          detail={`${summary.distinctCommanderSnapshots} commanders / ${summary.distinctKnownPlayers} players`}
         />
         <MetricCard
           icon={Repeat2}
-          label="Repeat pairs"
-          value={summary.repeatPlayerPairCount + summary.repeatDeckPairCount}
-          detail={`${summary.repeatPlayerPairCount} player / ${summary.repeatDeckPairCount} deck`}
+          label="Freshness"
+          value={summary.freshPlayerPairCount}
+          detail={`${summary.repeatPlayerPairRate}% repeated player pairs`}
         />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
+        <PodSizePanel summary={summary} />
         <SpreadPanel
           title="Color spread"
           items={summary.colorIdentitySpread}
@@ -91,6 +93,7 @@ export function HistoryMetaSummary({
           pairs={summary.topRepeatDeckPairs}
           emptyLabel="No repeat deck pairs yet"
         />
+        <EventTrendPanel events={summary.eventParticipationTrend} />
       </div>
     </section>
   );
@@ -113,6 +116,35 @@ function MetricCard({
       <h3 className="text-xs font-bold uppercase text-muted">{label}</h3>
       <p className="mt-1 text-2xl font-black leading-none">{value}</p>
       <p className="mt-2 text-xs font-semibold text-muted">{detail}</p>
+    </div>
+  );
+}
+
+function PodSizePanel({ summary }: { summary: MetaHealthSummary }) {
+  return (
+    <div className="rounded-panel border border-border bg-surface p-4 shadow-sm">
+      <h3 className="flex items-center gap-2 text-xs font-black uppercase text-muted">
+        <UsersRound className="size-4 text-accent" aria-hidden />
+        Pod-size quality
+      </h3>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <MiniMetric label="Four-player" value={summary.fourPlayerGameCount} />
+        <MiniMetric label="Small" value={summary.undersizedGameCount} />
+        <MiniMetric label="Large" value={summary.oversizedGameCount} />
+      </div>
+      {summary.podSizeSpread.length > 0 ? (
+        <ol className="mt-3 grid gap-2">
+          {summary.podSizeSpread.map((item) => (
+            <li
+              className="flex items-center justify-between gap-3 rounded-control bg-background px-3 py-2"
+              key={item.label}
+            >
+              <span className="text-sm font-bold">{item.label}</span>
+              <Badge value={`${item.count} games`} />
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </div>
   );
 }
@@ -191,10 +223,70 @@ function PairPanel({
   );
 }
 
+function EventTrendPanel({
+  events,
+}: {
+  events: MetaHealthSummary["eventParticipationTrend"];
+}) {
+  return (
+    <div className="rounded-panel border border-border bg-surface p-4 shadow-sm">
+      <h3 className="flex items-center gap-2 text-xs font-black uppercase text-muted">
+        <CalendarDays className="size-4 text-accent" aria-hidden />
+        Event participation
+      </h3>
+      {events.length > 0 ? (
+        <ol className="mt-3 grid gap-2">
+          {events.map((event) => (
+            <li
+              className="rounded-control bg-background p-3"
+              key={event.eventId}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold">{event.eventTitle}</p>
+                  <p className="mt-1 text-xs font-semibold text-muted">
+                    {formatEventDate(event.startsAt)}
+                  </p>
+                </div>
+                <Badge value={`${event.loggedGames} games`} />
+              </div>
+              <p className="mt-2 text-xs font-semibold text-muted">
+                {event.totalSeats} seats - {event.knownPlayers} players -{" "}
+                {event.guestSeats} guests - {event.deckSnapshots} decks
+              </p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-3 rounded-control bg-background px-3 py-2 text-sm font-semibold text-muted">
+          No event participation yet
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-control bg-background p-3">
+      <p className="text-xs font-bold uppercase text-muted">{label}</p>
+      <p className="mt-1 text-xl font-black leading-none">{value}</p>
+    </div>
+  );
+}
+
 function Badge({ value }: { value: string }) {
   return (
     <span className="inline-flex w-fit items-center rounded-control border border-border bg-background px-2 py-1 text-xs font-bold uppercase text-muted">
       {value}
     </span>
   );
+}
+
+function formatEventDate(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }

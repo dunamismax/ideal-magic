@@ -159,16 +159,29 @@ export type LoggedGameHistorySummary = {
 export type MetaHealthSummary = {
   totalLoggedGames: number;
   eventsWithGames: number;
+  totalSeats: number;
+  averagePlayersPerGame: number;
   distinctKnownPlayers: number;
   guestSeatCount: number;
   distinctDeckSnapshots: number;
   distinctCommanderSnapshots: number;
   colorIdentitySpread: MetaHealthSpreadItem[];
   archetypeSpread: MetaHealthSpreadItem[];
+  podSizeSpread: MetaHealthSpreadItem[];
+  fourPlayerGameCount: number;
+  undersizedGameCount: number;
+  oversizedGameCount: number;
+  uniquePlayerPairCount: number;
+  freshPlayerPairCount: number;
+  repeatPlayerPairRate: number;
   repeatPlayerPairCount: number;
   topRepeatPlayerPairs: MetaHealthPairSummary[];
+  uniqueDeckPairCount: number;
+  freshDeckPairCount: number;
+  repeatDeckPairRate: number;
   repeatDeckPairCount: number;
   topRepeatDeckPairs: MetaHealthPairSummary[];
+  eventParticipationTrend: MetaHealthEventParticipation[];
 };
 
 export type MetaHealthSpreadItem = {
@@ -180,6 +193,38 @@ export type MetaHealthPairSummary = {
   leftLabel: string;
   rightLabel: string;
   gameCount: number;
+};
+
+export type MetaHealthEventParticipation = {
+  eventId: string;
+  eventTitle: string;
+  startsAt: Date;
+  loggedGames: number;
+  totalSeats: number;
+  knownPlayers: number;
+  guestSeats: number;
+  deckSnapshots: number;
+};
+
+export type HistoryFilterOptions = {
+  playgroups: HistoryPlaygroupFilterOption[];
+  events: HistoryEventFilterOption[];
+};
+
+export type HistoryPlaygroupFilterOption = {
+  id: string;
+  name: string;
+  slug: string;
+  loggedGameCount: number;
+};
+
+export type HistoryEventFilterOption = {
+  id: string;
+  title: string;
+  startsAt: Date;
+  playgroupId: string;
+  playgroupName: string;
+  loggedGameCount: number;
 };
 
 export class PodGameLoggingAuthorizationError extends Error {
@@ -262,6 +307,8 @@ export async function listLoggedGamesForViewer(
   db: GameReadDatabase,
   input: {
     viewerUserId: string;
+    eventId?: string;
+    playgroupId?: string;
     page?: PageRequest;
   },
 ): Promise<LoggedGameHistorySummary[]> {
@@ -469,6 +516,10 @@ export async function getMetaHealthSummaryForViewer(
     .select({
       id: games.id,
       eventId: games.eventId,
+      eventTitle: events.title,
+      eventStartsAt: events.startsAt,
+      playgroupId: events.playgroupId,
+      podId: games.podId,
       completedAt: games.completedAt,
     })
     .from(games)
@@ -496,6 +547,7 @@ export async function getMetaHealthSummaryForViewer(
   }
 
   const gameIds = gameRows.map((game) => game.id);
+  const gameById = new Map(gameRows.map((game) => [game.id, game]));
   const completedAtByGameId = new Map(
     gameRows.map((game) => [game.id, game.completedAt]),
   );
@@ -532,38 +584,97 @@ export async function getMetaHealthSummaryForViewer(
   const commanderNames = new Set<string>();
   const colorIdentityCounts = new Map<string, number>();
   const archetypeCounts = new Map<string, number>();
+  const podSizeCounts = new Map<string, number>();
   const userLabelCandidates = new Map<string, LabelCandidate>();
   const deckLabelCandidates = new Map<string, LabelCandidate>();
+  const playerRowsByGameId = new Map<string, typeof playerRows>();
+  const eventParticipation = new Map<
+    string,
+    {
+      eventId: string;
+      eventTitle: string;
+      startsAt: Date;
+      loggedGames: number;
+      totalSeats: number;
+      knownPlayerIds: Set<string>;
+      guestSeats: number;
+      deckSnapshotKeys: Set<string>;
+    }
+  >();
   let guestSeatCount = 0;
+  let totalSeats = 0;
+  let fourPlayerGameCount = 0;
+  let undersizedGameCount = 0;
+  let oversizedGameCount = 0;
 
   for (const game of gameRows) {
     eventIds.add(game.eventId);
+    eventParticipation.set(game.eventId, {
+      eventId: game.eventId,
+      eventTitle: game.eventTitle,
+      startsAt: game.eventStartsAt,
+      loggedGames: 0,
+      totalSeats: 0,
+      knownPlayerIds: new Set<string>(),
+      guestSeats: 0,
+      deckSnapshotKeys: new Set<string>(),
+    });
+  }
+
+  for (const player of playerRows) {
+    const players = playerRowsByGameId.get(player.gameId) ?? [];
+    players.push(player);
+    playerRowsByGameId.set(player.gameId, players);
+  }
+
+  for (const game of gameRows) {
+    const players = playerRowsByGameId.get(game.id) ?? [];
+    const sizeLabel = `${players.length} players`;
+    const eventSummary = eventParticipation.get(game.eventId);
+
+    totalSeats += players.length;
+    incrementCount(podSizeCounts, sizeLabel);
+
+    if (players.length === 4) {
+      fourPlayerGameCount += 1;
+    } else if (players.length < 4) {
+      undersizedGameCount += 1;
+    } else {
+      oversizedGameCount += 1;
+    }
+
+    if (eventSummary) {
+      eventSummary.loggedGames += 1;
+      eventSummary.totalSeats += players.length;
+    }
   }
 
   for (const player of playerRows) {
     const completedAt = completedAtByGameId.get(player.gameId) ?? new Date(0);
+    const game = gameById.get(player.gameId);
+    const eventSummary = game
+      ? eventParticipation.get(game.eventId)
+      : undefined;
 
     if (player.userId) {
       knownUserIds.add(player.userId);
+      eventSummary?.knownPlayerIds.add(player.userId);
       setLatestLabel(userLabelCandidates, player.userId, {
         label: player.participantNameSnapshot || "Player",
         completedAt,
       });
     } else {
       guestSeatCount += 1;
+      if (eventSummary) {
+        eventSummary.guestSeats += 1;
+      }
     }
 
     if (player.deckNameSnapshot.trim()) {
-      deckSnapshotKeys.add(
-        [
-          player.deckNameSnapshot,
-          player.commanderSnapshot.join("/"),
-          player.colorIdentitySnapshot,
-          player.bracketSnapshot ?? "",
-          player.powerEstimateSnapshot ?? "",
-          player.archetypeSnapshot,
-        ].join("\u001f"),
-      );
+      const deckSnapshotKey = makeDeckSnapshotKey(player);
+
+      deckSnapshotKeys.add(deckSnapshotKey);
+      eventSummary?.deckSnapshotKeys.add(deckSnapshotKey);
     }
 
     if (player.deckId && player.deckNameSnapshot.trim()) {
@@ -597,12 +708,19 @@ export async function getMetaHealthSummaryForViewer(
   return {
     totalLoggedGames: gameRows.length,
     eventsWithGames: eventIds.size,
+    totalSeats,
+    averagePlayersPerGame: roundToOneDecimal(totalSeats / gameRows.length),
     distinctKnownPlayers: knownUserIds.size,
     guestSeatCount,
     distinctDeckSnapshots: deckSnapshotKeys.size,
     distinctCommanderSnapshots: commanderNames.size,
     colorIdentitySpread: toSortedSpread(colorIdentityCounts),
     archetypeSpread: toSortedSpread(archetypeCounts),
+    podSizeSpread: toSortedSpread(podSizeCounts),
+    fourPlayerGameCount,
+    undersizedGameCount,
+    oversizedGameCount,
+    eventParticipationTrend: toEventParticipationTrend(eventParticipation),
     ...summarizeRepeatPairs({
       matchupRows,
       userLabels: toLabelMap(userLabelCandidates),
@@ -616,6 +734,7 @@ async function listScopedLoggedGames(
   input: {
     viewerUserId: string;
     eventId?: string;
+    playgroupId?: string;
     gameId?: string;
     page?: PageRequest;
   },
@@ -651,6 +770,9 @@ async function listScopedLoggedGames(
       and(
         inArray(playgroupMemberships.role, loggedGameViewerRoles),
         input.eventId ? eq(games.eventId, input.eventId) : undefined,
+        input.playgroupId
+          ? eq(events.playgroupId, input.playgroupId)
+          : undefined,
         input.gameId ? eq(games.id, input.gameId) : undefined,
       ),
     )
@@ -767,6 +889,74 @@ async function listScopedLoggedGames(
   });
 }
 
+export async function listHistoryFilterOptionsForViewer(
+  db: GameReadDatabase,
+  input: {
+    viewerUserId: string;
+  },
+): Promise<HistoryFilterOptions> {
+  const rows = await db
+    .select({
+      gameId: games.id,
+      eventId: events.id,
+      eventTitle: events.title,
+      eventStartsAt: events.startsAt,
+      playgroupId: playgroups.id,
+      playgroupName: playgroups.name,
+      playgroupSlug: playgroups.slug,
+    })
+    .from(games)
+    .innerJoin(events, eq(events.id, games.eventId))
+    .innerJoin(playgroups, eq(playgroups.id, events.playgroupId))
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, events.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .where(inArray(playgroupMemberships.role, loggedGameViewerRoles))
+    .orderBy(asc(playgroups.name), desc(events.startsAt), desc(games.id));
+
+  const playgroupCounts = new Map<string, HistoryPlaygroupFilterOption>();
+  const eventCounts = new Map<string, HistoryEventFilterOption>();
+
+  for (const row of rows) {
+    const playgroup = playgroupCounts.get(row.playgroupId) ?? {
+      id: row.playgroupId,
+      name: row.playgroupName,
+      slug: row.playgroupSlug,
+      loggedGameCount: 0,
+    };
+    playgroup.loggedGameCount += 1;
+    playgroupCounts.set(row.playgroupId, playgroup);
+
+    const event = eventCounts.get(row.eventId) ?? {
+      id: row.eventId,
+      title: row.eventTitle,
+      startsAt: row.eventStartsAt,
+      playgroupId: row.playgroupId,
+      playgroupName: row.playgroupName,
+      loggedGameCount: 0,
+    };
+    event.loggedGameCount += 1;
+    eventCounts.set(row.eventId, event);
+  }
+
+  return {
+    playgroups: [...playgroupCounts.values()].sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    ),
+    events: [...eventCounts.values()].sort(
+      (left, right) =>
+        right.startsAt.getTime() - left.startsAt.getTime() ||
+        left.title.localeCompare(right.title) ||
+        left.id.localeCompare(right.id),
+    ),
+  };
+}
+
 type LabelCandidate = {
   label: string;
   completedAt: Date;
@@ -776,16 +966,29 @@ function createEmptyMetaHealthSummary(): MetaHealthSummary {
   return {
     totalLoggedGames: 0,
     eventsWithGames: 0,
+    totalSeats: 0,
+    averagePlayersPerGame: 0,
     distinctKnownPlayers: 0,
     guestSeatCount: 0,
     distinctDeckSnapshots: 0,
     distinctCommanderSnapshots: 0,
     colorIdentitySpread: [],
     archetypeSpread: [],
+    podSizeSpread: [],
+    fourPlayerGameCount: 0,
+    undersizedGameCount: 0,
+    oversizedGameCount: 0,
+    uniquePlayerPairCount: 0,
+    freshPlayerPairCount: 0,
+    repeatPlayerPairRate: 0,
     repeatPlayerPairCount: 0,
     topRepeatPlayerPairs: [],
+    uniqueDeckPairCount: 0,
+    freshDeckPairCount: 0,
+    repeatDeckPairRate: 0,
     repeatDeckPairCount: 0,
     topRepeatDeckPairs: [],
+    eventParticipationTrend: [],
   };
 }
 
@@ -820,6 +1023,63 @@ function toSortedSpread(counts: Map<string, number>): MetaHealthSpreadItem[] {
     );
 }
 
+function toEventParticipationTrend(
+  eventParticipation: Map<
+    string,
+    {
+      eventId: string;
+      eventTitle: string;
+      startsAt: Date;
+      loggedGames: number;
+      totalSeats: number;
+      knownPlayerIds: Set<string>;
+      guestSeats: number;
+      deckSnapshotKeys: Set<string>;
+    }
+  >,
+): MetaHealthEventParticipation[] {
+  return [...eventParticipation.values()]
+    .map((event) => ({
+      eventId: event.eventId,
+      eventTitle: event.eventTitle,
+      startsAt: event.startsAt,
+      loggedGames: event.loggedGames,
+      totalSeats: event.totalSeats,
+      knownPlayers: event.knownPlayerIds.size,
+      guestSeats: event.guestSeats,
+      deckSnapshots: event.deckSnapshotKeys.size,
+    }))
+    .sort(
+      (left, right) =>
+        right.startsAt.getTime() - left.startsAt.getTime() ||
+        left.eventTitle.localeCompare(right.eventTitle) ||
+        left.eventId.localeCompare(right.eventId),
+    )
+    .slice(0, 6);
+}
+
+function makeDeckSnapshotKey(player: {
+  deckNameSnapshot: string;
+  commanderSnapshot: string[];
+  colorIdentitySnapshot: string;
+  bracketSnapshot: string | null;
+  powerEstimateSnapshot: number | null;
+  archetypeSnapshot: string;
+}) {
+  return [
+    player.deckNameSnapshot,
+    player.commanderSnapshot.join("/"),
+    player.colorIdentitySnapshot,
+    player.bracketSnapshot ?? "",
+    player.powerEstimateSnapshot ?? "",
+    player.archetypeSnapshot,
+  ].join("\u001f");
+}
+
+function roundToOneDecimal(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
 function summarizeRepeatPairs(input: {
   matchupRows: {
     leftUserId: string | null;
@@ -833,7 +1093,13 @@ function summarizeRepeatPairs(input: {
   MetaHealthSummary,
   | "repeatPlayerPairCount"
   | "topRepeatPlayerPairs"
+  | "uniquePlayerPairCount"
+  | "freshPlayerPairCount"
+  | "repeatPlayerPairRate"
   | "repeatDeckPairCount"
+  | "uniqueDeckPairCount"
+  | "freshDeckPairCount"
+  | "repeatDeckPairRate"
   | "topRepeatDeckPairs"
 > {
   const playerPairs = new Map<string, number>();
@@ -861,11 +1127,29 @@ function summarizeRepeatPairs(input: {
   });
 
   return {
+    uniquePlayerPairCount: playerPairs.size,
+    freshPlayerPairCount: countFreshPairs(playerPairs),
+    repeatPlayerPairRate: toPercent(repeatPlayerPairs.length, playerPairs.size),
     repeatPlayerPairCount: repeatPlayerPairs.length,
     topRepeatPlayerPairs: repeatPlayerPairs.slice(0, 3),
+    uniqueDeckPairCount: deckPairs.size,
+    freshDeckPairCount: countFreshPairs(deckPairs),
+    repeatDeckPairRate: toPercent(repeatDeckPairs.length, deckPairs.size),
     repeatDeckPairCount: repeatDeckPairs.length,
     topRepeatDeckPairs: repeatDeckPairs.slice(0, 3),
   };
+}
+
+function countFreshPairs(pairs: Map<string, number>) {
+  return [...pairs.values()].filter((count) => count === 1).length;
+}
+
+function toPercent(numerator: number, denominator: number) {
+  if (denominator === 0) {
+    return 0;
+  }
+
+  return Math.round((numerator / denominator) * 100);
 }
 
 function toRepeatPairSummaries(input: {

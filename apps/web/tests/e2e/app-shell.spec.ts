@@ -182,6 +182,10 @@ async function createOwnedPlaygroupFixture(input: {
       )
     `;
   });
+
+  return {
+    playgroupId,
+  };
 }
 
 async function createPublishedPodLogFixture(input: {
@@ -289,6 +293,98 @@ async function createPublishedPodLogFixture(input: {
   return {
     eventId,
     podId,
+  };
+}
+
+async function createLoggedHistoryFixture(input: {
+  email: string;
+  eventTitle: string;
+  groupName: string;
+  notes: string;
+  completedAt: string;
+}) {
+  const fixture = await createPublishedPodLogFixture(input);
+  const gameId = randomUUID();
+
+  await withE2eSql(async (sql) => {
+    const userRows = await sql<{ id: string }[]>`
+      select id
+      from core.users
+      where email = ${input.email.toLowerCase()}
+      limit 1
+    `;
+    const userId = userRows[0]?.id;
+
+    expect(userId).toBeTruthy();
+
+    await sql`
+      insert into core.games (
+        id,
+        event_id,
+        pod_id,
+        logged_by_user_id,
+        result_type,
+        notes,
+        completed_at
+      )
+      values (
+        ${gameId},
+        ${fixture.eventId},
+        ${fixture.podId},
+        ${userId},
+        'draw',
+        ${input.notes},
+        ${input.completedAt}
+      )
+    `;
+    await sql`
+      insert into core.game_results (id, game_id, result_type, notes)
+      values (${randomUUID()}, ${gameId}, 'draw', ${input.notes})
+    `;
+
+    const seats = await sql<
+      {
+        id: string;
+        user_id: string | null;
+        guest_name: string | null;
+        seat_position: number;
+      }[]
+    >`
+      select id, user_id, guest_name, seat_position
+      from core.pod_seats
+      where pod_id = ${fixture.podId}
+      order by seat_position
+    `;
+
+    expect(seats).toHaveLength(2);
+
+    for (const seat of seats) {
+      await sql`
+        insert into core.game_players (
+          id,
+          game_id,
+          pod_seat_id,
+          user_id,
+          guest_name,
+          participant_name_snapshot,
+          seat_position
+        )
+        values (
+          ${randomUUID()},
+          ${gameId},
+          ${seat.id},
+          ${seat.user_id},
+          ${seat.guest_name},
+          ${seat.guest_name ?? "Riley Chen"},
+          ${seat.seat_position}
+        )
+      `;
+    }
+  });
+
+  return {
+    ...fixture,
+    gameId,
   };
 }
 
@@ -1741,6 +1837,105 @@ test("event managers can submit a published pod game save into history", async (
         player_count: 2,
       },
     ]);
+  });
+});
+
+test("history meta filters by scoped playgroup and event", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `history-filter-owner-${suffix}@example.test`;
+  const firstGroupName = `History Filters Alpha ${suffix}`;
+  const secondGroupName = `History Filters Beta ${suffix}`;
+  const firstEventTitle = `Alpha Meta Event ${suffix}`;
+  const secondEventTitle = `Beta Meta Event ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  const firstGroup = await createOwnedPlaygroupFixture({
+    email,
+    groupName: firstGroupName,
+    description: "History filter smoke alpha.",
+  });
+  await createOwnedPlaygroupFixture({
+    email,
+    groupName: secondGroupName,
+    description: "History filter smoke beta.",
+  });
+  const firstGame = await createLoggedHistoryFixture({
+    email,
+    eventTitle: firstEventTitle,
+    groupName: firstGroupName,
+    notes: `Alpha history note ${suffix}`,
+    completedAt: "2030-06-14 19:00:00+00",
+  });
+  const secondGame = await createLoggedHistoryFixture({
+    email,
+    eventTitle: secondEventTitle,
+    groupName: secondGroupName,
+    notes: `Beta history note ${suffix}`,
+    completedAt: "2030-06-21 19:00:00+00",
+  });
+
+  await page.goto("/history");
+
+  await expect(page.getByText("2 logged")).toBeVisible();
+  await expect(page.getByText("2 events with games")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: firstEventTitle }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: secondEventTitle }),
+  ).toBeVisible();
+  await expect(page.getByText("Private E2E Guest")).toHaveCount(0);
+
+  await page.getByLabel("Playgroup").selectOption(firstGroup.playgroupId);
+  await page.getByRole("button", { name: "Apply" }).click();
+
+  await expect(page).toHaveURL(
+    new RegExp(`playgroupId=${firstGroup.playgroupId}`),
+  );
+  await expect(page.getByText("1 logged")).toBeVisible();
+  await expect(page.getByText("1 events with games")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: firstEventTitle }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: secondEventTitle }),
+  ).toHaveCount(0);
+
+  await page.getByLabel("Event").selectOption(firstGame.eventId);
+  await page.getByRole("button", { name: "Apply" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`eventId=${firstGame.eventId}`));
+  await expect(
+    page.getByRole("heading", { name: firstEventTitle }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: secondEventTitle }),
+  ).toHaveCount(0);
+  await expect(page.getByText("2 players").first()).toBeVisible();
+  await expect(page.getByText("Guest RSVP")).toBeVisible();
+  await expect(page.getByText("Private E2E Guest")).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Reset" }).click();
+
+  await expect(page).toHaveURL("/history");
+  await expect(
+    page.getByRole("heading", { name: firstEventTitle }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: secondEventTitle }),
+  ).toBeVisible();
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select id
+      from core.games
+      where id in (${firstGame.gameId}, ${secondGame.gameId})
+      order by completed_at
+    `;
+
+    expect(rows).toHaveLength(2);
   });
 });
 

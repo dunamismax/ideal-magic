@@ -271,18 +271,19 @@ agent session.
 
 ## Pass 4 - Meta Health And History
 
-- [ ] Expand `/history` into the final scoped history and meta-health
+- [x] Expand `/history` into the final scoped history and meta-health
   surface without competitive leaderboards as the default emphasis.
-- [ ] Add scoped playgroup and event filters.
-- [ ] Add attendance, deck/commander variety, color/archetype spread,
+- [x] Add scoped playgroup and event filters.
+- [x] Add attendance, deck/commander variety, color/archetype spread,
   repeat-pairing freshness, pod-size quality, and event participation
   trends from real tables only.
 - [ ] Add charts only where they improve scanning and are tested.
 - [ ] Add public history views only if backed by public-safe projections
   and explicit scope decisions.
-- [ ] Decide whether materialized views are needed after query shape and
-  freshness needs are proven.
-- [ ] Verify with PGlite metric tests, component tests, and Playwright
+- [x] Decide materialized views are not needed for the current live
+  scoped aggregates; revisit only if real query shape or freshness needs
+  prove otherwise.
+- [x] Verify with PGlite metric tests, component tests, and Playwright
   smoke for history/meta.
 
 ## Pass 5 - Offline, Sync, And PWA Polish

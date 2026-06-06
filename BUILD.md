@@ -316,13 +316,17 @@ agent session.
 
 ## Pass 7 - Commander Lookup And Lightweight Data
 
-- [ ] Decide whether manual commander entry is enough for cutover.
-- [ ] If lookup is required, add a narrow commander lookup path without
-  importing a full card research product.
-- [ ] If Scryfall data is stored locally, normalize only needed fields,
-  retain raw payloads in JSONB, and version Commander Brackets/Game
-  Changers data.
-- [ ] Verify lookup performance, privacy, and failure behavior.
+- [x] Decide manual commander entry is enough for cutover; current deck
+  declaration flows store commander names, color identity, bracket/power,
+  archetype, tags, visibility, external URL, and immutable snapshots for
+  events, pods, counters, games, and history.
+- [x] Keep commander lookup out of cutover scope unless Stephen
+  explicitly reprioritizes it.
+- [x] Do not import or store Scryfall, Commander Brackets, or Game
+  Changers data for cutover.
+- [x] Verify the manual commander path with current validation,
+  declaration snapshot, pod, history, and linked-counter coverage; no
+  lookup privacy, performance, or failure surface exists for cutover.
 
 ## Pass 8 - Observability And Operations
 

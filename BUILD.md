@@ -295,9 +295,9 @@ agent session.
   silently overwrite newer server state.
 - [x] Add storage cleanup controls that do not surprise-delete active
   games.
-- [ ] Decide whether `/life` ships as an installable PWA for cutover; if
-  yes, add manifest/service-worker behavior and verify offline launch for
-  previously loaded assets.
+- [x] Decide `/life` ships as an installable PWA for cutover; add narrow
+  manifest/service-worker behavior for the standalone counter and verify
+  offline launch for previously loaded assets.
 - [ ] Add a read-only table/spectator view only if it can be scoped and
   kept fast.
 

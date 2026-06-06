@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pod Tracker">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <circle cx="256" cy="256" r="178" fill="#f8fafc"/>
+  <path d="M148 310V190l74 62 34-86 34 86 74-62v120c0 28-23 51-51 51H199c-28 0-51-23-51-51Z" fill="#0f172a"/>
+  <path d="M188 308h224v34H188z" fill="#0f172a"/>
+  <circle cx="170" cy="178" r="24" fill="#fb7185"/>
+  <circle cx="256" cy="142" r="24" fill="#22c55e"/>
+  <circle cx="342" cy="178" r="24" fill="#38bdf8"/>
+</svg>

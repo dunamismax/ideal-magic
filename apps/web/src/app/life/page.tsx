@@ -20,6 +20,7 @@ import { getLoginRedirectPath, getServerSession } from "@/features/auth/server";
 import { createEventLifeCounterContextFromParticipants } from "@/features/life/linked-session";
 import { EventLifeGameSaveForm } from "../events/[eventId]/life/event-life-game-save-form";
 import { saveStandaloneLifeGameAction } from "./actions";
+import { LifePwaRegistration } from "./life-pwa-registration";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,7 @@ export default async function LifePage({ searchParams }: LifePageProps) {
       }
       title="Life Counter"
     >
+      <LifePwaRegistration />
       <LifeCounter
         initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}

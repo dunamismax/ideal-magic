@@ -607,6 +607,69 @@ test("standalone life counter restores local Dexie state after refresh", async (
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
 });
 
+test("standalone life counter installs PWA metadata and launches offline", async ({
+  context,
+  page,
+}) => {
+  await page.goto("/life");
+
+  const manifestResponse = await page.request.get("/manifest.webmanifest");
+  expect(manifestResponse.ok()).toBe(true);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    "href",
+    "/manifest.webmanifest",
+  );
+
+  const manifest = (await manifestResponse.json()) as {
+    display?: string;
+    start_url?: string;
+    icons?: { sizes?: string; src?: string }[];
+  };
+  expect(manifest.display).toBe("standalone");
+  expect(manifest.start_url).toBe("/life");
+  expect(manifest.icons?.some((icon) => icon.sizes === "192x192")).toBe(true);
+  expect(manifest.icons?.some((icon) => icon.sizes === "512x512")).toBe(true);
+
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) {
+      throw new Error("Service workers are unavailable.");
+    }
+
+    await navigator.serviceWorker.ready;
+  });
+
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+  await page.waitForFunction(async () => {
+    const cacheNames = await caches.keys();
+    const lifeCacheNames = cacheNames.filter((name) =>
+      name.startsWith("pod-tracker-life-"),
+    );
+
+    for (const cacheName of lifeCacheNames) {
+      const cache = await caches.open(cacheName);
+      const cachedUrls = (await cache.keys()).map((request) => request.url);
+      const hasNextAsset = cachedUrls.some((url) => url.includes("/_next/"));
+
+      if ((await cache.match("/life")) && hasNextAsset) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  await context.setOffline(true);
+  await page.goto("/life", { waitUntil: "domcontentloaded" });
+
+  await expect(
+    page.getByRole("heading", { name: "Life Counter" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("life-player-card")).toHaveCount(4);
+
+  await context.setOffline(false);
+});
+
 test("standalone life counter tracks Commander counters and table roles", async ({
   page,
 }) => {

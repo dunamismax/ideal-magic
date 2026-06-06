@@ -288,10 +288,10 @@ agent session.
 
 ## Pass 5 - Offline, Sync, And PWA Polish
 
-- [ ] Persist explicitly linked counter snapshots to Postgres when useful
+- [x] Persist explicitly linked counter snapshots to Postgres when useful
   for recovery or cross-device continuation.
 - [x] Preserve local Dexie action history after successful game save.
-- [ ] Add conflict handling for linked sessions so reconnects never
+- [x] Add conflict handling for linked sessions so reconnects never
   silently overwrite newer server state.
 - [x] Add storage cleanup controls that do not surprise-delete active
   games.

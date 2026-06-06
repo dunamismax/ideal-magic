@@ -31,12 +31,23 @@ import {
   Zap,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { fieldControlClassName, FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import {
+  syncLinkedLifeCounterSessionAction,
+  type SyncLinkedLifeCounterSessionInput,
+} from "@/app/life/linked-session-actions";
 import {
   cleanupSavedLifeCounterSessions,
   countCleanupEligibleLifeCounterSessions,
@@ -73,10 +84,18 @@ type LifeCounterProps = {
   initialSession?: LifeCounterSession;
   linkedSaveEnabled?: boolean;
   linkedStatusLabel?: string;
+  linkedSessionSync?: Omit<SyncLinkedLifeCounterSessionInput, "session">;
 };
 
 type LocalSaveState = "checking" | "saved" | "unavailable" | "error";
 type LocalCleanupState = "idle" | "running" | "done" | "error";
+type LinkedSyncState =
+  | "idle"
+  | "syncing"
+  | "synced"
+  | "conflict"
+  | "unavailable"
+  | "error";
 
 type CommanderSource = {
   commander: Commander;
@@ -179,17 +198,74 @@ function formatDuration(totalSeconds: number) {
   return `${paddedMinutes}:${paddedSeconds}`;
 }
 
+function getSyncScopeLabel({
+  isLinkedSession,
+  linkedSaveEnabled,
+  linkedSessionSync,
+  linkedSyncState,
+}: {
+  isLinkedSession: boolean;
+  linkedSaveEnabled: boolean;
+  linkedSessionSync: boolean;
+  linkedSyncState: LinkedSyncState;
+}) {
+  if (!isLinkedSession) {
+    return "Local only";
+  }
+
+  if (!linkedSessionSync) {
+    return linkedSaveEnabled
+      ? "Local until saved to group"
+      : "Local only - not saved to group";
+  }
+
+  switch (linkedSyncState) {
+    case "syncing":
+      return "Syncing group snapshot";
+    case "synced":
+      return "Synced to group";
+    case "conflict":
+      return "Sync conflict - reload";
+    case "unavailable":
+      return "Group sync unavailable";
+    case "error":
+      return "Group sync failed";
+    case "idle":
+      return "Local until synced";
+  }
+}
+
+function getLinkedSyncFingerprint(session: LifeCounterSession) {
+  const { gameElapsedSeconds, turnElapsedSeconds, updatedAt, ...stable } =
+    session;
+
+  void gameElapsedSeconds;
+  void turnElapsedSeconds;
+  void updatedAt;
+
+  return JSON.stringify(stable);
+}
+
 export function LifeCounter({
   initialSession,
   linkedSaveEnabled = false,
   linkedStatusLabel,
+  linkedSessionSync,
 }: LifeCounterProps = {}) {
   const isLinkedSession = Boolean(linkedStatusLabel);
+  const expectedServerActionSequenceRef = useRef(
+    linkedSessionSync?.expectedServerActionSequence ?? null,
+  );
+  const expectedServerUpdatedAtRef = useRef(
+    linkedSessionSync?.expectedServerUpdatedAt ?? null,
+  );
+  const linkedSyncLockedRef = useRef(false);
   const [session, dispatch] = useReducer(
     lifeCounterReducer,
     initialSession,
     (providedSession) => providedSession ?? createInitialLifeCounterSession(),
   );
+  const sessionRef = useRef(session);
   const [tableMode, setTableMode] = useState(false);
   const [announcement, setAnnouncement] = useState("Local life counter ready.");
   const [localStoreReady, setLocalStoreReady] = useState(false);
@@ -198,6 +274,8 @@ export function LifeCounter({
   const [cleanupEligibleCount, setCleanupEligibleCount] = useState(0);
   const [localCleanupState, setLocalCleanupState] =
     useState<LocalCleanupState>("idle");
+  const [linkedSyncState, setLinkedSyncState] =
+    useState<LinkedSyncState>("idle");
   const {
     activePlayerId,
     dayNight,
@@ -263,15 +341,24 @@ export function LifeCounter({
         : localSaveState === "unavailable"
           ? "Local storage unavailable"
           : "Local save failed";
-  const syncScopeLabel = isLinkedSession
-    ? linkedSaveEnabled
-      ? "Local until saved to group"
-      : "Local only - not saved to group"
-    : "Local only";
+  const syncScopeLabel = getSyncScopeLabel({
+    isLinkedSession,
+    linkedSaveEnabled,
+    linkedSessionSync: Boolean(linkedSessionSync),
+    linkedSyncState,
+  });
   const cleanupLabel =
     cleanupEligibleCount === 1
       ? "1 saved inactive"
       : `${cleanupEligibleCount} saved inactive`;
+  const linkedSyncFingerprint = useMemo(
+    () => getLinkedSyncFingerprint(session),
+    [session],
+  );
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     if (tableMode) {
@@ -324,6 +411,60 @@ export function LifeCounter({
         setAnnouncement("Local session could not be saved.");
       });
   }, [localStoreReady, session]);
+
+  useEffect(() => {
+    if (!localStoreReady || !linkedSessionSync || linkedSyncLockedRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setLinkedSyncState("syncing");
+
+    syncLinkedLifeCounterSessionAction({
+      ...linkedSessionSync,
+      expectedServerActionSequence: expectedServerActionSequenceRef.current,
+      expectedServerUpdatedAt: expectedServerUpdatedAtRef.current,
+      session: sessionRef.current,
+    })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (result.ok) {
+          expectedServerActionSequenceRef.current =
+            result.serverActionSequence;
+          expectedServerUpdatedAtRef.current = result.serverUpdatedAt;
+          setLinkedSyncState("synced");
+          return;
+        }
+
+        if (result.reason === "conflict") {
+          linkedSyncLockedRef.current = true;
+          setLinkedSyncState("conflict");
+          setAnnouncement(
+            "Server snapshot changed. Reload before syncing this linked table.",
+          );
+          return;
+        }
+
+        setLinkedSyncState(
+          result.reason === "unauthorized" || result.reason === "invalid"
+            ? "unavailable"
+            : "error",
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLinkedSyncState("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedSessionSync, linkedSyncFingerprint, localStoreReady]);
 
   useEffect(() => {
     if (!timersRunning) {

@@ -15,6 +15,7 @@ import {
   listUpcomingEventsForViewer,
   type UpcomingEventListItem,
 } from "@/db/queries/event-planning";
+import { getLinkedLifeCounterSessionForViewer } from "@/db/queries/life-counter";
 import { getLoginRedirectPath, getServerSession } from "@/features/auth/server";
 import { createEventLifeCounterContextFromParticipants } from "@/features/life/linked-session";
 import { EventLifeGameSaveForm } from "../events/[eventId]/life/event-life-game-save-form";
@@ -67,6 +68,17 @@ export default async function LifePage({ searchParams }: LifePageProps) {
           participants: attachData.selectedParticipants,
         })
       : null;
+  const serverSnapshot =
+    db && session && linkedContext
+      ? await getLinkedLifeCounterSessionForViewer(db, {
+          viewerUserId: session.user.id,
+          kind: "event",
+          eventId: linkedContext.eventId,
+          localSessionKey: linkedContext.session.id,
+        })
+      : null;
+  const lifeCounterSession =
+    serverSnapshot?.session ?? linkedContext?.session ?? undefined;
 
   return (
     <PageFrame
@@ -78,8 +90,21 @@ export default async function LifePage({ searchParams }: LifePageProps) {
       title="Life Counter"
     >
       <LifeCounter
-        initialSession={linkedContext?.session}
+        initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}
+        linkedSessionSync={
+          linkedContext
+            ? {
+                kind: "event",
+                eventId: linkedContext.eventId,
+                localSessionKey: linkedContext.session.id,
+                expectedServerActionSequence:
+                  serverSnapshot?.serverActionSequence ?? null,
+                expectedServerUpdatedAt:
+                  serverSnapshot?.serverUpdatedAt ?? null,
+              }
+            : undefined
+        }
         linkedStatusLabel={linkedContext?.statusLabel}
       />
       <StandaloneLifeEventAttachPanel

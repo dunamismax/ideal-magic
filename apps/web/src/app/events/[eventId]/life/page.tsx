@@ -7,6 +7,7 @@ import {
   getScopedEventPlanningSummary,
   listEventLifeCounterParticipantsForViewer,
 } from "@/db/queries/event-planning";
+import { getLinkedLifeCounterSessionForViewer } from "@/db/queries/life-counter";
 import { requireServerSession } from "@/features/auth/server";
 import { createEventLifeCounterContextFromParticipants } from "@/features/life/linked-session";
 import { EventLifeGameSaveForm } from "./event-life-game-save-form";
@@ -44,13 +45,28 @@ export default async function EventLifePage({
     },
     participants,
   });
+  const serverSnapshot = await getLinkedLifeCounterSessionForViewer(db, {
+    viewerUserId: session.user.id,
+    kind: "event",
+    eventId,
+    localSessionKey: context.session.id,
+  });
+  const lifeCounterSession = serverSnapshot?.session ?? context.session;
   const canSaveGame = event.status === "scheduled" && participants.length >= 2;
 
   return (
     <PageFrame eyebrow={context.eyebrow} title={context.title}>
       <LifeCounter
-        initialSession={context.session}
+        initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}
+        linkedSessionSync={{
+          kind: "event",
+          eventId,
+          localSessionKey: context.session.id,
+          expectedServerActionSequence:
+            serverSnapshot?.serverActionSequence ?? null,
+          expectedServerUpdatedAt: serverSnapshot?.serverUpdatedAt ?? null,
+        }}
         linkedStatusLabel={context.statusLabel}
       />
       {canSaveGame ? (

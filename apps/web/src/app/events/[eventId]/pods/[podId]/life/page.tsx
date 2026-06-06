@@ -4,6 +4,7 @@ import { LifeCounter } from "@/app/life/life-counter";
 import { PageFrame } from "@/components/page-frame";
 import { createDatabase } from "@/db/client";
 import { getScopedEventPlanningSummary } from "@/db/queries/event-planning";
+import { getLinkedLifeCounterSessionForViewer } from "@/db/queries/life-counter";
 import { listPodsForEventViewer } from "@/db/queries/pods";
 import { requireServerSession } from "@/features/auth/server";
 import { createPodLifeCounterContextFromPublishedPod } from "@/features/life/linked-session";
@@ -48,13 +49,30 @@ export default async function PodLifePage({
     },
     pod,
   });
+  const serverSnapshot = await getLinkedLifeCounterSessionForViewer(db, {
+    viewerUserId: session.user.id,
+    kind: "pod",
+    eventId,
+    podId,
+    localSessionKey: context.session.id,
+  });
+  const lifeCounterSession = serverSnapshot?.session ?? context.session;
   const canSaveGame = pod.state === "locked";
 
   return (
     <PageFrame eyebrow={context.eyebrow} title={context.title}>
       <LifeCounter
-        initialSession={context.session}
+        initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}
+        linkedSessionSync={{
+          kind: "pod",
+          eventId,
+          podId,
+          localSessionKey: context.session.id,
+          expectedServerActionSequence:
+            serverSnapshot?.serverActionSequence ?? null,
+          expectedServerUpdatedAt: serverSnapshot?.serverUpdatedAt ?? null,
+        }}
         linkedStatusLabel={context.statusLabel}
       />
       {canSaveGame ? (

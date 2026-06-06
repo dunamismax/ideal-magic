@@ -184,6 +184,114 @@ async function createOwnedPlaygroupFixture(input: {
   });
 }
 
+async function createPublishedPodLogFixture(input: {
+  email: string;
+  eventTitle: string;
+  groupName: string;
+}) {
+  const eventId = randomUUID();
+  const ownerRsvpId = randomUUID();
+  const guestRsvpId = randomUUID();
+  const podId = randomUUID();
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql<{ playgroup_id: string; user_id: string }[]>`
+      select p.id as playgroup_id, u.id as user_id
+      from core.playgroups p
+      cross join core.users u
+      where p.name = ${input.groupName}
+        and u.email = ${input.email.toLowerCase()}
+      limit 1
+    `;
+    const row = rows[0];
+
+    expect(row).toBeTruthy();
+
+    await sql`
+      insert into core.events (
+        id,
+        playgroup_id,
+        title,
+        description,
+        starts_at,
+        visibility,
+        created_by_user_id
+      )
+      values (
+        ${eventId},
+        ${row?.playgroup_id},
+        ${input.eventTitle},
+        'Published pod game-save smoke.',
+        '2030-06-14 19:00:00+00',
+        'members',
+        ${row?.user_id}
+      )
+    `;
+    await sql`
+      insert into core.event_rsvps (id, event_id, user_id, status)
+      values (${ownerRsvpId}, ${eventId}, ${row?.user_id}, 'yes')
+    `;
+    await sql`
+      insert into core.event_rsvps (id, event_id, guest_name, status)
+      values (${guestRsvpId}, ${eventId}, 'Private E2E Guest', 'yes')
+    `;
+    await sql`
+      insert into core.pods (
+        id,
+        event_id,
+        name,
+        state,
+        position,
+        size_fit_score,
+        total_score,
+        published_at
+      )
+      values (${podId}, ${eventId}, 'Pod 1', 'locked', 1, 2, 2, now())
+    `;
+    await sql`
+      insert into core.pod_seats (
+        id,
+        pod_id,
+        event_id,
+        rsvp_id,
+        user_id,
+        seat_position
+      )
+      values (
+        ${randomUUID()},
+        ${podId},
+        ${eventId},
+        ${ownerRsvpId},
+        ${row?.user_id},
+        1
+      )
+    `;
+    await sql`
+      insert into core.pod_seats (
+        id,
+        pod_id,
+        event_id,
+        rsvp_id,
+        guest_name,
+        seat_position
+      )
+      values (
+        ${randomUUID()},
+        ${podId},
+        ${eventId},
+        ${guestRsvpId},
+        'Private E2E Guest',
+        2
+      )
+    `;
+  });
+
+  return {
+    eventId,
+    podId,
+  };
+}
+
 async function addUserToPlaygroupFixture(input: {
   email: string;
   displayName: string;
@@ -1561,6 +1669,79 @@ test("event managers can move and publish pod assignments", async ({
   await expect(
     eventCard.getByLabel(`Move ${movablePlayerName} to pod`),
   ).toBeVisible();
+});
+
+test("event managers can submit a published pod game save into history", async ({
+  page,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`;
+  const email = `game-save-owner-${suffix}@example.test`;
+  const groupName = `Game Save Pods ${suffix}`;
+  const eventTitle = `Game Save Event ${suffix}`;
+  const gameNote = `Playwright game save ${suffix}`;
+
+  await signUpVerifyAndLogin(page, { email, name: "Riley Chen" }, "/groups");
+  await createOwnedPlaygroupFixture({
+    email,
+    groupName,
+    description: "Game save smoke.",
+  });
+  const fixture = await createPublishedPodLogFixture({
+    email,
+    eventTitle,
+    groupName,
+  });
+
+  await page.goto("/game-night");
+
+  const eventCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(
+    eventCard.getByRole("heading", { name: eventTitle }),
+  ).toBeVisible();
+  await expect(
+    eventCard.getByRole("heading", { name: "Published Pods" }),
+  ).toBeVisible();
+  await expect(
+    eventCard.getByText("Guest RSVP", { exact: true }),
+  ).toBeVisible();
+  await expect(eventCard.getByText("Private E2E Guest")).toHaveCount(0);
+
+  await eventCard.getByLabel("Result for Pod 1").selectOption("draw");
+  await eventCard.getByLabel("Seat 1: Riley Chen finish position").fill("1");
+  await eventCard.getByLabel("Seat 2: Guest RSVP finish position").fill("2");
+  await eventCard.getByLabel("Notes for Pod 1").fill(gameNote);
+  await eventCard.getByRole("button", { name: "Log game for Pod 1" }).click();
+
+  await expect(eventCard.getByRole("heading", { name: "Draw" })).toBeVisible();
+  await expect(eventCard.getByText(gameNote)).toBeVisible();
+
+  await page.goto("/history");
+  const historyCard = page.locator("article").filter({ hasText: eventTitle });
+
+  await expect(historyCard.getByText("Draw").first()).toBeVisible();
+  await expect(historyCard.getByText(gameNote)).toBeVisible();
+  await expect(historyCard.getByText("Guest RSVP")).toBeVisible();
+  await expect(historyCard.getByText("Private E2E Guest")).toHaveCount(0);
+
+  await withE2eSql(async (sql) => {
+    const rows = await sql`
+      select g.result_type, g.notes, count(gp.id)::int as player_count
+      from core.games g
+      join core.game_players gp on gp.game_id = g.id
+      where g.event_id = ${fixture.eventId}
+        and g.pod_id = ${fixture.podId}
+      group by g.id
+    `;
+
+    expect(rows).toMatchObject([
+      {
+        result_type: "draw",
+        notes: gameNote,
+        player_count: 2,
+      },
+    ]);
+  });
 });
 
 test("authenticated group owners can create an event and RSVP", async ({

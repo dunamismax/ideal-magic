@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { AppDatabase } from "../client";
 import { runInTransaction } from "../client";
+import { recordAuditEvent } from "../audit";
 import { normalizePageRequest, type PageRequest } from "../pagination";
 import {
   type GameLossReason,
@@ -209,6 +210,20 @@ export class EventGameLoggingBlockedError extends Error {
   }
 }
 
+export class GameResultCorrectionAuthorizationError extends Error {
+  constructor() {
+    super("Viewer cannot correct this logged game.");
+    this.name = "GameResultCorrectionAuthorizationError";
+  }
+}
+
+export class GameResultCorrectionBlockedError extends Error {
+  constructor(message = "Logged game result cannot be corrected.") {
+    super(message);
+    this.name = "GameResultCorrectionBlockedError";
+  }
+}
+
 const resultTypes = [
   "normal_win",
   "combo_win",
@@ -280,6 +295,166 @@ export async function getLoggedGameForViewer(
   });
 
   return game ?? null;
+}
+
+export async function getLoggedGameCorrectionPermissionForViewer(
+  db: GameReadDatabase,
+  input: {
+    gameId: string;
+    viewerUserId: string;
+  },
+): Promise<{
+  canCorrect: boolean;
+  scope: "manager" | "participant" | null;
+}> {
+  const context = await getGameCorrectionContext(db, input);
+
+  if (!context) {
+    return {
+      canCorrect: false,
+      scope: null,
+    };
+  }
+
+  const permission = resolveGameCorrectionPermission({
+    context,
+    viewerUserId: input.viewerUserId,
+  });
+
+  return {
+    canCorrect: permission !== null,
+    scope: permission,
+  };
+}
+
+export async function correctLoggedGameResultForViewer(
+  db: GameWriteDatabase,
+  input: {
+    viewerUserId: string;
+    gameId: string;
+    resultType: GameResultType;
+    winnerPlayerIds?: readonly string[];
+    playerOutcomes?: readonly Partial<GamePlayerOutcomeInput>[];
+    notes?: string;
+  },
+): Promise<LoggedGameHistorySummary> {
+  return runInTransaction(db, async (tx) => {
+    const context = await getGameCorrectionContext(tx, input);
+
+    if (!context) {
+      throw new GameResultCorrectionAuthorizationError();
+    }
+
+    const correctionScope = resolveGameCorrectionPermission({
+      context,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!correctionScope) {
+      throw new GameResultCorrectionAuthorizationError();
+    }
+
+    const winnerPlayerIds = new Set(input.winnerPlayerIds ?? []);
+    const winnerValidationError = validateWinnerCountForResult({
+      resultType: input.resultType,
+      winnerCount: winnerPlayerIds.size,
+    });
+
+    if (winnerValidationError) {
+      throw new GameResultCorrectionBlockedError(winnerValidationError);
+    }
+
+    for (const winnerPlayerId of winnerPlayerIds) {
+      if (!context.players.some((player) => player.id === winnerPlayerId)) {
+        throw new GameResultCorrectionBlockedError(
+          "Winners must belong to the logged game.",
+        );
+      }
+    }
+
+    const outcomesByPlayerId = validatePlayerOutcomesForCandidates({
+      outcomes: input.playerOutcomes,
+      candidateIds: context.players.map((player) => player.id),
+      winnerIds: winnerPlayerIds,
+      blockedError: (message) => new GameResultCorrectionBlockedError(message),
+    });
+    const notes = normalizeNotes(input.notes);
+    const now = new Date();
+
+    await tx
+      .update(games)
+      .set({
+        resultType: input.resultType,
+        notes,
+        updatedAt: now,
+      })
+      .where(eq(games.id, input.gameId));
+
+    for (const player of context.players) {
+      const isWinner = winnerPlayerIds.has(player.id);
+
+      await tx
+        .update(gamePlayers)
+        .set({
+          ...resolvePlayerOutcomeFields({
+            playerId: player.id,
+            isWinner,
+            outcomesByPlayerId,
+          }),
+          isWinner,
+          team:
+            input.resultType === "team_win" && isWinner ? "winning_team" : null,
+          updatedAt: now,
+        })
+        .where(eq(gamePlayers.id, player.id));
+    }
+
+    const winners = context.players.filter((player) =>
+      winnerPlayerIds.has(player.id),
+    );
+    const firstWinner = winners[0];
+
+    await tx
+      .update(gameResults)
+      .set({
+        resultType: input.resultType,
+        winnerUserId:
+          winners.length === 1 ? (firstWinner?.userId ?? null) : null,
+        winningDeckId:
+          winners.length === 1 ? (firstWinner?.deckId ?? null) : null,
+        winningTeam: input.resultType === "team_win" ? "winning_team" : null,
+        notes,
+      })
+      .where(eq(gameResults.gameId, input.gameId));
+
+    await recordAuditEvent(tx, {
+      action: "game.result.corrected",
+      actorUserId: input.viewerUserId,
+      playgroupId: context.playgroupId,
+      eventId: context.eventId,
+      targetType: "game",
+      targetId: input.gameId,
+      metadata: {
+        correctionScope,
+        previousResultType: context.resultType,
+        nextResultType: input.resultType,
+        resultChanged: context.resultType !== input.resultType,
+        winnerCount: winnerPlayerIds.size,
+        playerCount: context.players.length,
+      },
+    });
+
+    const corrected = await getLoggedGameForViewer(tx, {
+      gameId: input.gameId,
+      viewerUserId: input.viewerUserId,
+    });
+
+    if (!corrected) {
+      throw new Error("Expected corrected game to remain visible.");
+    }
+
+    return corrected;
+  });
 }
 
 export async function getMetaHealthSummaryForViewer(
@@ -1267,6 +1442,84 @@ async function getEventLoggingContext(
     .limit(1);
 
   return row ?? null;
+}
+
+async function getGameCorrectionContext(
+  db: GameReadDatabase,
+  input: {
+    gameId: string;
+    viewerUserId: string;
+  },
+) {
+  const [game] = await db
+    .select({
+      id: games.id,
+      eventId: games.eventId,
+      playgroupId: events.playgroupId,
+      resultType: games.resultType,
+      viewerRole: playgroupMemberships.role,
+    })
+    .from(games)
+    .innerJoin(events, eq(events.id, games.eventId))
+    .innerJoin(
+      playgroupMemberships,
+      and(
+        eq(playgroupMemberships.playgroupId, events.playgroupId),
+        eq(playgroupMemberships.userId, input.viewerUserId),
+      ),
+    )
+    .where(
+      and(
+        eq(games.id, input.gameId),
+        inArray(playgroupMemberships.role, loggedGameViewerRoles),
+      ),
+    )
+    .limit(1);
+
+  if (!game) {
+    return null;
+  }
+
+  const players = await db
+    .select({
+      id: gamePlayers.id,
+      userId: gamePlayers.userId,
+      deckId: gamePlayers.deckId,
+    })
+    .from(gamePlayers)
+    .where(eq(gamePlayers.gameId, input.gameId))
+    .orderBy(asc(gamePlayers.seatPosition), asc(gamePlayers.id));
+
+  return {
+    eventId: game.eventId,
+    playgroupId: game.playgroupId,
+    resultType: asGameResultType(game.resultType),
+    viewerRole: asPlaygroupRole(game.viewerRole),
+    players,
+  };
+}
+
+function resolveGameCorrectionPermission(input: {
+  context: NonNullable<Awaited<ReturnType<typeof getGameCorrectionContext>>>;
+  viewerUserId: string;
+}) {
+  const viewerRole = input.context.viewerRole;
+
+  if (!viewerRole) {
+    return null;
+  }
+
+  if (canManageEvent(viewerRole)) {
+    return "manager" as const;
+  }
+
+  const isRecordedParticipant = input.context.players.some(
+    (player) => player.userId === input.viewerUserId,
+  );
+
+  return canRsvpToEvent(viewerRole) && isRecordedParticipant
+    ? ("participant" as const)
+    : null;
 }
 
 async function getViewerEligibleRsvpForEvent(

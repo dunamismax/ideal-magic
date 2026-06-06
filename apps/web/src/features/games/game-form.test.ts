@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { validateLogPodGameInput } from "./game-form";
+import {
+  validateCorrectGameResultInput,
+  validateLogPodGameInput,
+} from "./game-form";
 
 describe("game log form validation", () => {
   test("normalizes a valid quick pod game log", () => {
@@ -234,6 +237,68 @@ describe("game log form validation", () => {
       );
       expect(commander.fieldErrors.playerOutcomes).toBe(
         "Commander damage losses need a source and damage total.",
+      );
+    }
+  });
+
+  test("normalizes a valid game result correction", () => {
+    const result = validateCorrectGameResultInput({
+      gameId: "50000000-0000-4000-8000-000000000010",
+      resultType: "team_win",
+      winnerPlayerIds: [
+        "50000000-0000-4000-8000-000000000003",
+        "50000000-0000-4000-8000-000000000004",
+      ],
+      playerOutcomes: [
+        {
+          playerId: "50000000-0000-4000-8000-000000000005",
+          finishPosition: 3,
+          lossReason: "poison",
+          poisonCounters: 10,
+        },
+      ],
+      notes: "  Corrected table result.  ",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      input: {
+        gameId: "50000000-0000-4000-8000-000000000010",
+        resultType: "team_win",
+        winnerPlayerIds: [
+          "50000000-0000-4000-8000-000000000003",
+          "50000000-0000-4000-8000-000000000004",
+        ],
+        playerOutcomes: [
+          {
+            playerId: "50000000-0000-4000-8000-000000000005",
+            finishPosition: 3,
+            eliminationOrder: null,
+            eliminatedTurn: null,
+            lossReason: "poison",
+            lossDetail: "",
+            poisonCounters: 10,
+            commanderDamageSource: "",
+            commanderDamageAmount: null,
+          },
+        ],
+        notes: "Corrected table result.",
+      },
+    });
+  });
+
+  test("rejects correction winner ids that do not match result semantics", () => {
+    const result = validateCorrectGameResultInput({
+      gameId: "50000000-0000-4000-8000-000000000010",
+      resultType: "draw",
+      winnerPlayerIds: ["50000000-0000-4000-8000-000000000003"],
+    });
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.fieldErrors.winnerPlayerIds).toBe(
+        "Draw, time called, and unfinished games do not use winners.",
       );
     }
   });

@@ -12,6 +12,7 @@ export type AuditEventAction =
   | "playgroup.member.removed"
   | "event.visibility.changed"
   | "event.location.changed"
+  | "game.result.corrected"
   | "auth.signup"
   | "auth.login"
   | "auth.logout"

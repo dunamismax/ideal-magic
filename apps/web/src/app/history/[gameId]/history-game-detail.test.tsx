@@ -78,14 +78,14 @@ describe("history game detail", () => {
   });
 
   test("renders scoped logged game snapshots without private guest data", () => {
-    render(<HistoryGameDetail game={loggedGame} />);
+    render(<HistoryGameDetail canCorrect game={loggedGame} />);
 
     expect(screen.getByText("Saturday Hosts")).toBeInTheDocument();
     expect(screen.getByText("Saturday Commander")).toBeInTheDocument();
     expect(screen.getByText("Pod 1")).toBeInTheDocument();
     expect(screen.getAllByText("Combat Win").length).toBeGreaterThan(0);
     expect(screen.getByText("Winner: Riley Chen")).toBeInTheDocument();
-    expect(screen.getByText("Riley Chen")).toBeInTheDocument();
+    expect(screen.getAllByText("Riley Chen").length).toBeGreaterThan(0);
     expect(screen.getByText("Seat 1 - Finish 1")).toBeInTheDocument();
     expect(screen.getByText("Atraxa Counters")).toBeInTheDocument();
     expect(screen.getByText("Atraxa, Grand Unifier")).toBeInTheDocument();
@@ -93,17 +93,38 @@ describe("history game detail", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("Counters")).toBeInTheDocument();
-    expect(screen.getByText("Guest RSVP")).toBeInTheDocument();
+    expect(screen.getAllByText("Guest RSVP").length).toBeGreaterThan(0);
     expect(
       screen.getByText(
         "Elim 1 - Turn 9 - Commander loss - 21 commander from Nekusar - Copied draw trigger",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("No deck snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Shared table note")).toBeInTheDocument();
+    expect(screen.getAllByText("Shared table note").length).toBeGreaterThan(0);
     expect(screen.queryByText(/private guest/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/example\.test/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: "Correct game result" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Result")).toHaveValue("combat_win");
+    expect(
+      screen.getByLabelText("Seat 1: Riley Chen finish position"),
+    ).toHaveValue(1);
+    expect(screen.getByLabelText("Seat 2: Guest RSVP loss reason")).toHaveValue(
+      "commander_damage",
+    );
+    expect(
+      screen.getByRole("button", { name: "Save Correction" }),
+    ).toBeInTheDocument();
+  });
+
+  test("hides result correction controls when viewer cannot correct", () => {
+    render(<HistoryGameDetail game={loggedGame} />);
+
+    expect(
+      screen.queryByRole("form", { name: "Correct game result" }),
+    ).not.toBeInTheDocument();
   });
 
   test("renders event-only draw history without winners", () => {

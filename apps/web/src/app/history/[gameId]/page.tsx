@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 
 import { PageFrame } from "@/components/page-frame";
 import { createDatabase } from "@/db/client";
-import { getLoggedGameForViewer } from "@/db/queries/games";
+import {
+  getLoggedGameCorrectionPermissionForViewer,
+  getLoggedGameForViewer,
+} from "@/db/queries/games";
 import { requireServerSession } from "@/features/auth/server";
 import { HistoryGameDetail } from "./history-game-detail";
 
@@ -16,10 +19,16 @@ export default async function HistoryGamePage({
   const { gameId } = await params;
   const session = await requireServerSession(`/history/${gameId}`);
   const db = createDatabase();
-  const game = await getLoggedGameForViewer(db, {
-    gameId,
-    viewerUserId: session.user.id,
-  });
+  const [game, correctionPermission] = await Promise.all([
+    getLoggedGameForViewer(db, {
+      gameId,
+      viewerUserId: session.user.id,
+    }),
+    getLoggedGameCorrectionPermissionForViewer(db, {
+      gameId,
+      viewerUserId: session.user.id,
+    }),
+  ]);
 
   if (!game) {
     notFound();
@@ -27,7 +36,10 @@ export default async function HistoryGamePage({
 
   return (
     <PageFrame eyebrow="Game history" title={game.event.title}>
-      <HistoryGameDetail game={game} />
+      <HistoryGameDetail
+        canCorrect={correctionPermission.canCorrect}
+        game={game}
+      />
     </PageFrame>
   );
 }

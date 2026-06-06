@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 
 import type { AppDatabase } from "@/db/client";
 import {
+  auditEvents,
   eventRsvps,
   gamePlayers,
   gameResults,
@@ -25,10 +26,14 @@ import {
   upsertMemberRsvpForEvent,
 } from "./event-planning";
 import {
+  correctLoggedGameResultForViewer,
   listLoggedGamesForEventViewer,
   listLoggedGamesForViewer,
   EventGameLoggingAuthorizationError,
   EventGameLoggingBlockedError,
+  GameResultCorrectionAuthorizationError,
+  GameResultCorrectionBlockedError,
+  getLoggedGameCorrectionPermissionForViewer,
   getLoggedGameForViewer,
   getMetaHealthSummaryForViewer,
   logGameFromPublishedPod,
@@ -1072,6 +1077,322 @@ describe("game logging data access", () => {
     });
     expect(JSON.stringify(logged)).not.toContain("Edited After History");
     expect(JSON.stringify(logged)).not.toContain("Edited History Commander");
+  });
+
+  test("lets event managers correct logged game results with safe audit events and immutable snapshots", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+
+    if (!ownerSeat) {
+      throw new Error("Expected owner seat in published pod.");
+    }
+
+    const logged = await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "normal_win",
+      winnerSeatIds: [ownerSeat.id],
+      notes: "Original result.",
+    });
+    const memberPlayer = logged.players.find(
+      (player) => player.participantName === "Member 1",
+    );
+    const guestPlayer = logged.players.find(
+      (player) => player.participantName === "Guest RSVP",
+    );
+
+    if (!memberPlayer || !guestPlayer) {
+      throw new Error("Expected member and guest game players.");
+    }
+
+    await updateDeckForUser(db, {
+      ownerUserId: fixture.ownerId,
+      deckId: fixture.ownerDeckId,
+      name: "Edited Before Correction",
+      commanders: ["Edited Correction Commander"],
+      colorIdentity: "WUBRG",
+      bracket: "5",
+      powerEstimate: 10,
+      archetype: "Edited",
+      tags: ["edited"],
+      visibility: "playgroup",
+      playgroupId: fixture.playgroupId,
+      externalUrl: null,
+    });
+
+    const corrected = await correctLoggedGameResultForViewer(db, {
+      viewerUserId: fixture.ownerId,
+      gameId: logged.id,
+      resultType: "combat_win",
+      winnerPlayerIds: [memberPlayer.id],
+      playerOutcomes: [
+        {
+          playerId: memberPlayer.id,
+          finishPosition: 1,
+        },
+        {
+          playerId: guestPlayer.id,
+          finishPosition: 4,
+          eliminationOrder: 1,
+          eliminatedTurn: 8,
+          lossReason: "poison",
+          poisonCounters: 10,
+          lossDetail: "Infect cleanup",
+        },
+      ],
+      notes: "Corrected result.",
+    });
+
+    expect(corrected).toMatchObject({
+      id: logged.id,
+      resultType: "combat_win",
+      notes: "Corrected result.",
+    });
+    expect(corrected.winners).toEqual([
+      {
+        id: memberPlayer.id,
+        participantName: "Member 1",
+        deckNameSnapshot: "Member 1 Deck",
+      },
+    ]);
+    expect(
+      corrected.players.find((player) => player.participantName === "Member 1"),
+    ).toMatchObject({
+      finishPosition: 1,
+      isWinner: true,
+    });
+    expect(
+      corrected.players.find(
+        (player) => player.participantName === "Guest RSVP",
+      ),
+    ).toMatchObject({
+      finishPosition: 4,
+      eliminationOrder: 1,
+      eliminatedTurn: 8,
+      lossReason: "poison",
+      lossDetail: "Infect cleanup",
+      poisonCounters: 10,
+    });
+
+    const [resultRow] = await db
+      .select({
+        resultType: gameResults.resultType,
+        winnerUserId: gameResults.winnerUserId,
+        winningDeckId: gameResults.winningDeckId,
+        winningTeam: gameResults.winningTeam,
+        notes: gameResults.notes,
+      })
+      .from(gameResults)
+      .where(eq(gameResults.gameId, logged.id));
+
+    expect(resultRow).toMatchObject({
+      resultType: "combat_win",
+      winnerUserId: fixture.memberIds[0],
+      winningTeam: null,
+      notes: "Corrected result.",
+    });
+
+    const loggedOwnerPlayer = logged.players.find(
+      (player) => player.participantName === "Owner Player",
+    );
+
+    if (!loggedOwnerPlayer) {
+      throw new Error("Expected owner game player.");
+    }
+
+    const [ownerPlayer] = await db
+      .select({
+        deckNameSnapshot: gamePlayers.deckNameSnapshot,
+        commanderSnapshot: gamePlayers.commanderSnapshot,
+        bracketSnapshot: gamePlayers.bracketSnapshot,
+        isWinner: gamePlayers.isWinner,
+      })
+      .from(gamePlayers)
+      .where(eq(gamePlayers.id, loggedOwnerPlayer.id));
+
+    expect(ownerPlayer).toMatchObject({
+      deckNameSnapshot: "Owner Deck",
+      commanderSnapshot: ["Owner Commander"],
+      bracketSnapshot: "2",
+      isWinner: false,
+    });
+    expect(JSON.stringify(corrected)).toContain("Guest RSVP");
+    expect(JSON.stringify(corrected)).not.toContain("Private Guest");
+    expect(JSON.stringify(corrected)).not.toContain("Edited Before Correction");
+    expect(JSON.stringify(corrected)).not.toContain(
+      "Edited Correction Commander",
+    );
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        playgroupId: auditEvents.playgroupId,
+        eventId: auditEvents.eventId,
+        targetType: auditEvents.targetType,
+        targetId: auditEvents.targetId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.targetId, logged.id));
+
+    expect(auditRows).toEqual([
+      {
+        action: "game.result.corrected",
+        actorUserId: fixture.ownerId,
+        playgroupId: fixture.playgroupId,
+        eventId: fixture.eventId,
+        targetType: "game",
+        targetId: logged.id,
+        metadata: {
+          correctionScope: "manager",
+          previousResultType: "normal_win",
+          nextResultType: "combat_win",
+          resultChanged: true,
+          winnerCount: 1,
+          playerCount: 4,
+        },
+      },
+    ]);
+    expect(JSON.stringify(auditRows)).not.toContain("Private Guest");
+    expect(JSON.stringify(auditRows)).not.toContain("Corrected result");
+  });
+
+  test("lets recorded participants correct their own logged games but rejects unrelated viewers and foreign player ids", async () => {
+    const { db } = await createMigratedPgliteDatabase();
+    const fixture = await createPublishedPodGameFixture(db);
+    const ownerSeat = fixture.publishedPod.seats.find(
+      (seat) => seat.participantName === "Owner Player",
+    );
+
+    if (!ownerSeat) {
+      throw new Error("Expected owner seat in published pod.");
+    }
+
+    const logged = await logGameFromPublishedPod(db, {
+      viewerUserId: fixture.ownerId,
+      eventId: fixture.eventId,
+      podId: fixture.publishedPod.id,
+      resultType: "normal_win",
+      winnerSeatIds: [ownerSeat.id],
+    });
+    const memberPlayer = logged.players.find(
+      (player) => player.participantName === "Member 1",
+    );
+    const extraMemberId = "40000000-0000-4000-8000-000000000005";
+
+    if (!memberPlayer) {
+      throw new Error("Expected member game player.");
+    }
+
+    await db.insert(users).values({
+      id: extraMemberId,
+      email: "game-log-extra-member@example.test",
+      name: "Extra Member",
+    });
+    await db.insert(playgroupMemberships).values({
+      playgroupId: fixture.playgroupId,
+      userId: extraMemberId,
+      role: "member",
+      displayName: "Extra Member",
+    });
+
+    await expect(
+      correctLoggedGameResultForViewer(db, {
+        viewerUserId: fixture.outsiderId,
+        gameId: logged.id,
+        resultType: "draw",
+        winnerPlayerIds: [],
+      }),
+    ).rejects.toBeInstanceOf(GameResultCorrectionAuthorizationError);
+    await expect(
+      correctLoggedGameResultForViewer(db, {
+        viewerUserId: extraMemberId,
+        gameId: logged.id,
+        resultType: "draw",
+        winnerPlayerIds: [],
+      }),
+    ).rejects.toBeInstanceOf(GameResultCorrectionAuthorizationError);
+    await expect(
+      correctLoggedGameResultForViewer(db, {
+        viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+        gameId: logged.id,
+        resultType: "team_win",
+        winnerPlayerIds: [
+          memberPlayer.id,
+          "40000000-0000-4000-8000-000000000999",
+        ],
+      }),
+    ).rejects.toThrow(GameResultCorrectionBlockedError);
+
+    const ownerPermission = await getLoggedGameCorrectionPermissionForViewer(
+      db,
+      {
+        gameId: logged.id,
+        viewerUserId: fixture.ownerId,
+      },
+    );
+    const participantPermission =
+      await getLoggedGameCorrectionPermissionForViewer(db, {
+        gameId: logged.id,
+        viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      });
+    const unrelatedPermission =
+      await getLoggedGameCorrectionPermissionForViewer(db, {
+        gameId: logged.id,
+        viewerUserId: extraMemberId,
+      });
+
+    expect(ownerPermission).toEqual({
+      canCorrect: true,
+      scope: "manager",
+    });
+    expect(participantPermission).toEqual({
+      canCorrect: true,
+      scope: "participant",
+    });
+    expect(unrelatedPermission).toEqual({
+      canCorrect: false,
+      scope: null,
+    });
+
+    const corrected = await correctLoggedGameResultForViewer(db, {
+      viewerUserId: fixture.memberIds[0] ?? fixture.ownerId,
+      gameId: logged.id,
+      resultType: "draw",
+      winnerPlayerIds: [],
+      notes: "Participant correction.",
+    });
+
+    expect(corrected.resultType).toBe("draw");
+    expect(corrected.winners).toEqual([]);
+    expect(corrected.players.every((player) => !player.isWinner)).toBe(true);
+
+    const auditRows = await db
+      .select({
+        action: auditEvents.action,
+        actorUserId: auditEvents.actorUserId,
+        metadata: auditEvents.metadata,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.targetId, logged.id));
+
+    expect(auditRows.at(-1)).toEqual({
+      action: "game.result.corrected",
+      actorUserId: fixture.memberIds[0],
+      metadata: {
+        correctionScope: "participant",
+        previousResultType: "normal_win",
+        nextResultType: "draw",
+        resultChanged: true,
+        winnerCount: 0,
+        playerCount: 4,
+      },
+    });
   });
 
   test("saves a completed pod life counter result into scoped game history", async () => {

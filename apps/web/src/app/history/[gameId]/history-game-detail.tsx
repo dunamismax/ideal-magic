@@ -7,10 +7,13 @@ import {
 } from "lucide-react";
 
 import type { LoggedGameHistorySummary } from "@/db/queries/games";
+import { GameResultCorrectionForm } from "./game-result-correction-form";
 
 export function HistoryGameDetail({
+  canCorrect,
   game,
 }: {
+  canCorrect?: boolean;
   game: LoggedGameHistorySummary;
 }) {
   return (
@@ -134,6 +137,8 @@ export function HistoryGameDetail({
           </p>
         ) : null}
       </section>
+
+      {canCorrect ? <GameResultCorrectionForm game={game} /> : null}
     </div>
   );
 }

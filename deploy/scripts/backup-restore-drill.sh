@@ -11,11 +11,29 @@ db_user="${POD_TRACKER_DRILL_DB_USER:-pod_tracker}"
 db_password="${POD_TRACKER_DRILL_DB_PASSWORD:-pod_tracker}"
 sslmode="${POD_TRACKER_DRILL_SSLMODE:-disable}"
 keep_artifacts="${POD_TRACKER_DRILL_KEEP_ARTIFACTS:-0}"
+pg_client="${POD_TRACKER_DRILL_PG_CLIENT:-local}"
+
+case "$pg_client" in
+  local)
+    client_db_host="$db_host"
+    client_db_port="$db_port"
+    ;;
+  docker-compose)
+    client_db_host="${POD_TRACKER_DRILL_CLIENT_DB_HOST:-localhost}"
+    client_db_port="${POD_TRACKER_DRILL_CLIENT_DB_PORT:-5432}"
+    ;;
+  *)
+    printf 'unsupported POD_TRACKER_DRILL_PG_CLIENT: %s\n' "$pg_client" >&2
+    exit 1
+    ;;
+esac
 
 backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/pod-tracker-restore-drill.XXXXXX")"
 env_file="${backup_dir}/drill.env"
 source_url="postgres://${db_user}:${db_password}@${db_host}:${db_port}/${source_db}?sslmode=${sslmode}"
 restore_url="postgres://${db_user}:${db_password}@${db_host}:${db_port}/${restore_db}?sslmode=${sslmode}"
+client_source_url="postgres://${db_user}:${db_password}@${client_db_host}:${client_db_port}/${source_db}?sslmode=${sslmode}"
+client_restore_url="postgres://${db_user}:${db_password}@${client_db_host}:${client_db_port}/${restore_db}?sslmode=${sslmode}"
 marker_stamp="$(printf '%s' "$timestamp" | tr '[:upper:]' '[:lower:]')"
 marker_slug="backup-restore-drill-${marker_stamp}"
 
@@ -31,8 +49,8 @@ validate_drill_db_name() {
 cleanup() {
   local status=$?
   if [[ "$keep_artifacts" != "1" ]]; then
-    PGPASSWORD="$db_password" dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$source_db" >/dev/null 2>&1 || true
-    PGPASSWORD="$db_password" dropdb --if-exists --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db" >/dev/null 2>&1 || true
+    run_pg_tool dropdb --if-exists --host "$client_db_host" --port "$client_db_port" --username "$db_user" "$source_db" >/dev/null 2>&1 || true
+    run_pg_tool dropdb --if-exists --host "$client_db_host" --port "$client_db_port" --username "$db_user" "$restore_db" >/dev/null 2>&1 || true
     rm -rf "$backup_dir"
   else
     printf 'kept drill artifacts in %s\n' "$backup_dir"
@@ -46,6 +64,24 @@ require_command() {
     printf 'required command is missing: %s\n' "$name" >&2
     exit 1
   fi
+}
+
+run_pg_tool() {
+  local command="$1"
+  shift
+
+  case "$pg_client" in
+    local)
+      PGPASSWORD="$db_password" "$command" "$@"
+      ;;
+    docker-compose)
+      (
+        cd "$repo_root"
+        export PGPASSWORD="$db_password"
+        docker compose exec -T --env PGPASSWORD postgres "$command" "$@"
+      )
+      ;;
+  esac
 }
 
 apply_migrations() {
@@ -64,18 +100,26 @@ if [[ "$source_db" == "$restore_db" ]]; then
   exit 1
 fi
 
-for command in createdb dropdb pg_dump pg_restore psql pnpm; do
+for command in pnpm; do
   require_command "$command"
 done
 
+if [[ "$pg_client" == "local" ]]; then
+  for command in createdb dropdb pg_dump pg_restore psql; do
+    require_command "$command"
+  done
+else
+  require_command docker
+fi
+
 trap cleanup EXIT
 
-PGPASSWORD="$db_password" createdb --host "$db_host" --port "$db_port" --username "$db_user" "$source_db"
-PGPASSWORD="$db_password" createdb --host "$db_host" --port "$db_port" --username "$db_user" "$restore_db"
+run_pg_tool createdb --host "$client_db_host" --port "$client_db_port" --username "$db_user" "$source_db"
+run_pg_tool createdb --host "$client_db_host" --port "$client_db_port" --username "$db_user" "$restore_db"
 
 apply_migrations "$source_url"
 
-psql -v ON_ERROR_STOP=1 "$source_url" <<SQL >/dev/null
+run_pg_tool psql -v ON_ERROR_STOP=1 "$client_source_url" <<SQL >/dev/null
 insert into core.playgroups (name, slug, description)
 values (
   'Backup Restore Drill',
@@ -84,25 +128,39 @@ values (
 );
 SQL
 
-printf 'POD_TRACKER_DATABASE_URL=%q\n' "$source_url" >"$env_file"
-printf 'POD_TRACKER_RESTORE_DATABASE_URL=%q\n' "$restore_url" >>"$env_file"
+printf 'POD_TRACKER_DATABASE_URL=%q\n' "$client_source_url" >"$env_file"
+printf 'POD_TRACKER_RESTORE_DATABASE_URL=%q\n' "$client_restore_url" >>"$env_file"
 
 backup_file="$(
   POD_TRACKER_ENV_FILE="$env_file" \
   POD_TRACKER_BACKUP_DIR="$backup_dir" \
+  POD_TRACKER_PG_CLIENT="$pg_client" \
   "$repo_root/deploy/scripts/backup.sh"
 )"
 
-pg_restore --list "$backup_file" >/dev/null
+case "$pg_client" in
+  local)
+    pg_restore --list "$backup_file" >/dev/null
+    ;;
+  docker-compose)
+    (
+      cd "$repo_root"
+      docker compose exec -T \
+        postgres \
+        pg_restore --list <"$backup_file" >/dev/null
+    )
+    ;;
+esac
 
 POD_TRACKER_ENV_FILE="$env_file" \
 POD_TRACKER_RESTORE_CONFIRM=RESTORE \
+POD_TRACKER_PG_CLIENT="$pg_client" \
   "$repo_root/deploy/scripts/restore.sh" "$backup_file"
 
 apply_migrations "$restore_url"
 
-psql -v ON_ERROR_STOP=1 "$restore_url" <<SQL >/dev/null
-do $$
+run_pg_tool psql -v ON_ERROR_STOP=1 "$client_restore_url" <<SQL >/dev/null
+do \$\$
 begin
   if not exists (
     select 1
@@ -140,10 +198,11 @@ begin
     raise exception 'missing restored drill marker row';
   end if;
 end
-$$;
+\$\$;
 SQL
 
 printf 'backup_restore_drill=ok\n'
+printf 'pg_client=%s\n' "$pg_client"
 printf 'source_db=%s\n' "$source_db"
 printf 'restore_db=%s\n' "$restore_db"
 printf 'backup_file=%s\n' "$backup_file"

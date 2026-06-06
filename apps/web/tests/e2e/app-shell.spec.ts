@@ -1292,7 +1292,9 @@ test("authenticated users can create and list a playgroup", async ({
     groupCard.getByRole("heading", { name: groupName }),
   ).toBeVisible();
   await expect(
-    groupCard.getByText("Bracket-aware pods and rotating hosts."),
+    groupCard.locator("p").filter({
+      hasText: "Bracket-aware pods and rotating hosts.",
+    }),
   ).toBeVisible();
   await expect(groupCard.getByText("owner").first()).toBeVisible();
   await expect(groupCard.getByText("Members", { exact: true })).toBeVisible();
@@ -1595,14 +1597,21 @@ test("event managers can move and publish pod assignments", async ({
     .innerText();
 
   await page.goto("/game-night");
-  await page
+
+  const createEventForm = page.locator("form").filter({ hasText: "Create Event" });
+
+  await createEventForm
     .locator('select[name="playgroupId"]')
     .selectOption({ label: groupName });
-  await page.getByLabel("Event Title").fill(eventTitle);
-  await page.getByLabel("Start").fill("2030-06-14T19:00");
-  await page.getByLabel("Visibility").selectOption("members");
-  await page.getByLabel("Description").fill("Seven players make two pods.");
-  await page.getByRole("button", { name: "Create Event" }).click();
+  await createEventForm.getByLabel("Event Title").fill(eventTitle);
+  await createEventForm.getByLabel("Start").fill("2030-06-14T19:00");
+  await createEventForm
+    .locator('select[name="visibility"]')
+    .selectOption("members");
+  await createEventForm
+    .getByLabel("Description")
+    .fill("Seven players make two pods.");
+  await createEventForm.getByRole("button", { name: "Create Event" }).click();
 
   let eventCard = page.locator("article").filter({ hasText: eventTitle });
 
@@ -2086,14 +2095,21 @@ test("authenticated group owners can create an event and RSVP", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Game Night" }),
   ).toBeVisible();
-  await page
+
+  const createEventForm = page.locator("form").filter({ hasText: "Create Event" });
+
+  await createEventForm
     .locator('select[name="playgroupId"]')
     .selectOption({ label: groupName });
-  await page.getByLabel("Event Title").fill(eventTitle);
-  await page.getByLabel("Start").fill("2030-06-14T19:00");
-  await page.getByLabel("Visibility").selectOption("members");
-  await page.getByLabel("Description").fill("Bring bracket 2-3 decks.");
-  await page.getByRole("button", { name: "Create Event" }).click();
+  await createEventForm.getByLabel("Event Title").fill(eventTitle);
+  await createEventForm.getByLabel("Start").fill("2030-06-14T19:00");
+  await createEventForm
+    .locator('select[name="visibility"]')
+    .selectOption("members");
+  await createEventForm
+    .getByLabel("Description")
+    .fill("Bring bracket 2-3 decks.");
+  await createEventForm.getByRole("button", { name: "Create Event" }).click();
 
   const eventCard = page.locator("article").filter({ hasText: eventTitle });
 

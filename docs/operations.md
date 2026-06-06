@@ -109,6 +109,18 @@ the target server, or a newer compatible client. The current Compose
 PostgreSQL service is version 18; PostgreSQL 17 client tools will not run
 the local drill against it.
 
+When local PostgreSQL client tools do not match the Compose server, run
+the drill through the Compose PostgreSQL 18 client tools:
+
+```sh
+docker compose up -d postgres
+POD_TRACKER_DRILL_PG_CLIENT=docker-compose deploy/scripts/backup-restore-drill.sh
+```
+
+This mode uses the running Compose `postgres` service for `createdb`,
+`dropdb`, `psql`, `pg_dump`, and `pg_restore`, while Drizzle migrations
+still run from the host against `localhost:55432`.
+
 Local drill outline:
 
 1. Create a non-production source database.

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 env_file="${POD_TRACKER_ENV_FILE:-/etc/pod-tracker/env}"
+pg_client="${POD_TRACKER_PG_CLIENT:-local}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ $# -ne 1 ]]; then
   printf 'usage: %s /path/to/pod_tracker.dump\n' "$0" >&2
@@ -38,4 +40,21 @@ if [[ "$confirmation" != "RESTORE" ]]; then
   exit 1
 fi
 
-pg_restore --clean --if-exists --no-owner --no-acl --dbname "$restore_url" "$backup_file"
+case "$pg_client" in
+  local)
+    pg_restore --clean --if-exists --no-owner --no-acl --dbname "$restore_url" "$backup_file"
+    ;;
+  docker-compose)
+    (
+      cd "$repo_root"
+      docker compose exec -T \
+        postgres \
+        pg_restore --clean --if-exists --no-owner --no-acl \
+          --dbname "$restore_url"
+    ) <"$backup_file"
+    ;;
+  *)
+    printf 'unsupported POD_TRACKER_PG_CLIENT: %s\n' "$pg_client" >&2
+    exit 1
+    ;;
+esac

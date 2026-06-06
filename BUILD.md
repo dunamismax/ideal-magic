@@ -342,11 +342,11 @@ agent session.
   Postgres, app, optional Valkey, optional MinIO, analytics, and error
   reporting.
 - [x] Add backup and restore scripts for the TypeScript/Postgres shape.
-- [ ] Run and document a local backup/restore drill.
+- [x] Run and document a local backup/restore drill.
 
 ## Pass 9 - End-To-End Release Candidate
 
-- [ ] Run full TypeScript unit, integration, lint, typecheck, migration,
+- [x] Run full TypeScript unit, integration, lint, typecheck, migration,
   and Playwright suites.
 - [ ] Run critical browser smoke flows: signup, login, logout, group
   create/edit, invite, event create/edit, RSVP, guest RSVP, deck create,

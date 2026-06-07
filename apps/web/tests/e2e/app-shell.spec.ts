@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import postgres from "postgres";
 
 const appNetworkRequestTypes = new Set(["document", "fetch", "xhr"]);
@@ -62,6 +62,75 @@ async function logInThroughUi(
   await page.getByLabel("Password").fill(user.password ?? testPassword);
   await page.getByRole("button", { name: "Log In" }).click();
   await expect(page).toHaveURL(nextPath);
+}
+
+async function openLifeMenu(page: Page) {
+  await page.getByRole("button", { name: "Open life counter menu" }).click();
+}
+
+async function closeDrawer(page: Page) {
+  await page.getByRole("button", { name: "Close drawer" }).click();
+}
+
+async function setLifePlayerCount(page: Page, count: number) {
+  await openLifeMenu(page);
+  await page.getByRole("radio", { name: String(count) }).click();
+  await closeDrawer(page);
+}
+
+async function openPlayerSetupDrawer(playerCard: Locator, playerName: string) {
+  await playerCard
+    .getByRole("button", { name: `Show setup panel for ${playerName}` })
+    .click();
+  await playerCard
+    .getByRole("button", { name: `Open deck setup for ${playerName}` })
+    .click();
+}
+
+async function openPlayerCountersDrawer(
+  playerCard: Locator,
+  playerName: string,
+) {
+  await playerCard
+    .getByRole("button", { name: `Show counters panel for ${playerName}` })
+    .click();
+  await playerCard
+    .getByRole("button", { name: `Open poison counters for ${playerName}` })
+    .click();
+}
+
+async function openPlayerResultDrawer(playerCard: Locator, playerName: string) {
+  await playerCard
+    .getByRole("button", { name: `Show setup panel for ${playerName}` })
+    .click();
+  await playerCard
+    .getByRole("button", { name: `Open deck setup for ${playerName}` })
+    .click();
+  await pageFromLocator(playerCard)
+    .getByRole("button", {
+      name: `Show result controls for ${playerName}`,
+    })
+    .click();
+}
+
+async function adjustLifeByOnes(
+  playerCard: Locator,
+  playerName: string,
+  amount: number,
+) {
+  const buttonName =
+    amount > 0
+      ? `Add 1 life to ${playerName}`
+      : `Subtract 1 life from ${playerName}`;
+  const button = playerCard.getByRole("button", { name: buttonName });
+
+  for (let index = 0; index < Math.abs(amount); index += 1) {
+    await button.click({ position: { x: 8, y: 8 } });
+  }
+}
+
+function pageFromLocator(locator: Locator) {
+  return locator.page();
 }
 
 async function verifyEmailInDatabase(email: string) {
@@ -556,7 +625,10 @@ async function expectResponsiveViewport(page: Page) {
       )
       .sort(
         (left, right) =>
-          Math.max(right.right - viewportWidth, right.scrollWidth - right.width) -
+          Math.max(
+            right.right - viewportWidth,
+            right.scrollWidth - right.width,
+          ) -
           Math.max(left.right - viewportWidth, left.scrollWidth - left.width),
       )
       .slice(0, 5);
@@ -690,7 +762,7 @@ for (const viewport of responsiveViewports) {
     ).toBeVisible();
     await expect(page.getByTestId("life-player-card")).toHaveCount(4);
     await expect(
-      page.getByRole("button", { name: "Add 10 life to Player 1" }),
+      page.getByRole("button", { name: "Add 1 life to Player 1" }),
     ).toBeVisible();
 
     const overflowCount = await page.locator("button, a, input").evaluateAll(
@@ -765,7 +837,7 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         ).toBeVisible();
         await expect(page.getByTestId("life-player-card")).toHaveCount(4);
         await expect(
-          page.getByRole("button", { name: "Add 10 life to Player 1" }),
+          page.getByRole("button", { name: "Add 1 life to Player 1" }),
         ).toBeVisible();
       },
     },
@@ -779,7 +851,9 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         await expect(
           page.getByRole("button", { name: "Create Event" }),
         ).toBeVisible();
-        const eventCard = page.locator("article").filter({ hasText: eventTitle });
+        const eventCard = page
+          .locator("article")
+          .filter({ hasText: eventTitle });
 
         await expect(
           eventCard.getByRole("heading", { name: eventTitle }),
@@ -802,7 +876,9 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         await expect(
           page.getByRole("button", { name: "Create Group" }),
         ).toBeVisible();
-        const groupCard = page.locator("article").filter({ hasText: groupName });
+        const groupCard = page
+          .locator("article")
+          .filter({ hasText: groupName });
 
         await expect(
           groupCard.getByRole("heading", { name: groupName }),
@@ -825,7 +901,9 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         await expect(
           deckCard.getByRole("heading", { name: deckName }),
         ).toBeVisible();
-        await expect(deckCard.getByText("Edit Deck", { exact: true })).toBeVisible();
+        await expect(
+          deckCard.getByText("Edit Deck", { exact: true }),
+        ).toBeVisible();
       },
     },
     {
@@ -839,9 +917,7 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         await expect(
           page.locator("article").filter({ hasText: eventTitle }),
         ).toBeVisible();
-        await expect(
-          page.getByRole("button", { name: "Apply" }),
-        ).toBeVisible();
+        await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
       },
     },
     {
@@ -857,7 +933,9 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
         await expect(
           page.getByRole("button", { name: "RSVP", exact: true }),
         ).toBeVisible();
-        await expect(page.getByText("fixture-address-not-public")).toHaveCount(0);
+        await expect(page.getByText("fixture-address-not-public")).toHaveCount(
+          0,
+        );
       },
     },
     {
@@ -903,29 +981,33 @@ test("release-critical surfaces are responsive across RC viewport sizes", async 
 test("standalone life counter updates local table state", async ({ page }) => {
   await page.goto("/life");
 
-  await page.getByRole("radio", { name: "6" }).click();
+  await setLifePlayerCount(page, 6);
   await expect(page.getByTestId("life-player-card")).toHaveCount(6);
 
   const firstPlayer = page.getByTestId("life-player-card").first();
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
-  await firstPlayer
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await page.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await page
     .getByRole("button", { name: "Add commander", exact: true })
     .click();
-  await firstPlayer.getByLabel("Commander 2", { exact: true }).fill("Tekuthal");
-  await firstPlayer.getByLabel("Deck label").fill("Counters");
+  await page.getByLabel("Commander 2", { exact: true }).fill("Tekuthal");
+  await page.getByLabel("Deck label").fill("Counters");
+  await closeDrawer(page);
   await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
 
-  await firstPlayer
-    .getByRole("button", { name: "Subtract 5 life from Stephen" })
-    .click();
+  await adjustLifeByOnes(firstPlayer, "Stephen", -5);
   await expect(firstPlayer).toContainText("35");
 
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
   await page.getByRole("button", { name: "Add poison to Stephen" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
 
-  await firstPlayer.getByRole("button", { name: "Add cast to Atraxa" }).click();
+  await openPlayerSetupDrawer(firstPlayer, "Stephen");
+  await page.getByRole("button", { name: "Add cast to Atraxa" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("player-1-commander-1-cast-count")).toHaveText(
     "1",
   );
@@ -938,16 +1020,17 @@ test("standalone life counter supports action-log undo and redo", async ({
 
   const firstPlayer = page.getByTestId("life-player-card").first();
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer
-    .getByRole("button", { name: "Subtract 5 life from Stephen" })
-    .click();
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await closeDrawer(page);
+  await adjustLifeByOnes(firstPlayer, "Stephen", -5);
   await expect(firstPlayer).toContainText("35");
 
+  await openLifeMenu(page);
   await page
     .getByRole("button", { name: "Undo last life counter action" })
     .click();
-  await expect(firstPlayer).toContainText("40");
+  await expect(firstPlayer).toContainText("36");
 
   await page.getByRole("button", { name: "Redo life counter action" }).click();
   await expect(firstPlayer).toContainText("35");
@@ -955,13 +1038,18 @@ test("standalone life counter supports action-log undo and redo", async ({
   await page
     .getByRole("button", { name: "Undo last life counter action" })
     .click();
+  await closeDrawer(page);
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
   await page.getByRole("button", { name: "Add poison to Stephen" }).click();
+  await closeDrawer(page);
 
-  await expect(firstPlayer).toContainText("40");
+  await expect(firstPlayer).toContainText("36");
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
+  await openLifeMenu(page);
   await expect(
     page.getByRole("button", { name: "Redo life counter action" }),
   ).toBeDisabled();
+  await closeDrawer(page);
 });
 
 test("standalone life counter restores local Dexie state after refresh", async ({
@@ -970,8 +1058,10 @@ test("standalone life counter restores local Dexie state after refresh", async (
   await page.goto("/life");
 
   const firstPlayer = page.getByTestId("life-player-card").first();
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await page.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await closeDrawer(page);
 
   let blockedRequests = 0;
   await page.route("**/*", async (route) => {
@@ -981,10 +1071,10 @@ test("standalone life counter restores local Dexie state after refresh", async (
     await route.abort();
   });
 
-  await firstPlayer
-    .getByRole("button", { name: "Subtract 10 life from Stephen" })
-    .click();
+  await adjustLifeByOnes(firstPlayer, "Stephen", -10);
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
   await page.getByRole("button", { name: "Add poison to Stephen" }).click();
+  await closeDrawer(page);
   await expect(firstPlayer).toContainText("30");
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
   expect(blockedRequests).toBe(0);
@@ -994,9 +1084,11 @@ test("standalone life counter restores local Dexie state after refresh", async (
 
   const restoredFirstPlayer = page.getByTestId("life-player-card").first();
   await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
-  await expect(
-    restoredFirstPlayer.getByLabel("Commander 1", { exact: true }),
-  ).toHaveValue("Atraxa");
+  await openPlayerSetupDrawer(restoredFirstPlayer, "Stephen");
+  await expect(page.getByLabel("Commander 1", { exact: true })).toHaveValue(
+    "Atraxa",
+  );
+  await closeDrawer(page);
   await expect(restoredFirstPlayer).toContainText("30");
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("1");
 });
@@ -1071,16 +1163,18 @@ test("standalone life counter tracks Commander counters and table roles", async 
 
   const firstPlayer = page.getByTestId("life-player-card").first();
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer
-    .getByRole("button", { name: "Make Stephen monarch" })
-    .click();
-  await firstPlayer
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await closeDrawer(page);
+  await openPlayerResultDrawer(firstPlayer, "Stephen");
+  await page.getByRole("button", { name: "Make Stephen monarch" }).click();
+  await page
     .getByRole("button", { name: "Give initiative to Stephen" })
     .click();
-  await firstPlayer
+  await page
     .getByRole("button", { name: "Give city's blessing to Stephen" })
     .click();
+  await closeDrawer(page);
 
   await expect(page.getByTestId("monarch-holder")).toHaveText(
     "Stephen monarch",
@@ -1092,23 +1186,20 @@ test("standalone life counter tracks Commander counters and table roles", async 
     "City's blessing",
   );
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Night" }).click();
   await page.getByRole("button", { name: "Add storm" }).click();
   await page.getByRole("button", { name: "Add storm" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("day-night-state")).toHaveText("night");
   await expect(page.getByTestId("storm-count")).toHaveText("2");
 
-  await firstPlayer
-    .getByRole("button", { name: "Add experience to Stephen" })
-    .click();
-  await firstPlayer
-    .getByRole("button", { name: "Add energy to Stephen" })
-    .click();
-  await firstPlayer.getByRole("button", { name: "Add rad to Stephen" }).click();
-  await firstPlayer
-    .getByRole("button", { name: "Add treasure to Stephen" })
-    .click();
-  await firstPlayer
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
+  await page.getByRole("button", { name: "Add experience to Stephen" }).click();
+  await page.getByRole("button", { name: "Add energy to Stephen" }).click();
+  await page.getByRole("button", { name: "Add rad to Stephen" }).click();
+  await page.getByRole("button", { name: "Add treasure to Stephen" }).click();
+  await page
     .getByRole("button", { name: "Add White floating mana to Stephen" })
     .click();
 
@@ -1120,7 +1211,7 @@ test("standalone life counter tracks Commander counters and table roles", async 
     "1",
   );
 
-  await firstPlayer
+  await page
     .getByRole("button", { name: "Add custom counter for Stephen" })
     .click();
   const customCounter = page.getByTestId("player-1-custom-counter-row").first();
@@ -1133,8 +1224,11 @@ test("standalone life counter tracks Commander counters and table roles", async 
   await expect(customCounter.locator("[data-testid$='-count']")).toHaveText(
     "1",
   );
+  await closeDrawer(page);
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("monarch-holder")).toHaveText("No monarch");
   await expect(page.getByTestId("initiative-holder")).toHaveText(
     "No initiative",
@@ -1147,9 +1241,14 @@ test("standalone life counter tracks Commander counters and table roles", async 
   await expect(page.getByTestId("player-1-floating-mana-W-count")).toHaveText(
     "0",
   );
-  await expect(customCounter.locator("[data-testid$='-count']")).toHaveText(
-    "0",
-  );
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
+  await expect(
+    page
+      .getByTestId("player-1-custom-counter-row")
+      .first()
+      .locator("[data-testid$='-count']"),
+  ).toHaveText("0");
+  await closeDrawer(page);
 });
 
 test("standalone life counter tracks commander damage by source", async ({
@@ -1160,15 +1259,21 @@ test("standalone life counter tracks commander damage by source", async ({
   const firstPlayer = page.getByTestId("life-player-card").nth(0);
   const secondPlayer = page.getByTestId("life-player-card").nth(1);
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
-  await secondPlayer.getByLabel("Player name").fill("Alex");
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await page.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await closeDrawer(page);
+  await openPlayerSetupDrawer(secondPlayer, "Player 2");
+  await page.getByLabel("Player name").fill("Alex");
+  await closeDrawer(page);
 
-  await secondPlayer
+  await openPlayerCountersDrawer(secondPlayer, "Alex");
+  await page
     .getByRole("button", {
       name: "Add commander damage from Atraxa to Alex",
     })
     .click();
+  await closeDrawer(page);
 
   await expect(
     page.getByTestId("player-2-player-1-commander-1-commander-damage"),
@@ -1183,20 +1288,26 @@ test("standalone life counter supports reset, rematch, and new game flows", asyn
   const firstPlayer = page.getByTestId("life-player-card").nth(0);
   const secondPlayer = page.getByTestId("life-player-card").nth(1);
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await firstPlayer.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
-  await firstPlayer.getByLabel("Deck label").fill("Counters");
-  await firstPlayer
-    .getByRole("button", { name: "Subtract 10 life from Stephen" })
-    .click();
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await page.getByLabel("Commander 1", { exact: true }).fill("Atraxa");
+  await page.getByLabel("Deck label").fill("Counters");
+  await closeDrawer(page);
+  await adjustLifeByOnes(firstPlayer, "Stephen", -10);
+  await openPlayerCountersDrawer(firstPlayer, "Stephen");
   await page.getByRole("button", { name: "Add poison to Stephen" }).click();
-  await secondPlayer
+  await closeDrawer(page);
+  await openPlayerCountersDrawer(secondPlayer, "Player 2");
+  await page
     .getByRole("button", {
       name: "Add commander damage from Atraxa to Player 2",
     })
     .click();
+  await closeDrawer(page);
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await closeDrawer(page);
   await expect(firstPlayer).toContainText("40");
   await expect(page.getByTestId("player-1-poison-count")).toHaveText("0");
   await expect(
@@ -1204,13 +1315,17 @@ test("standalone life counter supports reset, rematch, and new game flows", asyn
   ).toHaveText("0");
   await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Rematch" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("life-player-card").first()).toContainText(
     "Player 2",
   );
   await expect(page.getByRole("heading", { name: "Stephen" })).toBeVisible();
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "New game" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("life-player-card")).toHaveCount(4);
   await expect(
     page.getByRole("heading", { name: "Stephen" }),
@@ -1226,26 +1341,36 @@ test("standalone life counter tracks elimination and result states", async ({
   const firstPlayer = page.getByTestId("life-player-card").nth(0);
   const secondPlayer = page.getByTestId("life-player-card").nth(1);
 
-  await firstPlayer.getByLabel("Player name").fill("Stephen");
-  await secondPlayer.getByLabel("Player name").fill("Alex");
+  await openPlayerSetupDrawer(firstPlayer, "Player 1");
+  await page.getByLabel("Player name").fill("Stephen");
+  await closeDrawer(page);
+  await openPlayerSetupDrawer(secondPlayer, "Player 2");
+  await page.getByLabel("Player name").fill("Alex");
+  await closeDrawer(page);
 
-  await firstPlayer.getByRole("button", { name: "Eliminate Stephen" }).click();
+  await openPlayerResultDrawer(firstPlayer, "Stephen");
+  await page.getByRole("button", { name: "Eliminate Stephen" }).click();
   await expect(page.getByTestId("player-1-status")).toHaveText("Eliminated");
 
-  await firstPlayer.getByRole("button", { name: "Restore Stephen" }).click();
+  await page.getByRole("button", { name: "Restore Stephen" }).click();
   await expect(page.getByTestId("player-1-status")).toHaveText("Active");
+  await closeDrawer(page);
 
-  await secondPlayer
-    .getByRole("button", { name: "Mark Alex as winner" })
-    .click();
+  await openPlayerResultDrawer(secondPlayer, "Alex");
+  await page.getByRole("button", { name: "Mark Alex as winner" }).click();
   await expect(page.getByTestId("player-2-status")).toHaveText("Winner");
   await expect(page.getByTestId("life-game-result")).toHaveText("Alex wins");
+  await closeDrawer(page);
 
-  await page.getByRole("button", { name: "Draw" }).click();
+  await openLifeMenu(page);
+  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("life-game-result")).toHaveText("Draw");
   await expect(page.getByTestId("player-2-status")).toHaveText("Active");
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "No contest" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("life-game-result")).toHaveText("No contest");
 });
 
@@ -1254,7 +1379,7 @@ test("standalone life counter supports desktop keyboard play", async ({
 }) => {
   await page.goto("/life");
   await expect(
-    page.getByRole("button", { name: "Add 10 life to Player 1" }),
+    page.getByRole("button", { name: "Add 1 life to Player 1" }),
   ).toBeVisible();
 
   await page.keyboard.press("2");
@@ -1284,6 +1409,7 @@ test("standalone life counter tracks timers and turn order", async ({
   await expect(page.getByTestId("turn-count")).toHaveText("Turn 1");
   await expect(page.getByTestId("turn-order")).toContainText("1. Player 1");
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Start timers" }).click();
   await page.clock.fastForward(3000);
   await expect(page.getByTestId("game-timer")).toHaveText("00:03");
@@ -1342,6 +1468,7 @@ test("standalone life counter opens a table display overlay", async ({
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/life");
 
+  await openLifeMenu(page);
   await page.getByRole("button", { name: "Table display" }).click();
 
   const tableDisplay = page.getByTestId("life-table-display");
@@ -1992,7 +2119,9 @@ test("event managers can move and publish pod assignments", async ({
 
   await page.goto("/game-night");
 
-  const createEventForm = page.locator("form").filter({ hasText: "Create Event" });
+  const createEventForm = page
+    .locator("form")
+    .filter({ hasText: "Create Event" });
 
   await createEventForm
     .locator('select[name="playgroupId"]')
@@ -2345,9 +2474,7 @@ test("event and pod linked life counters import players and save games", async (
   await expect(
     page.getByRole("heading", { name: "Guest RSVP" }).first(),
   ).toBeVisible();
-  await eventFirstPlayer
-    .getByRole("button", { name: "Subtract 5 life from Riley Chen" })
-    .click();
+  await adjustLifeByOnes(eventFirstPlayer, "Riley Chen", -5);
   await expect(eventFirstPlayer).toContainText("35");
   await page.getByLabel(`Result for ${eventTitle}`).selectOption("draw");
   await page.getByLabel("Seat 1: Riley Chen finish position").fill("1");
@@ -2375,16 +2502,14 @@ test("event and pod linked life counters import players and save games", async (
   await expect(
     page.getByRole("heading", { name: "Guest RSVP" }).first(),
   ).toBeVisible();
-  await podFirstPlayer
-    .getByRole("button", { name: "Mark Riley Chen as winner" })
-    .click();
+  await openPlayerResultDrawer(podFirstPlayer, "Riley Chen");
+  await page.getByRole("button", { name: "Mark Riley Chen as winner" }).click();
+  await closeDrawer(page);
   await expect(page.getByTestId("life-game-result")).toHaveText(
     "Riley Chen wins",
   );
   await page.getByLabel("Result for Pod 1").selectOption("normal_win");
-  await page
-    .getByLabel("Seat 1: Riley Chen", { exact: true })
-    .check();
+  await page.getByLabel("Seat 1: Riley Chen", { exact: true }).check();
   await page.getByLabel("Seat 1: Riley Chen finish position").fill("1");
   await page.getByLabel("Seat 2: Guest RSVP finish position").fill("2");
   await page.getByLabel("Notes for Pod 1").fill(podNote);
@@ -2617,7 +2742,9 @@ test("authenticated group owners can create an event and RSVP", async ({
     page.getByRole("heading", { level: 1, name: "Game Night" }),
   ).toBeVisible();
 
-  const createEventForm = page.locator("form").filter({ hasText: "Create Event" });
+  const createEventForm = page
+    .locator("form")
+    .filter({ hasText: "Create Event" });
 
   await createEventForm
     .locator('select[name="playgroupId"]')

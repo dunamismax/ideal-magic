@@ -214,6 +214,39 @@ Work these in order unless Stephen explicitly reprioritizes. Each pass
 should be small enough to implement, verify, commit, and push in one
 agent session.
 
+## Life Counter Mobile Rewrite
+
+Goal: replace the current all-controls-visible counter with a phone-first
+Commander life app surface. The attached mobile screenshots are the
+active visual reference: player tiles dominate the screen, life changes
+are top/bottom tap zones in one-life increments, commander damage and
+commander tax are quick toggles, the center menu owns table actions, and
+left/right swipes reveal counters, setup, partners, deck, and result
+controls.
+
+- [x] Preserve the existing reducer, action log, Dexie recovery, linked
+  sync, and game-save contracts.
+- [x] Build the primary counter as a mobile-first board with no normal
+  play scrolling on phone-sized screens.
+- [x] Move table setup, timers, undo/redo, reset/rematch/new game, table
+  display, and cleanup into a center menu or equivalent submenu.
+- [x] Move poison, Commander counters, monarch/initiative/city blessing,
+  floating mana, custom counters, commander casts, commander damage,
+  player setup, and result controls into swipe panels or submenus.
+- [x] Support touch swipe left/right on each player tile and keyboard or
+  button fallback navigation for accessibility and desktop.
+- [x] Update unit/component and Playwright smoke coverage for the new
+  interaction model.
+- [x] Browser-check the life counter on a small phone viewport and a
+  desktop viewport before marking this section complete.
+- [ ] Decide whether `/life` should use an immersive no-app-shell route
+  treatment and move attach/save forms into the center menu if so.
+- [ ] Replace CSS-only battlefield treatments with generated or curated
+  local art assets if Stephen wants card-art-style backgrounds.
+- [ ] Add optional table-facing seat orientation or forced-landscape
+  behavior if phone-at-table testing proves it is better than upright
+  tiles.
+
 ## Pass 1 - Production Auth And Abuse Hardening
 
 - [x] Decide and implement password reset or explicitly document the

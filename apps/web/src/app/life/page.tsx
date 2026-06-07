@@ -80,6 +80,19 @@ export default async function LifePage({ searchParams }: LifePageProps) {
       : null;
   const lifeCounterSession =
     serverSnapshot?.session ?? linkedContext?.session ?? undefined;
+  const selectedEvent = attachData.selectedEvent;
+  const renderSaveGameForm = (mobile = false) =>
+    selectedEvent && canSaveGame ? (
+      <EventLifeGameSaveForm
+        action={saveStandaloneLifeGameAction}
+        className={mobile ? "shadow-none" : undefined}
+        eventId={selectedEvent.id}
+        eventTitle={selectedEvent.title}
+        formIdPrefix={mobile ? `${selectedEvent.id}-mobile` : undefined}
+        localSessionId={linkedContext?.session.id}
+        participants={attachData.selectedParticipants}
+      />
+    ) : null;
 
   return (
     <PageFrame
@@ -89,9 +102,11 @@ export default async function LifePage({ searchParams }: LifePageProps) {
           : "Standalone local session"
       }
       title="Life Counter"
+      mobileImmersive
     >
       <LifePwaRegistration />
       <LifeCounter
+        immersiveMobile
         initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}
         linkedSessionSync={
@@ -108,23 +123,30 @@ export default async function LifePage({ searchParams }: LifePageProps) {
             : undefined
         }
         linkedStatusLabel={linkedContext?.statusLabel}
+        mobileExitHref="/"
+        mobileMenuContent={
+          <>
+            <StandaloneLifeEventAttachPanel
+              events={attachData.events}
+              isAuthenticated={Boolean(session)}
+              loginHref={getLoginRedirectPath("/life")}
+              selectedEventBlocked={attachData.selectedEventBlocked}
+              selectedEventId={selectedEventId}
+            />
+            {renderSaveGameForm(true)}
+          </>
+        }
       />
-      <StandaloneLifeEventAttachPanel
-        events={attachData.events}
-        isAuthenticated={Boolean(session)}
-        loginHref={getLoginRedirectPath("/life")}
-        selectedEventBlocked={attachData.selectedEventBlocked}
-        selectedEventId={selectedEventId}
-      />
-      {attachData.selectedEvent && canSaveGame ? (
-        <EventLifeGameSaveForm
-          action={saveStandaloneLifeGameAction}
-          eventId={attachData.selectedEvent.id}
-          eventTitle={attachData.selectedEvent.title}
-          localSessionId={linkedContext?.session.id}
-          participants={attachData.selectedParticipants}
+      <div className="hidden md:grid md:gap-4">
+        <StandaloneLifeEventAttachPanel
+          events={attachData.events}
+          isAuthenticated={Boolean(session)}
+          loginHref={getLoginRedirectPath("/life")}
+          selectedEventBlocked={attachData.selectedEventBlocked}
+          selectedEventId={selectedEventId}
         />
-      ) : null}
+        {renderSaveGameForm()}
+      </div>
     </PageFrame>
   );
 }

@@ -2,6 +2,7 @@ import { CalendarPlus, LogIn, Trophy } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type StandaloneLifeAttachEvent = {
   id: string;
@@ -12,6 +13,7 @@ export type StandaloneLifeAttachEvent = {
 };
 
 type StandaloneLifeEventAttachPanelProps = {
+  className?: string;
   events: readonly StandaloneLifeAttachEvent[];
   isAuthenticated: boolean;
   loginHref: string;
@@ -20,6 +22,7 @@ type StandaloneLifeEventAttachPanelProps = {
 };
 
 export function StandaloneLifeEventAttachPanel({
+  className,
   events,
   isAuthenticated,
   loginHref,
@@ -27,7 +30,12 @@ export function StandaloneLifeEventAttachPanel({
   selectedEventBlocked = null,
 }: StandaloneLifeEventAttachPanelProps) {
   return (
-    <section className="mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+    <section
+      className={cn(
+        "mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="grid min-w-0 gap-1">
           <h2 className="flex items-center gap-2 text-base font-bold">

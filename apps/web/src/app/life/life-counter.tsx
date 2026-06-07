@@ -34,8 +34,10 @@ import {
   Zap,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import {
   type CSSProperties,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -91,10 +93,14 @@ import {
 import { cn } from "@/lib/utils";
 
 type LifeCounterProps = {
+  immersiveMobile?: boolean;
   initialSession?: LifeCounterSession;
   linkedSaveEnabled?: boolean;
   linkedStatusLabel?: string;
   linkedSessionSync?: Omit<SyncLinkedLifeCounterSessionInput, "session">;
+  mobileExitHref?: string;
+  mobileExitLabel?: string;
+  mobileMenuContent?: ReactNode;
 };
 
 type LocalSaveState = "checking" | "saved" | "unavailable" | "error";
@@ -376,10 +382,14 @@ function getCommanderTaxTotal(player: Player) {
 }
 
 export function LifeCounter({
+  immersiveMobile = false,
   initialSession,
   linkedSaveEnabled = false,
   linkedStatusLabel,
   linkedSessionSync,
+  mobileExitHref,
+  mobileExitLabel = "Exit Counter",
+  mobileMenuContent,
 }: LifeCounterProps = {}) {
   const isLinkedSession = Boolean(linkedStatusLabel);
   const expectedServerActionSequenceRef = useRef(
@@ -2087,6 +2097,18 @@ export function LifeCounter({
             </div>
 
             <div className="grid grid-cols-2 gap-2">
+              {mobileExitHref ? (
+                <Button
+                  asChild
+                  className="border-white/10 bg-white/10 text-white hover:bg-white/20 md:hidden"
+                  variant="secondary"
+                >
+                  <Link href={mobileExitHref}>
+                    <ChevronLeft className="size-4" aria-hidden="true" />
+                    {mobileExitLabel}
+                  </Link>
+                </Button>
+              ) : null}
               <Button
                 aria-label="Undo last life counter action"
                 className="border-white/10 bg-white/10 text-white hover:bg-white/20"
@@ -2298,6 +2320,15 @@ export function LifeCounter({
                 No contest
               </Button>
             </div>
+
+            {mobileMenuContent ? (
+              <div
+                className="grid gap-3 md:hidden [&_fieldset]:border-white/10 [&_fieldset]:bg-black/25 [&_h2]:text-white [&_input]:border-white/10 [&_input]:bg-black/35 [&_input]:text-white [&_label]:text-white [&_p]:text-white/65 [&_section]:mt-0 [&_section]:border-white/10 [&_section]:bg-white/5 [&_section]:text-white [&_section]:shadow-none [&_select]:border-white/10 [&_select]:bg-black/35 [&_select]:text-white [&_textarea]:border-white/10 [&_textarea]:bg-black/35 [&_textarea]:text-white"
+                data-testid="life-mobile-menu-content"
+              >
+                {mobileMenuContent}
+              </div>
+            ) : null}
 
             <Button
               aria-label="Clean up saved inactive life counter sessions"
@@ -2864,6 +2895,8 @@ export function LifeCounter({
     <div
       className={cn(
         "relative isolate grid min-h-[calc(100dvh-10rem)] overflow-hidden rounded-[2rem] bg-black p-1.5 text-white shadow-2xl sm:min-h-[calc(100dvh-11rem)] sm:p-2",
+        immersiveMobile &&
+          "max-md:h-dvh max-md:min-h-dvh max-md:rounded-none max-md:p-0 max-md:shadow-none",
         tableMode && "h-full min-h-0 rounded-none",
       )}
       data-testid="life-counter-board"
@@ -2874,7 +2907,10 @@ export function LifeCounter({
       {renderHiddenState()}
       {linkedStatusLabel ? (
         <p
-          className="absolute left-3 top-3 z-30 max-w-[calc(100%-6rem)] rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[0.65rem] font-bold text-teal-100 shadow-lg backdrop-blur"
+          className={cn(
+            "absolute left-3 top-3 z-30 max-w-[calc(100%-6rem)] rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[0.65rem] font-bold text-teal-100 shadow-lg backdrop-blur",
+            immersiveMobile && "max-md:sr-only",
+          )}
           data-testid="linked-life-status"
         >
           {linkedStatusLabel}

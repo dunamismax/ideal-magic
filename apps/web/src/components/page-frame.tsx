@@ -1,22 +1,41 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { cn } from "@/lib/utils";
 
 export function PageFrame({
   title,
   eyebrow,
   actions,
   children,
+  mobileImmersive = false,
 }: {
   title: string;
   eyebrow?: string;
   actions?: ReactNode;
   children: ReactNode;
+  mobileImmersive?: boolean;
 }) {
   return (
-    <AppShell>
-      <section className="grid min-w-0 gap-4">
-        <div className="flex min-w-0 w-full flex-col gap-3">
+    <AppShell mobileImmersive={mobileImmersive}>
+      <section
+        className={cn(
+          "grid min-w-0 gap-4",
+          mobileImmersive && "max-md:h-dvh max-md:gap-0 max-md:overflow-hidden",
+        )}
+      >
+        {mobileImmersive ? (
+          <div className="sr-only md:hidden">
+            {eyebrow ? <p>{eyebrow}</p> : null}
+            <h1>{title}</h1>
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex min-w-0 w-full flex-col gap-3",
+            mobileImmersive && "max-md:hidden",
+          )}
+        >
           <div className="min-w-0 max-w-full">
             {eyebrow ? (
               <p className="text-xs font-bold uppercase text-muted [overflow-wrap:anywhere]">

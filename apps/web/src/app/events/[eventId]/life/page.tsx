@@ -56,12 +56,24 @@ export default async function EventLifePage({
   });
   const lifeCounterSession = serverSnapshot?.session ?? context.session;
   const canSaveGame = event.status === "scheduled" && participants.length >= 2;
+  const tableViewHref = `/events/${eventId}/life/table`;
+  const renderSaveGameForm = (mobile = false) =>
+    canSaveGame ? (
+      <EventLifeGameSaveForm
+        className={mobile ? "shadow-none" : undefined}
+        eventId={eventId}
+        eventTitle={event.title}
+        formIdPrefix={mobile ? `${eventId}-mobile` : undefined}
+        localSessionId={context.session.id}
+        participants={participants}
+      />
+    ) : null;
 
   return (
     <PageFrame
       actions={
         <Button asChild variant="secondary">
-          <Link href={`/events/${eventId}/life/table`}>
+          <Link href={tableViewHref}>
             <Monitor className="size-4" aria-hidden="true" />
             Table view
           </Link>
@@ -69,8 +81,10 @@ export default async function EventLifePage({
       }
       eyebrow={context.eyebrow}
       title={context.title}
+      mobileImmersive
     >
       <LifeCounter
+        immersiveMobile
         initialSession={lifeCounterSession}
         linkedSaveEnabled={canSaveGame}
         linkedSessionSync={{
@@ -82,15 +96,24 @@ export default async function EventLifePage({
           expectedServerUpdatedAt: serverSnapshot?.serverUpdatedAt ?? null,
         }}
         linkedStatusLabel={context.statusLabel}
+        mobileExitHref="/game-night"
+        mobileMenuContent={
+          <>
+            <Button
+              asChild
+              className="border-white/10 bg-white/10 text-white hover:bg-white/20"
+              variant="secondary"
+            >
+              <Link href={tableViewHref}>
+                <Monitor className="size-4" aria-hidden="true" />
+                Table view
+              </Link>
+            </Button>
+            {renderSaveGameForm(true)}
+          </>
+        }
       />
-      {canSaveGame ? (
-        <EventLifeGameSaveForm
-          eventId={eventId}
-          eventTitle={event.title}
-          localSessionId={context.session.id}
-          participants={participants}
-        />
-      ) : null}
+      <div className="hidden md:block">{renderSaveGameForm()}</div>
     </PageFrame>
   );
 }

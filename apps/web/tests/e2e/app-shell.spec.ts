@@ -760,13 +760,33 @@ for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await page.goto("/life");
 
-    await expect(
-      page.getByRole("heading", { name: "Life Counter" }),
-    ).toBeVisible();
+    if (viewport.name === "phone") {
+      await expect(page.locator("header")).toBeHidden();
+    } else {
+      await expect(
+        page.getByRole("heading", { name: "Life Counter" }),
+      ).toBeVisible();
+    }
+
+    const boardBox = await page.getByTestId("life-counter-board").boundingBox();
+
+    if (viewport.name === "phone") {
+      expect(boardBox?.width).toBeGreaterThanOrEqual(viewport.width - 1);
+      expect(boardBox?.height).toBeGreaterThanOrEqual(viewport.height - 1);
+    }
+
     await expect(page.getByTestId("life-player-card")).toHaveCount(4);
     await expect(
       page.getByRole("button", { name: "Add 1 life to Player 1" }),
     ).toBeVisible();
+
+    if (viewport.name === "phone") {
+      await openLifeMenu(page);
+      await expect(
+        page.getByRole("link", { name: "Exit Counter" }),
+      ).toBeVisible();
+      await closeDrawer(page);
+    }
 
     const overflowCount = await page.locator("button, a, input").evaluateAll(
       (elements) =>

@@ -8,11 +8,14 @@ import { Button } from "@/components/ui/button";
 import type { EventLifeCounterParticipantSummary } from "@/db/queries/event-planning";
 import type { SaveEventLifeGameActionState } from "@/features/life/event-game-save";
 import { markLifeCounterSessionGameSaved } from "@/features/life/local-session-store";
+import { cn } from "@/lib/utils";
 import { saveEventLifeGameAction } from "./actions";
 
 type EventLifeGameSaveFormProps = {
+  className?: string;
   eventId: string;
   eventTitle: string;
+  formIdPrefix?: string;
   localSessionId?: string | null;
   participants: readonly EventLifeCounterParticipantSummary[];
   action?: (
@@ -40,12 +43,15 @@ function createInitialState(input: {
 }
 
 export function EventLifeGameSaveForm({
+  className,
   eventId,
   eventTitle,
+  formIdPrefix = eventId,
   localSessionId,
   participants,
   action = saveEventLifeGameAction,
 }: EventLifeGameSaveFormProps) {
+  const winnerParticipantsLabelId = `${formIdPrefix}-life-winner-participants-label`;
   const [state, formAction] = useActionState(
     action,
     createInitialState({
@@ -65,7 +71,12 @@ export function EventLifeGameSaveForm({
   }, [eventId, localSessionId, state.saved, state.savedGameId]);
 
   return (
-    <section className="mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+    <section
+      className={cn(
+        "mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-base font-bold">
@@ -104,12 +115,12 @@ export function EventLifeGameSaveForm({
           <legend className="sr-only">Winners for {eventTitle}</legend>
           <span
             className="text-[0.7rem] font-black uppercase text-muted"
-            id={`${eventId}-life-winner-participants-label`}
+            id={winnerParticipantsLabelId}
           >
             Winners
           </span>
           <div
-            aria-labelledby={`${eventId}-life-winner-participants-label`}
+            aria-labelledby={winnerParticipantsLabelId}
             className="flex flex-wrap gap-2"
             role="group"
           >

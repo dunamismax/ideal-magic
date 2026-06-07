@@ -7,13 +7,16 @@ import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import type { EventPodSummary } from "@/db/queries/pods";
 import { markLifeCounterSessionGameSaved } from "@/features/life/local-session-store";
+import { cn } from "@/lib/utils";
 import {
   savePodLifeGameAction,
   type SavePodLifeGameActionState,
 } from "./actions";
 
 type PodLifeGameSaveFormProps = {
+  className?: string;
   eventId: string;
+  formIdPrefix?: string;
   localSessionId?: string | null;
   pod: Pick<EventPodSummary, "id" | "name" | "seats">;
   action?: (
@@ -43,11 +46,14 @@ function createInitialState(input: {
 }
 
 export function PodLifeGameSaveForm({
+  className,
   eventId,
+  formIdPrefix,
   localSessionId,
   pod,
   action = savePodLifeGameAction,
 }: PodLifeGameSaveFormProps) {
+  const winnerSeatsLabelId = `${formIdPrefix ?? pod.id}-life-winner-seats-label`;
   const [state, formAction] = useActionState(
     action,
     createInitialState({
@@ -69,7 +75,12 @@ export function PodLifeGameSaveForm({
   }, [eventId, localSessionId, pod.id, state.saved, state.savedGameId]);
 
   return (
-    <section className="mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm">
+    <section
+      className={cn(
+        "mt-4 grid min-w-0 gap-3 rounded-panel border border-border bg-surface p-3 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-base font-bold">
@@ -109,12 +120,12 @@ export function PodLifeGameSaveForm({
           <legend className="sr-only">Winners for {pod.name}</legend>
           <span
             className="text-[0.7rem] font-black uppercase text-muted"
-            id={`${pod.id}-life-winner-seats-label`}
+            id={winnerSeatsLabelId}
           >
             Winners
           </span>
           <div
-            aria-labelledby={`${pod.id}-life-winner-seats-label`}
+            aria-labelledby={winnerSeatsLabelId}
             className="flex flex-wrap gap-2"
             role="group"
           >

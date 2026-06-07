@@ -29,10 +29,26 @@ const primaryNav = [
   { href: "/history", label: "History", icon: History },
 ];
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  mobileImmersive = false,
+}: {
+  children: ReactNode;
+  mobileImmersive?: boolean;
+}) {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
+    <div
+      className={cn(
+        "min-h-dvh bg-background text-foreground",
+        mobileImmersive && "max-md:h-dvh max-md:overflow-hidden max-md:bg-black",
+      )}
+    >
+      <header
+        className={cn(
+          "sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur",
+          mobileImmersive && "max-md:hidden",
+        )}
+      >
         <div className="mx-auto grid min-w-0 max-w-screen-2xl grid-cols-[minmax(0,1fr)_auto] gap-3 px-shell py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
           <Link className="flex min-w-0 items-center gap-3" href="/">
             <span className="flex size-10 items-center justify-center rounded-control bg-foreground text-background">
@@ -89,7 +105,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-screen-2xl px-shell py-4 sm:py-5 lg:py-6">
+      <main
+        className={cn(
+          "mx-auto w-full max-w-screen-2xl px-shell py-4 sm:py-5 lg:py-6",
+          mobileImmersive &&
+            "max-md:h-dvh max-md:max-w-none max-md:overflow-hidden max-md:px-0 max-md:py-0",
+        )}
+      >
         {children}
       </main>
     </div>

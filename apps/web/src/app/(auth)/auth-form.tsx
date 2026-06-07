@@ -104,10 +104,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           className="flex items-start gap-2 rounded-control border border-accent/40 bg-accent/10 p-3 text-sm font-semibold text-accent"
           role="status"
         >
-          <CheckCircle2
-            className="mt-0.5 size-4 shrink-0"
-            aria-hidden="true"
-          />
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>{success}</span>
         </div>
       ) : null}
@@ -151,7 +148,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           {isSubmitting ? "Working" : title}
         </Button>
         <Link
-          className="text-sm font-bold text-accent hover:text-teal-800"
+          className="text-sm font-bold text-accent hover:text-accent-hover"
           href={isSignup ? "/login" : "/signup"}
         >
           {isSignup ? "Log in instead" : "Create an account"}
@@ -160,10 +157,16 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
       {!isSignup ? (
         <div className="flex flex-wrap gap-3 text-sm font-bold">
-          <Link className="text-accent hover:text-teal-800" href="/forgot-password">
+          <Link
+            className="text-accent hover:text-accent-hover"
+            href="/forgot-password"
+          >
             Forgot password
           </Link>
-          <Link className="text-accent hover:text-teal-800" href="/verify-email">
+          <Link
+            className="text-accent hover:text-accent-hover"
+            href="/verify-email"
+          >
             Resend verification
           </Link>
         </div>

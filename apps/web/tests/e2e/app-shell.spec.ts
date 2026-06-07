@@ -746,6 +746,9 @@ test("app shell exposes primary Commander workflows", async ({ page }) => {
   await expect(page.getByRole("link", { name: /life counter/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /game night/i })).toBeVisible();
   await expect(
+    page.getByRole("button", { name: /switch to (light|dark) mode/i }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Life Counter" }),
   ).toBeVisible();
 });

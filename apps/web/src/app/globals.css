@@ -1,15 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7f2;
-  --foreground: #172019;
-  --surface: #ffffff;
-  --surface-strong: #e7ede3;
-  --border: #cbd6c7;
-  --muted: #58645b;
-  --accent: #0f766e;
-  --accent-foreground: #f8fffb;
-  --danger: #b42318;
+  color-scheme: dark;
+  --background: #0b1110;
+  --foreground: #edf7f0;
+  --surface: #121a17;
+  --surface-strong: #1f2d28;
+  --border: #33433b;
+  --muted: #a5b8ad;
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-foreground: #06201d;
+  --danger: #f87171;
+  --danger-hover: #ef4444;
   --focus: #d97706;
   --player-a: #e11d48;
   --player-b: #2563eb;
@@ -24,6 +27,22 @@
   --space-shell: clamp(1rem, 2vw, 1.75rem);
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f4f7f2;
+  --foreground: #172019;
+  --surface: #ffffff;
+  --surface-strong: #e7ede3;
+  --border: #cbd6c7;
+  --muted: #58645b;
+  --accent: #0f766e;
+  --accent-hover: #0d5f59;
+  --accent-foreground: #f8fffb;
+  --danger: #b42318;
+  --danger-hover: #991b1b;
+  --focus: #d97706;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -32,8 +51,10 @@
   --color-border: var(--border);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
   --color-focus: var(--focus);
   --color-player-a: var(--player-a);
   --color-player-b: var(--player-b);

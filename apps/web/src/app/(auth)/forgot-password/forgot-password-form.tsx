@@ -80,7 +80,10 @@ export function ForgotPasswordForm() {
           <KeyRound className="size-4" aria-hidden="true" />
           {isSubmitting ? "Sending" : "Send reset link"}
         </Button>
-        <Link className="text-sm font-bold text-accent hover:text-teal-800" href="/login">
+        <Link
+          className="text-sm font-bold text-accent hover:text-accent-hover"
+          href="/login"
+        >
           Back to login
         </Link>
       </div>

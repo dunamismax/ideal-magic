@@ -13,6 +13,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { QuickActionsMenu } from "@/components/quick-actions-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const primaryNav = [
@@ -32,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto grid min-w-0 max-w-screen-2xl gap-3 px-shell py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+        <div className="mx-auto grid min-w-0 max-w-screen-2xl grid-cols-[minmax(0,1fr)_auto] gap-3 px-shell py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
           <Link className="flex min-w-0 items-center gap-3" href="/">
             <span className="flex size-10 items-center justify-center rounded-control bg-foreground text-background">
               <Crown className="size-5" aria-hidden="true" />
@@ -48,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <nav
             aria-label="Primary"
-            className="grid min-w-0 grid-flow-col auto-cols-max gap-2 overflow-x-auto pb-1 lg:justify-center lg:pb-0"
+            className="col-span-2 grid min-w-0 grid-flow-col auto-cols-max gap-2 overflow-x-auto pb-1 lg:col-span-1 lg:justify-center lg:pb-0"
           >
             {primaryNav.map((item) => {
               const Icon = item.icon;
@@ -68,20 +69,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
-          <div className="hidden items-center gap-2 lg:flex lg:justify-end">
-            <Button asChild variant="secondary">
-              <Link href="/account">
-                <UserCircle className="size-4" aria-hidden="true" />
-                Account
-              </Link>
-            </Button>
-            <Button asChild variant="secondary">
-              <Link href="/game-night">
-                <Plus className="size-4" aria-hidden="true" />
-                New Event
-              </Link>
-            </Button>
-            <QuickActionsMenu />
+          <div className="flex items-center justify-end gap-2">
+            <ThemeToggle />
+            <div className="hidden items-center gap-2 lg:flex">
+              <Button asChild variant="secondary">
+                <Link href="/account">
+                  <UserCircle className="size-4" aria-hidden="true" />
+                  Account
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/game-night">
+                  <Plus className="size-4" aria-hidden="true" />
+                  New Event
+                </Link>
+              </Button>
+              <QuickActionsMenu />
+            </div>
           </div>
         </div>
       </header>

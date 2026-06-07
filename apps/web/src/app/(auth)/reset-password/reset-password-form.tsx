@@ -96,7 +96,10 @@ export function ResetPasswordForm({
           <KeyRound className="size-4" aria-hidden="true" />
           {isSubmitting ? "Updating" : "Update password"}
         </Button>
-        <Link className="text-sm font-bold text-accent hover:text-teal-800" href="/login">
+        <Link
+          className="text-sm font-bold text-accent hover:text-accent-hover"
+          href="/login"
+        >
           Back to login
         </Link>
       </div>

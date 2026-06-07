@@ -26,6 +26,7 @@ type Smtp2goConfig = {
 };
 
 type Smtp2goPayload = {
+  api_key: string;
   sender: string;
   to: string[];
   subject: string;
@@ -130,6 +131,7 @@ export function createSmtp2goPayload(
   message: TransactionalEmail,
 ): Smtp2goPayload {
   const payload: Smtp2goPayload = {
+    api_key: config.apiKey,
     sender: config.sender,
     to: [message.to],
     subject: message.subject,

@@ -19,7 +19,7 @@ describe("SMTP2GO email delivery", () => {
     ).toThrow("POD_TRACKER_EMAIL_FROM is required");
   });
 
-  test("constructs a standard SMTP2GO payload without embedding the API key", () => {
+  test("constructs a standard SMTP2GO payload with required API authentication", () => {
     const payload = createSmtp2goPayload(
       {
         apiKey: "configured-api-key",
@@ -35,6 +35,7 @@ describe("SMTP2GO email delivery", () => {
     );
 
     expect(payload).toMatchObject({
+      api_key: "configured-api-key",
       sender: "Pod Tracker <noreply@example.test>",
       to: ["player@example.test"],
       subject: "Verify your Pod Tracker account",
@@ -44,7 +45,6 @@ describe("SMTP2GO email delivery", () => {
         { header: "Reply-To", value: "support@example.test" },
       ],
     });
-    expect(JSON.stringify(payload)).not.toContain("configured-api-key");
   });
 
   test("sends through SMTP2GO with the API key header", async () => {
@@ -72,6 +72,7 @@ describe("SMTP2GO email delivery", () => {
         headers: expect.objectContaining({
           "X-Smtp2go-Api-Key": "configured-api-key",
         }),
+        body: expect.stringContaining('"api_key":"configured-api-key"'),
       }),
     );
   });

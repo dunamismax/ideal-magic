@@ -270,6 +270,12 @@ documented Docker Compose workflow.
 The TypeScript rewrite's Docker Compose PostgreSQL service publishes to
 `localhost:55432` by default. This avoids silently hitting a host
 PostgreSQL install or SSH tunnel on `5432` during migration smoke tests.
+Inside Docker Compose services, app runtime dependency URLs must use
+service hostnames such as `postgres:5432` and `valkey:6379`, not
+host-published addresses such as `localhost:55432` or `localhost:6379`.
+If a persistent PostgreSQL volume was initialized with an older password,
+updating `POSTGRES_PASSWORD` in `.env` is not enough; reset the database
+role password explicitly before expecting `/readyz` to pass.
 
 Local backup/restore drills require `pg_dump` and `pg_restore` from the
 same PostgreSQL major version as the Compose PostgreSQL server, or a
